@@ -1,0 +1,13 @@
+{
+  "name": "nestlocal",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check src/domain/quote.mjs && node --test"
+  }
+}
