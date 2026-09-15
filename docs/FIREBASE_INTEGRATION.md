@@ -10,8 +10,8 @@ app experience registry. A working NestLocal handoff is not established by that 
 This repository declares a separate Hosting target `nestlocal`. It intentionally
 has no site binding until authenticated inspection identifies or creates its site.
 Do not bind it to the Hub or another app's site. Deploy only `hosting:nestlocal`.
-There is no deployable `dist` bundle yet. This configuration is preparation, not
-a deployed or functional application.
+The first static pilot is served from `web`. It demonstrates the complete intake
+and operational workspace without writing customer data to the shared database.
 
 Do not deploy Firestore or Storage rules from this repository into the shared
 project. Integrate required rules in their owning repository with tenancy tests.
