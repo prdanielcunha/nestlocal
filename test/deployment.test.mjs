@@ -13,5 +13,8 @@ test('NestLocal uses the shared project and an isolated hosting target', () => {
   for (const key of ['firestore', 'storage', 'functions', 'database']) {
     assert.equal(config[key], undefined);
   }
-  assert.ok(config.hosting.rewrites.every(rule => !rule.run && !rule.function));
+  const api = config.hosting.rewrites.find(rule => rule.source === '/api/**');
+  assert.equal(api.run.serviceId, 'nestlocal-api');
+  assert.equal(api.run.region, 'us-central1');
+  assert.equal(config.hosting.rewrites.at(-1).destination, '/index.html');
 });
