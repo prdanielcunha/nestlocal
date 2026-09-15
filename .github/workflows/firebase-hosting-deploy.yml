@@ -70,6 +70,32 @@ jobs:
           firebase hosting:sites:create mn-nestlocal-555464791734 --project millionsnest || true
           firebase target:apply hosting nestlocal mn-nestlocal-555464791734 --project millionsnest
           firebase target:apply hosting nestlocal-alias nestlocal --project millionsnest
+      - name: Authorize NestLocal login domains
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          CONFIG="$(curl --fail --silent --show-error \
+            -H "Authorization: Bearer $TOKEN" \
+            https://identitytoolkit.googleapis.com/admin/v2/projects/millionsnest/config)"
+          DOMAINS="$(jq -c '.authorizedDomains + ["nestlocal.web.app", "mn-nestlocal-555464791734.web.app", "nestlocal.millionsnest.com"] | unique' <<<"$CONFIG")"
+          jq -n --argjson domains "$DOMAINS" '{authorizedDomains:$domains}' > /tmp/nestlocal-auth.json
+          curl --fail --silent --show-error -X PATCH \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/nestlocal-auth.json \
+            'https://identitytoolkit.googleapis.com/admin/v2/projects/millionsnest/config?updateMask=authorizedDomains' >/dev/null
+      - name: Connect official custom domain
+        run: |
+          set -euo pipefail
+          TOKEN="$(gcloud auth print-access-token)"
+          BASE='https://firebasehosting.googleapis.com/v1beta1/projects/millionsnest/sites/mn-nestlocal-555464791734/customDomains'
+          if ! curl --fail --silent -H "Authorization: Bearer $TOKEN" "$BASE/nestlocal.millionsnest.com" >/dev/null; then
+            curl --fail --silent --show-error -X POST \
+              -H "Authorization: Bearer $TOKEN" \
+              -H "Content-Type: application/json" \
+              --data '{}' \
+              "$BASE?customDomainId=nestlocal.millionsnest.com" >/dev/null
+          fi
       - name: Validate public bundle
         run: |
           test -s web/index.html
