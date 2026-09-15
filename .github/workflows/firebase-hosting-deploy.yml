@@ -68,7 +68,8 @@ jobs:
           set -euo pipefail
           firebase hosting:sites:create nestlocal --project millionsnest || true
           firebase hosting:sites:create mn-nestlocal-555464791734 --project millionsnest || true
-          firebase target:apply hosting nestlocal mn-nestlocal-555464791734 nestlocal --project millionsnest
+          firebase target:apply hosting nestlocal mn-nestlocal-555464791734 --project millionsnest
+          firebase target:apply hosting nestlocal-alias nestlocal --project millionsnest
       - name: Validate public bundle
         run: |
           test -s web/index.html
@@ -78,4 +79,4 @@ jobs:
           grep -q 'NestLocal' web/index.html
           curl --fail --retry 5 --retry-delay 2 "$(gcloud run services describe nestlocal-api --project millionsnest --region us-central1 --format='value(status.url)')/health"
       - name: Deploy NestLocal only
-        run: firebase deploy --only hosting:nestlocal --project millionsnest --non-interactive
+        run: firebase deploy --only hosting:nestlocal,hosting:nestlocal-alias --project millionsnest --non-interactive
