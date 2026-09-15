@@ -66,10 +66,24 @@ jobs:
       - name: Ensure isolated Hosting site
         run: |
           set -euo pipefail
+          if ! firebase hosting:sites:list --project millionsnest | grep -q '^.*nestlocal
+      - name: Validate public bundle
+        run: |
+          test -s web/index.html
+          test -s web/live.js
+          test -s web/live.css
+          test -s web/styles.css
+          grep -q 'NestLocal' web/index.html
+          curl --fail --retry 5 --retry-delay 2 "$(gcloud run services describe nestlocal-api --project millionsnest --region us-central1 --format='value(status.url)')/health"
+      - name: Deploy NestLocal only
+        run: firebase deploy --only hosting:nestlocal --project millionsnest --non-interactive
+; then
+            firebase hosting:sites:create nestlocal --project millionsnest
+          fi
           if ! firebase hosting:sites:list --project millionsnest | grep -q 'mn-nestlocal-555464791734'; then
             firebase hosting:sites:create mn-nestlocal-555464791734 --project millionsnest
           fi
-          firebase target:apply hosting nestlocal mn-nestlocal-555464791734 --project millionsnest
+          firebase target:apply hosting nestlocal mn-nestlocal-555464791734 nestlocal --project millionsnest
       - name: Validate public bundle
         run: |
           test -s web/index.html
