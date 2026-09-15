@@ -1,37 +1,132 @@
 {
-  "hosting": {
-    "target": "nestlocal",
-    "public": "web",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "headers": [
-      {
-        "source": "**",
-        "headers": [
-          {"key": "X-Content-Type-Options", "value": "nosniff"},
-          {"key": "X-Frame-Options", "value": "DENY"},
-          {"key": "Referrer-Policy", "value": "strict-origin-when-cross-origin"},
-          {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()"}
-        ]
-      },
-      {
-        "source": "/index.html",
-        "headers": [{"key": "Cache-Control", "value": "no-cache,no-store,must-revalidate"}]
-      },
-      {
-        "source": "/assets/**",
-        "headers": [{"key": "Cache-Control", "value": "public,max-age=31536000,immutable"}]
-      }
-    ],
-    "rewrites": [
-      {
-        "source": "/api/**",
-        "run": {
-          "serviceId": "nestlocal-api",
-          "region": "us-central1",
-          "pinTag": true
+  "hosting": [
+    {
+      "target": "nestlocal",
+      "public": "web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=()"
+            }
+          ]
+        },
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache,no-store,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=31536000,immutable"
+            }
+          ]
         }
-      },
-      {"source": "**", "destination": "/index.html"}
-    ]
-  }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "nestlocal-api",
+            "region": "us-central1",
+            "pinTag": true
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    },
+    {
+      "target": "nestlocal-alias",
+      "public": "web",
+      "ignore": [
+        "firebase.json",
+        "**/.*",
+        "**/node_modules/**"
+      ],
+      "headers": [
+        {
+          "source": "**",
+          "headers": [
+            {
+              "key": "X-Content-Type-Options",
+              "value": "nosniff"
+            },
+            {
+              "key": "X-Frame-Options",
+              "value": "DENY"
+            },
+            {
+              "key": "Referrer-Policy",
+              "value": "strict-origin-when-cross-origin"
+            },
+            {
+              "key": "Permissions-Policy",
+              "value": "camera=(), microphone=(), geolocation=()"
+            }
+          ]
+        },
+        {
+          "source": "/index.html",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache,no-store,must-revalidate"
+            }
+          ]
+        },
+        {
+          "source": "/assets/**",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "public,max-age=31536000,immutable"
+            }
+          ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "nestlocal-api",
+            "region": "us-central1",
+            "pinTag": true
+          }
+        },
+        {
+          "source": "**",
+          "destination": "/index.html"
+        }
+      ]
+    }
+  ]
 }
