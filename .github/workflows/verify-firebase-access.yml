@@ -3,7 +3,7 @@ name: Verify MillionsNest deploy access
 on:
   workflow_dispatch:
   push:
-    branches: [production]
+    branches: [main]
     paths:
       - ".github/workflows/verify-firebase-access.yml"
 
