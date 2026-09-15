@@ -4,18 +4,27 @@ Canal próprio de contratação para pequenos prestadores de climatização.
 
 ## Estado
 
-Repositório iniciado em 14 de setembro de 2026. Produto em implementação; não há implantação de produção confirmada.
+Piloto comercial com frontend PWA, API Cloud Run, Firebase Authentication,
+Firestore multi-tenant, catálogo publicável, cotação determinística, pedidos,
+fotos e acompanhamento. A produção é implantada automaticamente pela branch
+`production` no Hosting isolado do NestLocal.
 
 O escopo inicial é higienização residencial, visita técnica e encaminhamento de exceções. Preços e condições vêm de regras aprovadas pelo prestador. A IA poderá auxiliar extração e resumo, mas não definir preços ou confirmar disponibilidade.
 
-## Entregas iniciais
+## Entregas do piloto
 
 - Núcleo determinístico de elegibilidade e cotação.
 - Testes de preço, campos inválidos e encaminhamento para avaliação.
-- Contratos e sequência de implementação documentados.
+- Login compartilhado com o MillionsNest e autorização por organização.
+- Página pública por prestador, pedido com consentimento e até cinco fotos.
+- Caixa de entrada, status, indicadores e página de acompanhamento do cliente.
+- Build e deploy sem chaves persistentes, via GitHub OIDC.
 
 ## Operação
 
-Autenticação, organizações e assinatura devem integrar os contratos verificados do MillionsNest. Não publicar preços de demonstração nem usar este núcleo isoladamente como API pública.
+Os valores criados no primeiro acesso são exemplos em rascunho. Revise catálogo,
+preços, cidades e WhatsApp antes de publicar. A cobrança dos primeiros pilotos é
+manual e a ativação é controlada; a assinatura self-service continuará pertencendo
+ao Hub MillionsNest quando a validação comercial justificar a integração.
 
-O deploy no Firebase depende de projeto identificado, credenciais disponíveis e validação dos fluxos completos.
+Veja [docs/COMMERCIAL_PILOT.md](docs/COMMERCIAL_PILOT.md).

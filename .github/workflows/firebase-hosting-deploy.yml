@@ -5,6 +5,10 @@ on:
     branches: [production]
     paths:
       - "web/**"
+      - "server.mjs"
+      - "src/domain/**"
+      - "package*.json"
+      - "Dockerfile"
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/firebase-hosting-deploy.yml"
@@ -28,8 +32,37 @@ jobs:
         with:
           workload_identity_provider: projects/555464791734/locations/global/workloadIdentityPools/mn-prod-github/providers/github
           service_account: mn-web-deployer@millionsnest.iam.gserviceaccount.com
+      - uses: google-github-actions/setup-gcloud@v3
       - name: Install Firebase CLI
         run: npm install -g firebase-tools@15.26.0
+      - name: Configure Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+      - name: Build and push API
+        env:
+          IMAGE: us-central1-docker.pkg.dev/millionsnest/millionsnest-web/nestlocal-api:${{ github.sha }}
+        run: |
+          set -euo pipefail
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+      - name: Deploy API
+        env:
+          IMAGE: us-central1-docker.pkg.dev/millionsnest/millionsnest-web/nestlocal-api:${{ github.sha }}
+        run: |
+          gcloud run deploy nestlocal-api \
+            --project millionsnest \
+            --region us-central1 \
+            --image "$IMAGE" \
+            --service-account mn-hub-runtime@millionsnest.iam.gserviceaccount.com \
+            --port 8080 \
+            --cpu 1 \
+            --memory 256Mi \
+            --min-instances 0 \
+            --max-instances 2 \
+            --concurrency 40 \
+            --timeout 30 \
+            --set-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production \
+            --allow-unauthenticated \
+            --quiet
       - name: Ensure isolated Hosting site
         run: |
           set -euo pipefail
@@ -40,8 +73,10 @@ jobs:
       - name: Validate public bundle
         run: |
           test -s web/index.html
-          test -s web/app.js
+          test -s web/live.js
+          test -s web/live.css
           test -s web/styles.css
           grep -q 'NestLocal' web/index.html
+          curl --fail --retry 5 --retry-delay 2 "$(gcloud run services describe nestlocal-api --project millionsnest --region us-central1 --format='value(status.url)')/health"
       - name: Deploy NestLocal only
         run: firebase deploy --only hosting:nestlocal --project millionsnest --non-interactive
