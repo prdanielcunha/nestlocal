@@ -54,8 +54,7 @@
           "source": "/api/**",
           "run": {
             "serviceId": "nestlocal-api",
-            "region": "us-central1",
-            "pinTag": true
+            "region": "us-central1"
           }
         },
         {
@@ -118,8 +117,7 @@
           "source": "/api/**",
           "run": {
             "serviceId": "nestlocal-api",
-            "region": "us-central1",
-            "pinTag": true
+            "region": "us-central1"
           }
         },
         {
