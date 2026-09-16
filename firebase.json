@@ -47,15 +47,6 @@
               "value": "public,max-age=31536000,immutable"
             }
           ]
-        }
-      ],
-      "rewrites": [
-        {
-          "source": "/api/**",
-          "run": {
-            "serviceId": "nestlocal-api",
-            "region": "us-central1"
-          }
         },
         {
           "source": "/live.js",
@@ -65,6 +56,15 @@
               "value": "no-cache,no-store,must-revalidate"
             }
           ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "nestlocal-api",
+            "region": "us-central1"
+          }
         },
         {
           "source": "**",
@@ -119,15 +119,6 @@
               "value": "public,max-age=31536000,immutable"
             }
           ]
-        }
-      ],
-      "rewrites": [
-        {
-          "source": "/api/**",
-          "run": {
-            "serviceId": "nestlocal-api",
-            "region": "us-central1"
-          }
         },
         {
           "source": "/live.js",
@@ -137,6 +128,15 @@
               "value": "no-cache,no-store,must-revalidate"
             }
           ]
+        }
+      ],
+      "rewrites": [
+        {
+          "source": "/api/**",
+          "run": {
+            "serviceId": "nestlocal-api",
+            "region": "us-central1"
+          }
         },
         {
           "source": "**",
