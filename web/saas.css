@@ -1,0 +1,39 @@
+.subscription-card {
+  width: min(100%, 980px);
+}
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 26px 0;
+}
+
+.plan-option {
+  display: grid;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.plan-option.featured {
+  border-color: rgba(143, 240, 189, 0.55);
+  background: rgba(143, 240, 189, 0.06);
+}
+
+.plan-option strong { font-size: 18px; }
+.plan-option span { color: #8ff0bd; font-size: 25px; font-weight: 800; }
+.plan-option small { min-height: 38px; color: #9db4ad; line-height: 1.5; }
+.sidebar-foot a { display: inline-block; margin-top: 8px; color: #8ff0bd; font-size: 12px; text-decoration: none; }
+.wide-card { grid-column: 1 / -1; }
+.team-list { display: grid; gap: 10px; }
+.team-member { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); }
+.team-member div { display: grid; gap: 3px; min-width: 0; }
+.team-member span:not(.tag) { color: #9db4ad; font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+
+@media (max-width: 760px) {
+  .plan-grid { grid-template-columns: 1fr; }
+  .team-member { align-items: flex-start; }
+}

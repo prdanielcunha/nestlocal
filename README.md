@@ -6,8 +6,9 @@ Canal próprio de contratação para pequenos prestadores de climatização.
 
 Piloto comercial com frontend PWA, API Cloud Run, Firebase Authentication,
 Firestore multi-tenant, catálogo publicável, cotação determinística, pedidos,
-fotos e acompanhamento. A produção é implantada automaticamente pela branch
-`production` no Hosting isolado do NestLocal.
+fotos e acompanhamento. A assinatura SaaS, o trial e a gestão de cobrança ficam
+centralizados no Hub MillionsNest. A produção é implantada automaticamente pela
+branch `production` no Hosting isolado do NestLocal.
 
 O escopo inicial é higienização residencial, visita técnica e encaminhamento de exceções. Preços e condições vêm de regras aprovadas pelo prestador. A IA poderá auxiliar extração e resumo, mas não definir preços ou confirmar disponibilidade.
 
@@ -18,13 +19,16 @@ O escopo inicial é higienização residencial, visita técnica e encaminhamento
 - Login compartilhado com o MillionsNest e autorização por organização.
 - Página pública por prestador, pedido com consentimento e até cinco fotos.
 - Caixa de entrada, status, indicadores e página de acompanhamento do cliente.
+- Planos Essencial, Crescimento e Pro, trial único de sete dias, limites mensais
+  por organização e bloqueio seguro por inadimplência/cancelamento.
+- Checkout Stripe, portal de cobrança e handoff de sessão operados pelo Hub.
 - Build e deploy sem chaves persistentes, via GitHub OIDC.
 
 ## Operação
 
 Os valores criados no primeiro acesso são exemplos em rascunho. Revise catálogo,
-preços, cidades e WhatsApp antes de publicar. A cobrança dos primeiros pilotos é
-manual e a ativação é controlada; a assinatura self-service continuará pertencendo
-ao Hub MillionsNest quando a validação comercial justificar a integração.
+preços, cidades e WhatsApp antes de publicar. A mensalidade do software é comprada
+e administrada pelo Hub MillionsNest. O pagamento do serviço entre consumidor e
+prestador continua externo (PIX, cartão ou outro canal definido pelo prestador).
 
 Veja [docs/COMMERCIAL_PILOT.md](docs/COMMERCIAL_PILOT.md).
