@@ -1,0 +1,43 @@
+.premium-login::before {
+  content: "";
+  position: fixed;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: #37d9a91f;
+  filter: blur(90px);
+  top: -180px;
+  right: -120px;
+  pointer-events: none;
+}
+.premium-login .login-card {
+  border-color: #315f54;
+  box-shadow: 0 35px 100px #0008, 0 0 0 1px #6ef2c50b;
+}
+.login-proof {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 22px 0;
+}
+.login-proof span {
+  padding: 10px 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #0a1815;
+  color: #b7ccc6;
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+}
+.login-trust {
+  display: block;
+  color: #718b84;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 15px 0 0;
+  text-align: center;
+}
+@media (max-width: 480px) {
+  .login-proof { grid-template-columns: 1fr; }
+}
