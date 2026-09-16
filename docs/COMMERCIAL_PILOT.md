@@ -1,20 +1,24 @@
 # Operação do piloto comercial
 
-## Oferta inicial
+## Oferta SaaS inicial
 
-O NestLocal é vendido inicialmente como implantação assistida para empresas de
-climatização: o prestador recebe uma página própria capaz de qualificar o pedido,
-calcular somente preços aprovados, coletar fotos e organizar o atendimento.
+O NestLocal é vendido para empresas de climatização: o prestador recebe uma página
+própria capaz de qualificar o pedido, calcular somente preços aprovados, coletar
+fotos e organizar o atendimento.
 
-Sugestão para validação, não preço definitivo: implantação de R$ 297 e mensalidade
-de R$ 99 para os primeiros dez clientes, com cancelamento simples. Não prometa
-agenda automática, pagamento dentro do sistema ou WhatsApp oficial nesta fase.
+- Essencial: R$ 79/mês, 1 usuário e 100 solicitações/mês.
+- Crescimento: R$ 129/mês, até 3 usuários, 500 solicitações/mês e automações operacionais.
+- Pro: R$ 199/mês, até 10 usuários, 5.000 solicitações/mês em política de uso justo.
+- Trial: sete dias por organização, uma única vez.
+
+O pagamento da mensalidade usa Stripe Checkout e o Customer Portal do Hub. Não
+prometa pagamento do serviço dentro do NestLocal, reserva instantânea ou envio
+automático por WhatsApp nesta fase.
 
 ## Ativação de cada cliente
 
 1. Criar ou confirmar a organização no MillionsNest e seu proprietário.
-2. Ativar o NestLocal para a organização ou fazer a configuração inicial com uma
-   conta global autorizada.
+2. Escolher o plano do NestLocal no Hub e concluir o Checkout ou iniciar o trial.
 3. Revisar nome, URL, cidades, WhatsApp, escopo e preço de cada serviço.
 4. Publicar o catálogo somente após aprovação escrita do prestador.
 5. Abrir a página pública em janela anônima e enviar um pedido real de teste com
@@ -32,9 +36,9 @@ agenda automática, pagamento dentro do sistema ou WhatsApp oficial nesta fase.
 - Excluir fotos e dados quando deixarem de ser necessários conforme a política
   operacional e orientação jurídica aplicável.
 
-## Critério para avançar ao SaaS self-service
+## Critério para ampliar além do SaaS inicial
 
-Avançar depois de 20 prestadores ativos, ao menos 100 pedidos reais, conclusão do
-formulário acima de 35% e pelo menos 60% dos pilotos dispostos a pagar após 30 dias.
-O próximo ciclo inclui cobrança pelo Hub, notificações oficiais, agenda com trava
-de concorrência, pagamentos/estornos, auditoria, retenção automática e exportação.
+Ampliar depois de 20 prestadores ativos, ao menos 100 pedidos reais, conclusão do
+formulário acima de 35% e pelo menos 60% dos pilotos ativos após 30 dias. O próximo
+ciclo inclui notificações oficiais, agenda com trava de concorrência, pagamentos e
+estornos de serviços, retenção automática e exportação.

@@ -14,6 +14,6 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check src/domain/quote.mjs && node --check server.mjs && node --test"
+    "check": "node --check src/domain/quote.mjs && node --check server.mjs && node --check web/live.js && node --test"
   }
 }
