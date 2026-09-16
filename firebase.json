@@ -58,6 +58,15 @@
           }
         },
         {
+          "source": "/live.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache,no-store,must-revalidate"
+            }
+          ]
+        },
+        {
           "source": "**",
           "destination": "/index.html"
         }
@@ -119,6 +128,15 @@
             "serviceId": "nestlocal-api",
             "region": "us-central1"
           }
+        },
+        {
+          "source": "/live.js",
+          "headers": [
+            {
+              "key": "Cache-Control",
+              "value": "no-cache,no-store,must-revalidate"
+            }
+          ]
         },
         {
           "source": "**",
