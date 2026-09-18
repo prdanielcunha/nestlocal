@@ -106,3 +106,33 @@ jobs:
           curl --fail --retry 5 --retry-delay 2 "$(gcloud run services describe nestlocal-api --project millionsnest --region us-central1 --format='value(status.url)')/health"
       - name: Deploy NestLocal only
         run: firebase deploy --only hosting:nestlocal,hosting:nestlocal-alias --project millionsnest --non-interactive
+      - name: Smoke production endpoints
+        run: |
+          set -euo pipefail
+          fetch() {
+            curl --fail --silent --show-error --location \
+              --retry 12 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 10 --max-time 30 "$1"
+          }
+
+          fetch https://nestlocal.millionsnest.com/api/health > /tmp/nestlocal-health.json
+          jq -e '.ok == true and .service == "nestlocal-api"' /tmp/nestlocal-health.json >/dev/null
+
+          fetch https://nestlocal.millionsnest.com/ > /tmp/nestlocal-home.html
+          grep -q 'id="app"' /tmp/nestlocal-home.html
+          grep -q '/live.js' /tmp/nestlocal-home.html
+
+          fetch https://nestlocal.millionsnest.com/raio-x > /tmp/nestlocal-xray.html
+          grep -q 'id="app"' /tmp/nestlocal-xray.html
+
+          fetch https://nestlocal.millionsnest.com/live.js > /tmp/nestlocal-live.js
+          grep -q 'revenueXrayView' /tmp/nestlocal-live.js
+          grep -q 'growthFunnelView' /tmp/nestlocal-live.js
+          grep -q 'parseGrowthBatch' /tmp/nestlocal-live.js
+
+          fetch https://nestlocal.millionsnest.com/growth.css > /tmp/nestlocal-growth.css
+          grep -q '.xray-shell' /tmp/nestlocal-growth.css
+          grep -q '.growth-funnel' /tmp/nestlocal-growth.css
+
+          fetch https://nestlocal.web.app/live.js > /tmp/nestlocal-alias-live.js
+          grep -q 'revenueXrayView' /tmp/nestlocal-alias-live.js

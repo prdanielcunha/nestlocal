@@ -1,0 +1,26 @@
+/* NestLocal service lifecycle */
+.lifecycle-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;padding:16px;border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02)}
+.lifecycle-form .section-title,.lifecycle-form .wide{grid-column:1/-1}
+.lifecycle-form h3{margin:0;font-size:.92rem}
+.lifecycle-form label{display:grid;gap:7px;color:var(--muted,#92a69e);font-size:.78rem;font-weight:650}
+.lifecycle-form input,.lifecycle-form select,.lifecycle-form textarea{width:100%;border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:11px 12px;background:#0d1d19;color:#f2faf7;outline:none}
+.lifecycle-form input:focus,.lifecycle-form select:focus,.lifecycle-form textarea:focus{border-color:rgba(98,235,185,.55);box-shadow:0 0 0 3px rgba(98,235,185,.07)}
+.reactivation-card{margin-top:16px}
+.reactivation-list{display:grid;gap:9px}
+.reactivation-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.02)}
+.reactivation-row>div{display:grid;gap:4px}
+.reactivation-row>div:last-child{justify-items:end}
+.reactivation-row span,.reactivation-row small{color:var(--muted,#92a69e);font-size:.76rem}
+@media(max-width:680px){
+  .lifecycle-form{grid-template-columns:1fr}
+  .lifecycle-form .section-title,.lifecycle-form .wide{grid-column:auto}
+  .reactivation-row{align-items:flex-start;flex-direction:column}
+  .reactivation-row>div:last-child{justify-items:start}
+}
+
+
+.quote-decision{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;padding:16px;border:1px solid rgba(139,230,192,.16);border-radius:16px;background:rgba(91,206,160,.05)}
+.quote-decision p{grid-column:1/-1;margin:0 0 2px;color:var(--muted,#92a69e);font-size:.86rem;line-height:1.5}
+.decision-success{display:grid;gap:5px;margin:18px 0}
+.decision-success span{color:var(--muted,#92a69e);font-size:.82rem}
+@media(max-width:560px){.quote-decision{grid-template-columns:1fr}.quote-decision p{grid-column:auto}}
