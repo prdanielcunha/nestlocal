@@ -118,6 +118,17 @@ function growthAcquisition(body={},fallback={}){
     campaign:clean(body.campaign||fallback.campaign).slice(0,80)
   };
 }
+const growthKey=value=>clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+const growthFingerprint=({businessName,city})=>hash(`${growthKey(businessName)}|${growthKey(city)}`).slice(0,32);
+async function existingGrowthFingerprints(fingerprints=[]){
+  const unique=[...new Set(fingerprints.filter(Boolean))],found=new Set();
+  for(let i=0;i<unique.length;i+=30){
+    const part=unique.slice(i,i+30);if(!part.length)continue;
+    const snap=await db.collection('nestlocal_growth_leads').where('fingerprint','in',part).get();
+    snap.docs.forEach(doc=>{const fp=clean(doc.data()?.fingerprint);if(fp)found.add(fp)});
+  }
+  return found;
+}
 function growthLeadStage(lead={}){
   const stored=Number(lead.highestStage);
   if(Number.isFinite(stored)&&stored>=0)return stored;
@@ -203,7 +214,7 @@ app.post('/api/public/growth/diagnostic',async(req,res)=>{
     if(!projection||businessName.length<2||contactName.length<2||contactPhone.length<10||city.length<2||segment.length<2||b.acceptedTerms!==true)return sendError(res,400,'INVALID_DIAGNOSTIC');
     const ref=db.collection('nestlocal_growth_leads').doc();
     await ref.create({
-      source:'revenue_xray',status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:'public_xray'}],acquisition:growthAcquisition({channel:'xray',angle:'revenue_visibility',campaign:'revenue_xray'}),businessName,contactName,phone:contactPhone,city,segment,
+      source:'revenue_xray',fingerprint:growthFingerprint({businessName,city,phone:contactPhone}),status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:'public_xray'}],acquisition:growthAcquisition({channel:'xray',angle:'revenue_visibility',campaign:'revenue_xray'}),businessName,contactName,phone:contactPhone,city,segment,
       metrics:{monthlyQuotes:projection.monthlyQuotes,averageTicketCents:projection.averageTicketCents,followUpRate:projection.followUpRate,whatsappShare:projection.whatsappShare,teamSize:projection.teamSize,needsScheduling:projection.needsScheduling,repeatable:projection.repeatable,manualOperation:projection.manualOperation},
       fitSignals:projection.fitSignals,painSignals:projection.painSignals,fitScore:projection.fitScore,painScore:projection.painScore,
       opportunity:{unfollowedQuotes:projection.unfollowedQuotes,recoveryAssumption:projection.recoveryAssumption,monthlyOpportunityCents:projection.monthlyOpportunityCents},
@@ -232,9 +243,39 @@ app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
     const rawSignals=b.signals&&typeof b.signals==='object'?b.signals:{};
     const fitSignals={quote:signal(rawSignals.quote),whatsapp:signal(rawSignals.whatsapp),scheduling:signal(rawSignals.scheduling),recurrence:signal(rawSignals.recurrence),demand:signal(rawSignals.demand),smallTeam:signal(rawSignals.smallTeam),ownerInvolved:signal(rawSignals.ownerInvolved),noStrongSystem:signal(rawSignals.noStrongSystem)};
     if(businessName.length<2||city.length<2||segment.length<2)return sendError(res,400,'INVALID_LEAD');
+    const fingerprint=growthFingerprint({businessName,city,phone:contactPhone}),duplicates=await existingGrowthFingerprints([fingerprint]);
+    if(duplicates.has(fingerprint))return sendError(res,409,'LEAD_DUPLICATE');
     const ref=db.collection('nestlocal_growth_leads').doc(),fitScore=growthFitScore(fitSignals);
-    await ref.create({source:'manual_radar',status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),businessName,contactName,phone:contactPhone,city,segment,fitSignals,fitScore,painSignals:{},painScore:0,nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:clean(b.notes).slice(0,1000),createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    await ref.create({source:'manual_radar',fingerprint,status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),businessName,contactName,phone:contactPhone,city,segment,fitSignals,fitScore,painSignals:{},painScore:0,nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:clean(b.notes).slice(0,1000),createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     res.status(201).json({id:ref.id,fitScore});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/admin/nestlocal/growth/leads/batch',async(req,res)=>{
+  try{
+    const input=req.body?.leads;
+    if(!Array.isArray(input)||input.length<1||input.length>50)return sendError(res,400,'INVALID_BATCH');
+    const candidates=[],issues=[],seen=new Set();
+    for(const [index,b] of input.entries()){
+      if(!b||typeof b!=='object'){issues.push({index,reason:'INVALID_LEAD'});continue}
+      const businessName=clean(b.businessName).slice(0,120),contactName=clean(b.contactName).slice(0,100),contactPhone=phone(b.phone),city=clean(b.city).slice(0,100),segment=clean(b.segment).slice(0,100);
+      if(businessName.length<2||city.length<2||segment.length<2){issues.push({index,reason:'INVALID_LEAD'});continue}
+      const rawSignals=b.signals&&typeof b.signals==='object'?b.signals:{};
+      const fitSignals={quote:signal(rawSignals.quote),whatsapp:signal(rawSignals.whatsapp),scheduling:signal(rawSignals.scheduling),recurrence:signal(rawSignals.recurrence),demand:signal(rawSignals.demand),smallTeam:signal(rawSignals.smallTeam),ownerInvolved:signal(rawSignals.ownerInvolved),noStrongSystem:signal(rawSignals.noStrongSystem)};
+      const fingerprint=growthFingerprint({businessName,city,phone:contactPhone});
+      if(seen.has(fingerprint)){issues.push({index,reason:'DUPLICATE_IN_BATCH'});continue}
+      seen.add(fingerprint);
+      candidates.push({index,fingerprint,businessName,contactName,contactPhone,city,segment,fitSignals,fitScore:growthFitScore(fitSignals),acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',notes:clean(b.notes).slice(0,1000)});
+    }
+    const existing=await existingGrowthFingerprints(candidates.map(x=>x.fingerprint)),batch=db.batch(),created=[];
+    for(const lead of candidates){
+      if(existing.has(lead.fingerprint)){issues.push({index:lead.index,reason:'ALREADY_EXISTS'});continue}
+      const ref=db.collection('nestlocal_growth_leads').doc();
+      batch.create(ref,{source:'batch_radar',fingerprint:lead.fingerprint,status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:lead.acquisition,businessName:lead.businessName,contactName:lead.contactName,phone:lead.contactPhone,city:lead.city,segment:lead.segment,fitSignals:lead.fitSignals,fitScore:lead.fitScore,painSignals:{},painScore:0,nextAction:lead.nextAction,nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:lead.notes,createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      created.push({index:lead.index,id:ref.id,fitScore:lead.fitScore});
+    }
+    if(created.length)await batch.commit();
+    res.status(201).json({created,createdCount:created.length,skippedCount:issues.length,issues});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 

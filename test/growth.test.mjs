@@ -81,3 +81,31 @@ test('Radar shows funnel conversion and captures channel plus sales angle', () =
     'leadToCustomer',
   ]) assert.ok(client.includes(token), `missing ${token}`);
 });
+
+
+test('batch prospect ingestion deduplicates and caps payload size', () => {
+  const server = read('../server.mjs');
+  for (const token of [
+    'const growthFingerprint=',
+    'existingGrowthFingerprints',
+    "where('fingerprint','in',part)",
+    "/api/admin/nestlocal/growth/leads/batch",
+    "input.length>50",
+    'DUPLICATE_IN_BATCH',
+    'ALREADY_EXISTS',
+    "source:'batch_radar'",
+  ]) assert.ok(server.includes(token), `missing ${token}`);
+});
+
+test('Radar can paste the existing Google Sheets lead table', () => {
+  const client = read('../web/live.js');
+  for (const token of [
+    'function parseGrowthBatch',
+    "radarTable=first[0]?.includes('empresa')",
+    'growthBatchText',
+    'growthBatchImport',
+    "/api/admin/nestlocal/growth/leads/batch",
+    'inferGrowthChannel',
+    'inferGrowthAngle',
+  ]) assert.ok(client.includes(token), `missing ${token}`);
+});
