@@ -457,18 +457,20 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     if(!assistanceActionTypes.has(actionType)||!assistanceChannels.has(channel))return sendError(res,400,'INVALID_ACTION_EVENT');
     if(actionType==='quote_followup'&&!requestId)return sendError(res,400,'REQUEST_REQUIRED');
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
-    const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`);
-    const target=await targetRef.get();if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
-    const data=target.data(),now=Date.now();
+    const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
+    const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
+    const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now();
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
       if(data.status!=='quoted'||!updatedAt||now-updatedAt<48*60*60*1000)return sendError(res,409,'FOLLOWUP_NOT_DUE');
+      if(channel==='whatsapp'&&data.messagingConsent?.serviceUpdates?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
     if(actionType==='customer_reactivation'){
-      const nextDate=clean(data.nextServiceDate),today=new Date().toISOString().slice(0,10);
+      const nextDate=clean(data.nextServiceDate);
       if(!nextDate||nextDate>today)return sendError(res,409,'REACTIVATION_NOT_DUE');
+      if(channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
-    const day=new Date().toISOString().slice(0,10),eventId=hash(`${actionType}|${requestId||customerId}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
+    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
     if(existing.exists)return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',idempotent:true});
     const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
     const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
