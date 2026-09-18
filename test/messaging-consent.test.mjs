@@ -32,7 +32,7 @@ test('message outbox prepare endpoint is authenticated and idempotent by day', (
   for (const token of [
     "/nestlocal/messages/prepare',authenticate,authorize",
     "nestlocal_message_outbox",
-    "new Date().toISOString().slice(0,10)",
+    "day=localIsoDate(timeZone)",
     'idempotent:true',
     "channel:'whatsapp'",
   ]) assert.ok(server.includes(token), `missing ${token}`);
