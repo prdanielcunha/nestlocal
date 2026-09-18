@@ -97,3 +97,15 @@
 .consent-status.blocked{color:#d9b27c}
 .assistance-actions .consent-status{flex-basis:100%}
 @media(max-width:620px){.assistance-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.assistance-actions .button{width:100%}.assistance-actions .consent-status{grid-column:1/-1}}
+
+
+/* Reminder readiness */
+.reminder-readiness-card{display:grid;gap:12px}
+.readiness-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}
+.readiness-metrics>div{display:grid;gap:4px;padding:13px;border:1px solid rgba(255,255,255,.07);border-radius:13px;background:rgba(255,255,255,.02)}
+.readiness-metrics>div.highlight{border-color:rgba(139,230,192,.2);background:rgba(91,206,160,.05)}
+.readiness-metrics strong{font-size:1.25rem}
+.readiness-metrics span,.readiness-reasons span{color:var(--muted,#92a69e);font-size:.72rem}
+.readiness-reasons{display:grid;gap:7px}
+.readiness-reasons>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.02)}
+@media(max-width:620px){.readiness-metrics{grid-template-columns:1fr 1fr}.readiness-metrics .highlight{grid-column:1/-1}}
