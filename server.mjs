@@ -421,7 +421,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
         tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }
-      tx.set(ref,update,{merge:true});response={ok:true,status:nextStatus};
+      tx.update(ref,update);response={ok:true,status:nextStatus};
     });
     res.json(response);
   }catch(e){
