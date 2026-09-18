@@ -17,11 +17,16 @@ export function quote({ catalog, request, now }) {
     if (!s || !str(s.id) || ids.has(s.id) ||
         !['fixed', 'review'].includes(s.mode)) fail('Invalid service');
     ids.add(s.id);
-    if (s.mode === 'fixed' && (!positive(s.unitPriceCents) ||
-        !positive(s.durationMinutes) || !positive(s.maxQuantity) ||
-        s.maxQuantity > 10 || !Array.isArray(s.equipmentTypes) ||
-        !s.equipmentTypes.length || !s.equipmentTypes.every(str) ||
-        !str(s.inclusions) || !str(s.exclusions))) fail('Invalid fixed service');
+    if (s.mode === 'fixed') {
+      const requiresEquipmentType = s.requiresEquipmentType !== false;
+      if (!positive(s.unitPriceCents) || !positive(s.durationMinutes) ||
+          !positive(s.maxQuantity) || s.maxQuantity > 10 ||
+          (requiresEquipmentType && (!Array.isArray(s.equipmentTypes) ||
+           !s.equipmentTypes.length || !s.equipmentTypes.every(str))) ||
+          (!requiresEquipmentType && s.equipmentTypes != null &&
+           (!Array.isArray(s.equipmentTypes) || !s.equipmentTypes.every(str))) ||
+          !str(s.inclusions) || !str(s.exclusions)) fail('Invalid fixed service');
+    }
   }
   if (!request || !positive(request.quantity) || request.quantity > 10 ||
       !str(request.serviceId) || !str(request.coverageCode)) fail('Invalid request');
@@ -34,8 +39,8 @@ export function quote({ catalog, request, now }) {
   if (!catalog.coverageCodes.includes(request.coverageCode)) reasons.push('OUTSIDE_COVERAGE');
   if (service.mode === 'review') reasons.push('SERVICE_REQUIRES_REVIEW');
   if (service.mode === 'fixed') {
-    if (!service.equipmentTypes.includes(request.equipmentType)) reasons.push('EQUIPMENT_REQUIRES_REVIEW');
-    if (request.safeAccess !== true) reasons.push('ACCESS_REQUIRES_REVIEW');
+    if (service.requiresEquipmentType !== false && !service.equipmentTypes.includes(request.equipmentType)) reasons.push('EQUIPMENT_REQUIRES_REVIEW');
+    if (service.requiresSafeAccess !== false && request.safeAccess !== true) reasons.push('ACCESS_REQUIRES_REVIEW');
     if (request.quantity > service.maxQuantity) reasons.push('QUANTITY_REQUIRES_REVIEW');
   }
   let totalCents = null;

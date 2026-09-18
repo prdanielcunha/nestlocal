@@ -68,3 +68,16 @@ radial-gradient(circle at 88% 18%,rgba(84,126,255,.10),transparent 30%),
   .pain-form h4,.pain-form button{grid-column:auto}
   .growth-signals{grid-template-columns:1fr}
 }
+
+
+/* Segment playbook onboarding */
+.template-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:18px}
+.template-option{position:relative;display:block;cursor:pointer}
+.template-option>input{position:absolute;opacity:0;pointer-events:none}
+.template-option>span{display:grid;gap:6px;min-height:112px;padding:18px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(255,255,255,.025);transition:border-color .18s ease,background .18s ease,transform .18s ease}
+.template-option>span strong{font-size:.98rem;color:#eef7f3}
+.template-option>span small{color:#91a69e;line-height:1.45}
+.template-option:hover>span{border-color:rgba(139,230,192,.24);transform:translateY(-1px)}
+.template-option>input:checked+span{border-color:rgba(139,230,192,.58);background:rgba(91,206,160,.08);box-shadow:0 0 0 3px rgba(91,206,160,.06)}
+.template-grid .wide{grid-column:1/-1}
+@media(max-width:680px){.template-grid{grid-template-columns:1fr}.template-grid .wide{grid-column:auto}}
