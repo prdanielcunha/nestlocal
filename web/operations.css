@@ -90,3 +90,10 @@
 .return-rule-input span{color:var(--muted,#92a69e);font-size:.72rem;white-space:nowrap}
 .return-rule-field>small{color:var(--muted,#92a69e);font-size:.67rem;line-height:1.35;font-weight:500}
 @media(max-width:620px){.service-editor-head{align-items:flex-start}.return-rule-field{grid-column:1/-1}.return-rule-input{width:100%}.return-rule-input input{flex:1}}
+
+
+/* Contact channel guardrails */
+.consent-status{display:inline-flex;align-items:center;width:max-content;max-width:100%;font-size:.68rem;line-height:1.35}
+.consent-status.blocked{color:#d9b27c}
+.assistance-actions .consent-status{flex-basis:100%}
+@media(max-width:620px){.assistance-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}.assistance-actions .button{width:100%}.assistance-actions .consent-status{grid-column:1/-1}}
