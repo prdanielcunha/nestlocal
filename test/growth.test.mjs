@@ -51,3 +51,33 @@ test('Growth Engine styling is loaded', () => {
   assert.ok(css.includes('.xray-shell'));
   assert.ok(css.includes('.growth-grid'));
 });
+
+
+test('growth funnel preserves stage history and acquisition attribution', () => {
+  const server = read('../server.mjs');
+  for (const token of [
+    'const growthStageRank=',
+    'function growthFunnelMetrics',
+    'highestStage:0',
+    'stageHistory:[',
+    'FieldValue.arrayUnion',
+    'growthAcquisition',
+    'byChannel:',
+    'byAngle:',
+    'leadToCustomer',
+  ]) assert.ok(server.includes(token), `missing ${token}`);
+});
+
+test('Radar shows funnel conversion and captures channel plus sales angle', () => {
+  const client = read('../web/live.js');
+  for (const token of [
+    'function growthFunnelView',
+    "name=\"channel\"",
+    "name=\"angle\"",
+    "name=\"campaign\"",
+    "channel:f.get('channel')",
+    "angle:f.get('angle')",
+    'performanceByAngle',
+    'leadToCustomer',
+  ]) assert.ok(client.includes(token), `missing ${token}`);
+});
