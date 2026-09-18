@@ -86,3 +86,29 @@ test('immutable snapshot survives later catalog changes without mutating input',
  assert.throws(() => { result.totalCents = 1; }, TypeError);
  assert.throws(() => result.reasons.push('injected'), TypeError);
 });
+
+
+test('fixed service can opt out of equipment and safe-access qualifiers', () => {
+ const input = fixture();
+ input.catalog.services = [{
+  id: 'generic-fixed',
+  mode: 'fixed',
+  unitPriceCents: 9000,
+  durationMinutes: 45,
+  maxQuantity: 3,
+  requiresEquipmentType: false,
+  requiresSafeAccess: false,
+  inclusions: 'Fixture service',
+  exclusions: 'Fixture extras'
+ }];
+ input.request = {
+  serviceId: 'generic-fixed',
+  quantity: 2,
+  coverageCode: 'test-city'
+ };
+ const result = quote(input);
+ assert.equal(result.outcome, 'priced');
+ assert.equal(result.totalCents, 18000);
+ assert.equal(result.durationMinutes, 90);
+ assert.deepEqual(result.reasons, []);
+});
