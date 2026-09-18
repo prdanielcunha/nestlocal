@@ -99,6 +99,7 @@ const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled'
 const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const messageCategories=new Set(['service_update','maintenance_reminder']);
 const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
+const scheduleSlotStatuses=new Set(['scheduled','in_progress']);
 const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
 const growthChannels=new Set(['xray','instagram','phone','email','referral','partner','organic','other']);
 const growthAngles=new Set(['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other']);
@@ -122,6 +123,7 @@ function growthAcquisition(body={},fallback={}){
     campaign:clean(body.campaign||fallback.campaign).slice(0,80)
   };
 }
+const scheduleSlotId=({date,window,assignedTo})=>hash(`${clean(date)}|${clean(window)}|${clean(assignedTo)}`).slice(0,32);
 const growthKey=value=>clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const growthFingerprint=({businessName,city})=>hash(`${growthKey(businessName)}|${growthKey(city)}`).slice(0,32);
 async function existingGrowthFingerprints(fingerprints=[]){
@@ -484,6 +486,33 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
       const nextStatus=clean(b.status||current.status);
+      const nextSchedule={
+        date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
+        window:b.scheduledWindow!==undefined?clean(b.scheduledWindow):clean(current.schedule?.window),
+        assignedTo:b.assignedTo!==undefined?safeId(b.assignedTo):safeId(current.schedule?.assignedTo)
+      };
+      const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus);
+      const currentSlotId=clean(current.schedule?.slotId);
+      let nextSlotId='';
+      if(shouldHoldSlot){
+        if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
+        const memberRef=db.doc(`organizations/${req.access.orgId}/members/${nextSchedule.assignedTo}`),member=await tx.get(memberRef);
+        if(!member.exists||inactive(member.data())||!(clean(member.data()?.role||member.data()?.organizationRole).toLowerCase()==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true))throw new TypeError('INVALID_ASSIGNEE');
+        nextSlotId=scheduleSlotId(nextSchedule);
+        const slotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${nextSlotId}`),slot=await tx.get(slotRef);
+        if(slot.exists&&slot.data()?.requestId!==requestId)throw new TypeError('SCHEDULE_CONFLICT');
+        tx.set(slotRef,{requestId,date:nextSchedule.date,window:nextSchedule.window,assignedTo:nextSchedule.assignedTo,status:'reserved',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        update['schedule.date']=nextSchedule.date;
+        update['schedule.window']=nextSchedule.window;
+        update['schedule.assignedTo']=nextSchedule.assignedTo;
+        update['schedule.slotId']=nextSlotId;
+        if(nextStatus==='scheduled'&&!current.schedule?.confirmedAt)update['schedule.confirmedAt']=admin.firestore.FieldValue.serverTimestamp();
+      }
+      if(currentSlotId&&currentSlotId!==nextSlotId){
+        const oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`),oldSlot=await tx.get(oldSlotRef);
+        if(oldSlot.exists&&oldSlot.data()?.requestId===requestId)tx.delete(oldSlotRef);
+        if(!shouldHoldSlot)update['schedule.slotId']=admin.firestore.FieldValue.delete();
+      }
       const completedNow=nextStatus==='completed'&&!current.completionRecordedAt;
       if(completedNow){
         const finalAmount=Number.isSafeInteger(Number(b.finalAmountCents))?Number(b.finalAmountCents):Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0);
