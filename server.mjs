@@ -99,6 +99,7 @@ const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled'
 const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const messageCategories=new Set(['service_update','maintenance_reminder']);
 const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
+const scheduleSlotStatuses=new Set(['scheduled','in_progress']);
 const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
 const growthChannels=new Set(['xray','instagram','phone','email','referral','partner','organic','other']);
 const growthAngles=new Set(['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other']);
@@ -122,6 +123,7 @@ function growthAcquisition(body={},fallback={}){
     campaign:clean(body.campaign||fallback.campaign).slice(0,80)
   };
 }
+const scheduleSlotId=({date,window,assignedTo})=>hash(`${clean(date)}|${clean(window)}|${clean(assignedTo)}`).slice(0,32);
 const growthKey=value=>clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 const growthFingerprint=({businessName,city})=>hash(`${growthKey(businessName)}|${growthKey(city)}`).slice(0,32);
 async function existingGrowthFingerprints(fingerprints=[]){
@@ -484,16 +486,51 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
       const nextStatus=clean(b.status||current.status);
-      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt;
+      const nextSchedule={
+        date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
+        window:b.scheduledWindow!==undefined?clean(b.scheduledWindow):clean(current.schedule?.window),
+        assignedTo:b.assignedTo!==undefined?safeId(b.assignedTo):safeId(current.schedule?.assignedTo)
+      };
+      const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus),currentSlotId=clean(current.schedule?.slotId);
+      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId);
+      let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null;
+      if(shouldHoldSlot){
+        if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
+        memberRef=db.doc(`organizations/${req.access.orgId}/members/${nextSchedule.assignedTo}`);
+        nextSlotId=scheduleSlotId(nextSchedule);
+        slotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${nextSlotId}`);
+      }
+      if(currentSlotId&&currentSlotId!==nextSlotId)oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`);
+      if(completedNow&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
+
+      const [member,slot,oldSlot,customer]=await Promise.all([
+        memberRef?tx.get(memberRef):Promise.resolve(null),
+        slotRef?tx.get(slotRef):Promise.resolve(null),
+        oldSlotRef?tx.get(oldSlotRef):Promise.resolve(null),
+        customerRef?tx.get(customerRef):Promise.resolve(null)
+      ]);
+
+      if(memberRef&&(!member?.exists||inactive(member.data())||!(clean(member.data()?.role||member.data()?.organizationRole).toLowerCase()==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true)))throw new TypeError('INVALID_ASSIGNEE');
+      if(slotRef&&slot?.exists&&slot.data()?.requestId!==requestId)throw new TypeError('SCHEDULE_CONFLICT');
+
+      if(slotRef){
+        tx.set(slotRef,{requestId,date:nextSchedule.date,window:nextSchedule.window,assignedTo:nextSchedule.assignedTo,status:'reserved',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        update['schedule.date']=nextSchedule.date;
+        update['schedule.window']=nextSchedule.window;
+        update['schedule.assignedTo']=nextSchedule.assignedTo;
+        update['schedule.slotId']=nextSlotId;
+        if(nextStatus==='scheduled'&&!current.schedule?.confirmedAt)update['schedule.confirmedAt']=admin.firestore.FieldValue.serverTimestamp();
+      }
+      if(oldSlotRef&&oldSlot?.exists&&oldSlot.data()?.requestId===requestId)tx.delete(oldSlotRef);
+      if(!shouldHoldSlot&&currentSlotId)update['schedule.slotId']=admin.firestore.FieldValue.delete();
+
       if(completedNow){
         const finalAmount=Number.isSafeInteger(Number(b.finalAmountCents))?Number(b.finalAmountCents):Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0);
         update.completionRecordedAt=admin.firestore.FieldValue.serverTimestamp();
-        const customerId=safeId(current.customerId);
-        if(customerId){
-          const customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`),customer=await tx.get(customerRef);
-          const lifetime=Number(customer.data()?.lifetimeRevenueCents||0);
+        if(customerRef){
+          const lifetime=Number(customer?.data()?.lifetimeRevenueCents||0);
           const nextServiceDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):clean(current.return?.nextServiceDate);
-          tx.set(customerRef,{name:current.customer?.name||customer.data()?.name||'',phone:current.customer?.phone||customer.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+          tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
       } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
         tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
@@ -503,7 +540,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_NEXT_SERVICE_DATE'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_NEXT_SERVICE_DATE'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
