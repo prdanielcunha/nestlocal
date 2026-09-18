@@ -73,8 +73,121 @@ async function rateLimit(req,key,orgId){
   return db.runTransaction(async tx=>{const snap=await tx.get(ref);const count=(snap.data()?.count||0)+1;if(count>12)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
 }
 
+const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
+const clamp=(value,min,max)=>Math.min(max,Math.max(min,Number(value)||0));
+const signal=v=>clamp(v,0,1);
+const timestampIso=v=>v?.toDate?.().toISOString?.()||null;
+function growthFitScore(signals={}){
+  const weights={quote:20,whatsapp:20,scheduling:15,recurrence:15,demand:10,smallTeam:10,ownerInvolved:5,noStrongSystem:5};
+  return Math.round(Object.entries(weights).reduce((total,[key,weight])=>total+signal(signals[key])*weight,0)*100)/100;
+}
+function growthPainScore(signals={}){
+  const weights={quoteLoss:25,noFollowUp:20,noReactivation:15,agendaChaos:15,volume:10,ownerFeelsPain:5,urgency:10};
+  return Math.round(Object.entries(weights).reduce((total,[key,weight])=>total+signal(signals[key])*weight,0)*100)/100;
+}
+function diagnosticProjection(body={}){
+  const monthlyQuotes=clamp(body.monthlyQuotes,0,5000);
+  const averageTicket=clamp(body.averageTicket,0,1000000);
+  const followUpRate=clamp(body.followUpRate,0,100);
+  const whatsappShare=clamp(body.whatsappShare,0,100);
+  const teamSize=clamp(body.teamSize,1,200);
+  const needsScheduling=body.needsScheduling===true;
+  const repeatable=body.repeatable===true;
+  const manualOperation=body.manualOperation===true;
+  if(!Number.isFinite(Number(body.monthlyQuotes))||monthlyQuotes<1||!Number.isFinite(Number(body.averageTicket))||averageTicket<=0)return null;
+  const unfollowedQuotes=Math.round(monthlyQuotes*(1-followUpRate/100)*10)/10;
+  const recoveryAssumption=0.15;
+  const monthlyOpportunityCents=Math.round(unfollowedQuotes*recoveryAssumption*averageTicket*100);
+  const fitSignals={
+    quote:monthlyQuotes>=20?1:monthlyQuotes>=5?.5:0,
+    whatsapp:whatsappShare>=70?1:whatsappShare>=30?.5:0,
+    scheduling:needsScheduling?1:0,
+    recurrence:repeatable?1:0,
+    demand:monthlyQuotes>=30?1:monthlyQuotes>=10?.5:0,
+    smallTeam:teamSize>=2&&teamSize<=10?1:teamSize<=20?.5:0,
+    ownerInvolved:manualOperation?1:.5,
+    noStrongSystem:manualOperation?1:.5
+  };
+  const painSignals={
+    quoteLoss:followUpRate<=50?1:followUpRate<=80?.5:0,
+    noFollowUp:followUpRate<=50?1:followUpRate<=80?.5:0,
+    noReactivation:repeatable?(manualOperation?1:.5):0,
+    agendaChaos:needsScheduling?(manualOperation?1:.5):0,
+    volume:monthlyQuotes>=20?1:monthlyQuotes>=8?.5:0,
+    ownerFeelsPain:manualOperation?1:.5,
+    urgency:monthlyOpportunityCents>=100000?1:monthlyOpportunityCents>=30000?.5:0
+  };
+  return {monthlyQuotes,averageTicketCents:Math.round(averageTicket*100),followUpRate,whatsappShare,teamSize,needsScheduling,repeatable,manualOperation,unfollowedQuotes,recoveryAssumption,monthlyOpportunityCents,fitSignals,painSignals,fitScore:growthFitScore(fitSignals),painScore:growthPainScore(painSignals)};
+}
+async function publicGrowthRateLimit(req,key){
+  const window=Math.floor(Date.now()/60000),ip=clean(req.headers['x-forwarded-for']||req.ip).split(',')[0];
+  const ref=db.doc(`nestlocal_public_rate_limits/${hash(`${key}:${ip}:${window}`).slice(0,32)}`);
+  return db.runTransaction(async tx=>{const snap=await tx.get(ref),count=(snap.data()?.count||0)+1;if(count>8)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
+}
+async function requireGrowthAdmin(req,res,next){
+  try{const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists||inactive(user.data())||!globalRoles.has(user.data()?.systemRole))return sendError(res,403,'ACCESS_DENIED');req.growthAdmin={uid:req.identity.uid,systemRole:user.data()?.systemRole};next()}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+}
+
 app.get('/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
+
+
+app.post('/api/public/growth/diagnostic',async(req,res)=>{
+  try{
+    if(!(await publicGrowthRateLimit(req,'diagnostic')))return sendError(res,429,'RATE_LIMITED');
+    const b=req.body||{},businessName=clean(b.businessName).slice(0,120),contactName=clean(b.contactName).slice(0,100),contactPhone=phone(b.phone),city=clean(b.city).slice(0,100),segment=clean(b.segment).slice(0,100);
+    const projection=diagnosticProjection(b);
+    if(!projection||businessName.length<2||contactName.length<2||contactPhone.length<10||city.length<2||segment.length<2||b.acceptedTerms!==true)return sendError(res,400,'INVALID_DIAGNOSTIC');
+    const ref=db.collection('nestlocal_growth_leads').doc();
+    await ref.create({
+      source:'revenue_xray',status:'new',businessName,contactName,phone:contactPhone,city,segment,
+      metrics:{monthlyQuotes:projection.monthlyQuotes,averageTicketCents:projection.averageTicketCents,followUpRate:projection.followUpRate,whatsappShare:projection.whatsappShare,teamSize:projection.teamSize,needsScheduling:projection.needsScheduling,repeatable:projection.repeatable,manualOperation:projection.manualOperation},
+      fitSignals:projection.fitSignals,painSignals:projection.painSignals,fitScore:projection.fitScore,painScore:projection.painScore,
+      opportunity:{unfollowedQuotes:projection.unfollowedQuotes,recoveryAssumption:projection.recoveryAssumption,monthlyOpportunityCents:projection.monthlyOpportunityCents},
+      nextAction:'Fazer diagnóstico comercial e validar os dados informados',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),
+      consent:{accepted:true,version:'revenue-xray-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},
+      createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()
+    });
+    res.status(201).json({leadId:ref.id,projection:{fitScore:projection.fitScore,painScore:projection.painScore,unfollowedQuotes:projection.unfollowedQuotes,monthlyOpportunityCents:projection.monthlyOpportunityCents,recoveryAssumption:projection.recoveryAssumption,methodology:'Estimativa indicativa: orçamentos sem acompanhamento × 15% de hipótese de recuperação × ticket médio informado. Não é previsão de receita.'}});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.use('/api/admin/nestlocal/growth',authenticate,requireGrowthAdmin);
+
+app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
+  try{
+    const snap=await db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(100).get();
+    res.json({leads:snap.docs.map(doc=>{const d=doc.data();return{id:doc.id,...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),consent:undefined}})});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
+  try{
+    const b=req.body||{},businessName=clean(b.businessName).slice(0,120),contactName=clean(b.contactName).slice(0,100),contactPhone=phone(b.phone),city=clean(b.city).slice(0,100),segment=clean(b.segment).slice(0,100);
+    const rawSignals=b.signals&&typeof b.signals==='object'?b.signals:{};
+    const fitSignals={quote:signal(rawSignals.quote),whatsapp:signal(rawSignals.whatsapp),scheduling:signal(rawSignals.scheduling),recurrence:signal(rawSignals.recurrence),demand:signal(rawSignals.demand),smallTeam:signal(rawSignals.smallTeam),ownerInvolved:signal(rawSignals.ownerInvolved),noStrongSystem:signal(rawSignals.noStrongSystem)};
+    if(businessName.length<2||city.length<2||segment.length<2)return sendError(res,400,'INVALID_LEAD');
+    const ref=db.collection('nestlocal_growth_leads').doc(),fitScore=growthFitScore(fitSignals);
+    await ref.create({source:'manual_radar',status:'new',businessName,contactName,phone:contactPhone,city,segment,fitSignals,fitScore,painSignals:{},painScore:0,nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:clean(b.notes).slice(0,1000),createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    res.status(201).json({id:ref.id,fitScore});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
+  try{
+    const id=safeId(req.params.leadId);if(!id)return sendError(res,400,'INVALID_LEAD');
+    const b=req.body||{},update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    if(b.status!==undefined){const status=clean(b.status);if(!growthStatuses.has(status))return sendError(res,400,'INVALID_STATUS');update.status=status}
+    if(b.nextAction!==undefined)update.nextAction=clean(b.nextAction).slice(0,300);
+    if(b.notes!==undefined)update.notes=clean(b.notes).slice(0,1000);
+    if(b.scheduleFollowUpDays!==undefined){const days=clamp(b.scheduleFollowUpDays,0,365);update.nextContactAt=admin.firestore.Timestamp.fromMillis(Date.now()+days*86400000)}
+    if(b.nextContactAt!==undefined){const ms=Date.parse(clean(b.nextContactAt));if(!Number.isFinite(ms))return sendError(res,400,'INVALID_DATE');update.nextContactAt=admin.firestore.Timestamp.fromMillis(ms)}
+    if(b.painSignals&&typeof b.painSignals==='object'){
+      const p=b.painSignals;update.painSignals={quoteLoss:signal(p.quoteLoss),noFollowUp:signal(p.noFollowUp),noReactivation:signal(p.noReactivation),agendaChaos:signal(p.agendaChaos),volume:signal(p.volume),ownerFeelsPain:signal(p.ownerFeelsPain),urgency:signal(p.urgency)};update.painScore=growthPainScore(update.painSignals);
+    }
+    await db.doc(`nestlocal_growth_leads/${id}`).set(update,{merge:true});res.json({ok:true,painScore:update.painScore});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
 
 app.get('/api/public/stores/:storeSlug',async(req,res)=>{
   try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:settings.data().whatsapp||'',currency:'BRL'},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
