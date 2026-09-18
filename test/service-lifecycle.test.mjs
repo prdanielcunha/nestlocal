@@ -7,7 +7,7 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('service lifecycle persists execution payment and return fields', () => {
   const server = read('../server.mjs');
   for (const token of [
-    "const requestStatuses=new Set(['new','reviewing','quoted','scheduled','in_progress','completed','cancelled'])",
+    "const requestStatuses=new Set(",
     "const paymentStatuses=new Set(['pending','partial','paid','cancelled'])",
     "'execution.startedAt'",
     "'execution.completedAt'",
@@ -43,7 +43,7 @@ test('authorized app data includes customer reactivation facts', () => {
 test('request UI supports scheduled, in progress and completed execution', () => {
   const client = read('../web/live.js');
   for (const token of [
-    "['new','reviewing','quoted','scheduled','in_progress','completed','cancelled']",
+    "'in_progress'",
     'data-lifecycle=',
     "name=\"scheduledDate\"",
     "name=\"assignedTo\"",

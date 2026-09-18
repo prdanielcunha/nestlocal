@@ -95,7 +95,7 @@ async function rateLimit(req,key,orgId){
 }
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
-const requestStatuses=new Set(['new','reviewing','quoted','scheduled','in_progress','completed','cancelled']);
+const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled']);
 const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
 const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
@@ -339,7 +339,44 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
 });
 
 app.get('/api/public/requests/:requestId',async(req,res)=>{
-  try{const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');const doc=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');const d=doc.data();res.json({id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,createdAt:d.createdAt})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{
+    const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');
+    const doc=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');
+    const d=doc.data(),displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null;
+    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0;
+    res.json({id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
+  try{
+    const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]),decision=clean(req.body?.decision).toLowerCase();
+    if(!id||!orgId||!t||!['accepted','declined'].includes(decision))return sendError(res,400,'INVALID_DECISION');
+    if(!(await rateLimit(req,'decision',orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${id}`);
+    let result=null;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists||snap.data().trackingTokenHash!==hash(t))throw new TypeError('NOT_FOUND');
+      const current=snap.data(),existing=clean(current.decision?.status);
+      if(existing){
+        if(existing===decision){result={ok:true,status:current.status,decision:existing,idempotent:true};return}
+        throw new TypeError('DECISION_LOCKED');
+      }
+      if(['scheduled','in_progress','completed','cancelled'].includes(current.status))throw new TypeError('DECISION_LOCKED');
+      const displayTotalCents=Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):null;
+      if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');
+      const nextStatus=decision,at=admin.firestore.Timestamp.now();
+      tx.update(ref,{status:nextStatus,decision:{status:decision,at,source:'public_tracking'},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      result={ok:true,status:nextStatus,decision,displayTotalCents};
+    });
+    res.json(result);
+  }catch(e){
+    console.error(e);const code=e?.message;
+    if(code==='NOT_FOUND')return sendError(res,404,'NOT_FOUND');
+    if(['INVALID_DECISION','DECISION_LOCKED','QUOTE_NOT_READY'].includes(code))return sendError(res,409,code);
+    sendError(res,500,'INTERNAL_ERROR')
+  }
+});
 
 app.post('/api/public/requests/:requestId/photos',upload.array('photos',5),async(req,res)=>{
   try{const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');if(!(await rateLimit(req,'photos',orgId)))return sendError(res,429,'RATE_LIMITED');const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${id}`),doc=await ref.get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');const files=Array.isArray(req.files)?req.files:[];if(!files.length)return sendError(res,400,'PHOTOS_REQUIRED');if(!files.every(validImage))return sendError(res,415,'INVALID_PHOTO');const bucket=admin.storage().bucket();const saved=[];for(const [index,file] of files.entries()){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.mimetype];const path=`organizations/${orgId}/nestlocal/requests/${id}/${Date.now()}-${index}.${ext}`;await bucket.file(path).save(file.buffer,{resumable:false,metadata:{contentType:file.mimetype,cacheControl:'private,max-age=0',metadata:{organizationId:orgId,requestId:id}}});saved.push({path,contentType:file.mimetype,size:file.size})}await ref.update({attachments:admin.firestore.FieldValue.arrayUnion(...saved),updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.status(201).json({uploaded:saved.length})}catch(e){console.error(e);sendError(res,e?.code==='LIMIT_FILE_SIZE'?413:500,e?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'UPLOAD_FAILED')}});
