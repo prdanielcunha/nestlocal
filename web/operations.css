@@ -54,3 +54,27 @@
 .assisted-metric{border-color:rgba(139,230,192,.16)}
 .assisted-metric strong{color:#91e8c1}
 @media(max-width:520px){.assistance-actions{width:100%}.assistance-actions .button{flex:1}}
+
+
+/* Real capacity + Smart Fill */
+.capacity-settings{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:14px;border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02)}
+.capacity-settings .section-title,.capacity-settings .wide{grid-column:1/-1}
+.capacity-settings h3{margin:0}
+.capacity-settings fieldset{margin:0;padding:0;border:0;min-width:0}
+.capacity-settings legend{margin-bottom:8px;color:var(--muted,#92a69e);font-size:.76rem;font-weight:700}
+.capacity-options{display:flex;gap:7px;flex-wrap:wrap}
+.capacity-options label{position:relative;cursor:pointer}
+.capacity-options input{position:absolute;opacity:0;pointer-events:none}
+.capacity-options span{display:inline-flex;align-items:center;justify-content:center;min-width:44px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);color:var(--muted,#92a69e);font-size:.74rem}
+.capacity-options input:checked+span{border-color:rgba(139,230,192,.42);background:rgba(91,206,160,.09);color:#91e8c1}
+.smart-fill-card{margin-bottom:16px}
+.smart-fill-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin:14px 0}
+.smart-fill-metrics>div{display:grid;gap:4px;padding:13px;border:1px solid rgba(255,255,255,.07);border-radius:13px;background:rgba(255,255,255,.02)}
+.smart-fill-metrics>div.highlight{border-color:rgba(139,230,192,.2);background:rgba(91,206,160,.05)}
+.smart-fill-metrics strong{font-size:1.35rem}
+.smart-fill-metrics span{color:var(--muted,#92a69e);font-size:.72rem}
+.smart-fill-slots{display:grid;gap:7px;margin:12px 0}
+.smart-fill-slots>div{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border-radius:11px;background:rgba(255,255,255,.025)}
+.smart-fill-slots strong{font-size:.78rem}
+.smart-fill-slots span{color:var(--muted,#92a69e);font-size:.72rem}
+@media(max-width:680px){.capacity-settings{grid-template-columns:1fr}.capacity-settings .section-title,.capacity-settings .wide{grid-column:auto}.smart-fill-metrics{grid-template-columns:1fr 1fr}.smart-fill-metrics .highlight{grid-column:1/-1}.smart-fill-slots>div{align-items:flex-start;flex-direction:column;gap:3px}}
