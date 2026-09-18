@@ -17,3 +17,10 @@
   .reactivation-row{align-items:flex-start;flex-direction:column}
   .reactivation-row>div:last-child{justify-items:start}
 }
+
+
+.quote-decision{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:20px 0;padding:16px;border:1px solid rgba(139,230,192,.16);border-radius:16px;background:rgba(91,206,160,.05)}
+.quote-decision p{grid-column:1/-1;margin:0 0 2px;color:var(--muted,#92a69e);font-size:.86rem;line-height:1.5}
+.decision-success{display:grid;gap:5px;margin:18px 0}
+.decision-success span{color:var(--muted,#92a69e);font-size:.82rem}
+@media(max-width:560px){.quote-decision{grid-template-columns:1fr}.quote-decision p{grid-column:auto}}
