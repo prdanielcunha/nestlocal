@@ -28,7 +28,7 @@ O beachhead comercial prioriza serviços locais com orçamento + agenda + execu�
 
 A aquisição comercial inclui um **Raio-X de Receita Perdida** público e um **Radar comercial** interno para administradores globais. O Raio-X usa uma fórmula explícita e determinística; o Radar separa Fit Score (aderência) de Pain Score (dor confirmada). Nenhuma mensagem é enviada automaticamente.
 
-Veja [docs/GROWTH_ENGINE.md](docs/GROWTH_ENGINE.md).
+Veja [docs/GROWTH_ENGINE.md](docs/GROWTH_ENGINE.md).\n\nO onboarding usa playbooks de segmento para climatização, limpeza especializada, controle de pragas e serviços gerais sem criar apps separados. Veja [docs/SERVICE_PLAYBOOKS.md](docs/SERVICE_PLAYBOOKS.md).
 
 ## Operação
 
