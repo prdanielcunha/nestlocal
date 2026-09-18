@@ -86,13 +86,13 @@ function nextBestActions(){
     const customerName=r.customer?.name||'—',amount=r.commercial?.finalAmountCents??r.quote?.totalCents??0;
     if(r.status==='in_progress')actions.push({type:'finish',priority:100,requestId:r.id,customerName,amount});
     else if(r.status==='accepted')actions.push({type:'schedule',priority:96,requestId:r.id,customerName,amount});
-    else if(r.status==='scheduled'&&(r.schedule?.date||r.preference?.date||'')<=today)actions.push({type:'execute',priority:92,requestId:r.id,customerName,amount,dueDate:r.schedule?.date||r.preference?.date});
+    else if(r.status==='scheduled'&&(r.schedule?.date||r.preference?.date)&&String(r.schedule?.date||r.preference?.date)<=today)actions.push({type:'execute',priority:92,requestId:r.id,customerName,amount,dueDate:r.schedule?.date||r.preference?.date});
     else if(['new','reviewing'].includes(r.status))actions.push({type:'review',priority:82,requestId:r.id,customerName,amount});
     else if(r.status==='quoted'){
       const created=timestampMs(r.updatedAt)||timestampMs(r.createdAt);
       if(!created||now-created>=48*60*60*1000)actions.push({type:'followup',priority:76,requestId:r.id,customerName,amount});
     } else if(r.status==='completed'&&['pending','partial'].includes(r.commercial?.paymentStatus||'')){
-      actions.push({type:'collect',priority:72,requestId:r.id,customerName,amount:Number(r.commercial?.finalAmountCents??r.quote?.totalCents??0)-Number(r.commercial?.amountPaidCents||0)});
+      actions.push({type:'collect',priority:72,requestId:r.id,customerName,amount:Math.max(0,Number(r.commercial?.finalAmountCents??r.quote?.totalCents??0)-Number(r.commercial?.amountPaidCents||0))});
     }
   }
   for(const c of customers){
