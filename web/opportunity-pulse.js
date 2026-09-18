@@ -53,6 +53,10 @@ export function buildOpportunitySnapshot({
       customer.nextServiceDate &&
       customer.nextServiceDate <= today,
   );
+  const canonicalDueCount = Number(readiness.dueCount);
+  const dueReturnCount = Number.isFinite(canonicalDueCount)
+    ? canonicalDueCount
+    : dueReturns.length;
 
   return {
     followups,
@@ -60,6 +64,8 @@ export function buildOpportunitySnapshot({
     receivableRows,
     receivableCents,
     dueReturns,
+    dueReturnCount,
+    dueCountTruncated: readiness.dueCountTruncated === true,
     fill,
     readiness,
     topAction: actions[0] || null,
@@ -128,10 +134,13 @@ export function renderOpportunityPulse({ snapshot, t, esc, money }) {
           '</small>' +
         '</button>' +
         '<button class="pulse-signal ' +
-          (snapshot.dueReturns.length ? 'attention' : '') +
+          (snapshot.dueReturnCount ? 'attention' : '') +
           '" data-scroll-reactivation="true">' +
           '<span>' + t('dueReturns') + '</span>' +
-          '<strong>' + esc(snapshot.dueReturns.length) + '</strong>' +
+          '<strong>' +
+            esc(snapshot.dueReturnCount) +
+            (snapshot.dueCountTruncated ? '+' : '') +
+          '</strong>' +
           '<small>' +
             esc(snapshot.readiness.readyCount || 0) +
             ' ' +
