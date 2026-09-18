@@ -173,11 +173,11 @@ function messagingEligibility({category,request,customer,settings}){
   return {eligible:true,templateName:clean(templates.maintenanceReminder)};
 }
 
-function reminderReadiness(customers=[],settings={}){
+function reminderReadiness(customers=[],settings={},options={}){
   const timeZone=validTimeZone(clean(settings?.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),due=customers.filter(c=>clean(c.nextServiceDate)&&clean(c.nextServiceDate)<=today),templateConfigured=Boolean(clean(settings?.messaging?.templates?.maintenanceReminder)),providerConnected=settings?.messaging?.connected===true;
   const items=due.map(customer=>{const eligibility=messagingEligibility({category:'maintenance_reminder',customer,settings});return{customerId:clean(customer.id),name:clean(customer.name),nextServiceDate:clean(customer.nextServiceDate),eligible:eligibility.eligible===true,reason:eligibility.eligible?'':eligibility.reason,templateName:clean(eligibility.templateName)}}),reasonCounts={};
   for(const item of items)if(item.reason)reasonCounts[item.reason]=(reasonCounts[item.reason]||0)+1;
-  return {today,timeZone,dueCount:items.length,consentedCount:due.filter(c=>c.messaging?.consents?.maintenanceReminders?.accepted===true).length,readyCount:items.filter(x=>x.eligible).length,blockedCount:items.filter(x=>!x.eligible).length,templateConfigured,providerConnected,reasonCounts,items};
+  return {today,timeZone,dueCount:items.length,dueCountTruncated:options.truncated===true,consentedCount:due.filter(c=>c.messaging?.consents?.maintenanceReminders?.accepted===true).length,readyCount:items.filter(x=>x.eligible).length,blockedCount:items.filter(x=>!x.eligible).length,templateConfigured,providerConnected,reasonCounts,items};
 }
 
 function growthFunnelMetrics(leads=[]){
@@ -428,20 +428,19 @@ app.get('/api/session',authenticate,async(req,res)=>{
 
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
-    const monthId=new Date().toISOString().slice(0,7);
-    const [settings,services,requests,customers,usage,members,outbox,revenueMetrics]=await Promise.all([
-      db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get(),
-      db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get(),
-      db.collection(`organizations/${req.access.orgId}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
-      db.collection(`organizations/${req.access.orgId}/nestlocal_customers`).limit(100).get(),
-      db.doc(`organizations/${req.access.orgId}/nestlocal_usage/${monthId}`).get(),
-      db.collection(`organizations/${req.access.orgId}/members`).limit(100).get(),
-      db.collection(`organizations/${req.access.orgId}/nestlocal_message_outbox`).orderBy('createdAt','desc').limit(30).get(),
-      db.doc(`organizations/${req.access.orgId}/nestlocal_metrics/revenue`).get()
+    const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200;
+    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics]=await Promise.all([
+      db.collection(`${root}/nestlocal_services`).get(),
+      db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
+      db.collection(`${root}/nestlocal_customers`).limit(100).get(),
+      db.collection(`${root}/nestlocal_customers`).where('nextServiceDate','<=',today).orderBy('nextServiceDate').limit(dueLimit).get(),
+      db.doc(`${root}/nestlocal_usage/${monthId}`).get(),
+      db.collection(`${root}/members`).limit(100).get(),
+      db.collection(`${root}/nestlocal_message_outbox`).orderBy('createdAt','desc').limit(30).get(),
+      db.doc(`${root}/nestlocal_metrics/revenue`).get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}});
-    const settingsData=settings.exists?settings.data():null,customerRows=customers.docs.map(x=>({id:x.id,...x.data()}));
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(customerRows,settingsData||{}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0}})
+    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()}));
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -516,26 +515,24 @@ app.post('/api/organizations/:orgId/nestlocal/messages/prepare',authenticate,aut
     const request=requestSnap?.exists?requestSnap.data():null,customer=customerSnap?.exists?customerSnap.data():null,settings=settingsSnap.data()||{};
     if(requestId&&!request)return sendError(res,404,'REQUEST_NOT_FOUND');
     if(customerId&&!customer)return sendError(res,404,'CUSTOMER_NOT_FOUND');
-    const eligibility=messagingEligibility({category,request,customer,settings}),targetId=requestId||customerId,day=new Date().toISOString().slice(0,10),templateName=clean(eligibility.templateName);
+    const eligibility=messagingEligibility({category,request,customer,settings}),targetId=requestId||customerId,timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',day=localIsoDate(timeZone),templateName=clean(eligibility.templateName);
     const id=hash(`${category}|${targetId}|${templateName}|${day}`).slice(0,32),ref=db.doc(`${root}/nestlocal_message_outbox/${id}`),existing=await ref.get();
     if(existing.exists)return res.json({id,status:existing.data().status,eligibility,idempotent:true});
     const status=eligibility.eligible?'ready':'blocked';
-    const consentEvidenceRef=category==='service_update'?`nestlocal-consent:${requestId}:service_updates`:`nestlocal-consent:${customerId}:maintenance_reminders`;await ref.create({category,targetType:requestId?'request':'customer',targetId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status,blockReason:eligibility.eligible?'':eligibility.reason,templateName,consentEvidenceRef,sendMode:'approved_template_required',preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    const consentEvidenceRef=eligibility.reason==='WHATSAPP_OPT_IN_REQUIRED'?'':category==='service_update'?`nestlocal-consent:${requestId}:service_updates`:`nestlocal-consent:${customerId}:maintenance_reminders`;await ref.create({category,targetType:requestId?'request':'customer',targetId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status,blockReason:eligibility.eligible?'':eligibility.reason,templateName,consentEvidenceRef,sendMode:'approved_template_required',preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     res.status(201).json({id,status,eligibility});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/messages/prepare-due-reminders',authenticate,authorize,async(req,res)=>{
   try{
-    const root=`organizations/${req.access.orgId}`;
-    const [settingsSnap,customersSnap]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.collection(`${root}/nestlocal_customers`).limit(100).get()]);
-    const settings=settingsSnap.data()||{},customers=customersSnap.docs.map(x=>({id:x.id,...x.data()})),readiness=reminderReadiness(customers,settings),eligible=readiness.items.filter(x=>x.eligible);
-    if(!eligible.length)return res.json({preparedCount:0,existingCount:0,...readiness,items:undefined});
-    const refs=eligible.map(item=>{const id=hash(`maintenance_reminder|${item.customerId}|${item.templateName}|${readiness.today}`).slice(0,32);return{item,id,ref:db.doc(`${root}/nestlocal_message_outbox/${id}`)}});
+    const root=`organizations/${req.access.orgId}`,settingsSnap=await db.doc(`${root}/nestlocal_settings/public`).get(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,customersSnap=await db.collection(`${root}/nestlocal_customers`).where('nextServiceDate','<=',today).orderBy('nextServiceDate').limit(dueLimit).get(),customers=customersSnap.docs.map(x=>({id:x.id,...x.data()})),readiness=reminderReadiness(customers,settings,{truncated:customersSnap.size===dueLimit}),eligible=readiness.items.filter(x=>x.eligible);
+    if(!eligible.length)return res.json({preparedCount:0,existingCount:0,dueCount:readiness.dueCount,dueCountTruncated:readiness.dueCountTruncated,readyCount:0,blockedCount:readiness.blockedCount,reasonCounts:readiness.reasonCounts,today});
+    const refs=eligible.map(item=>{const id=hash(`maintenance_reminder|${item.customerId}|${item.templateName}|${today}`).slice(0,32);return{item,id,ref:db.doc(`${root}/nestlocal_message_outbox/${id}`)}});
     const existing=await Promise.all(refs.map(x=>x.ref.get())),batch=db.batch();let preparedCount=0,existingCount=0;
     for(let i=0;i<refs.length;i++){const {item,ref}=refs[i];if(existing[i].exists){existingCount++;continue}preparedCount++;batch.create(ref,{category:'maintenance_reminder',targetType:'customer',targetId:item.customerId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status:'ready',blockReason:'',templateName:item.templateName,consentEvidenceRef:`nestlocal-consent:${item.customerId}:maintenance_reminders`,sendMode:'approved_template_required',preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()})}
     if(preparedCount)await batch.commit();
-    res.json({preparedCount,existingCount,dueCount:readiness.dueCount,readyCount:readiness.readyCount,blockedCount:readiness.blockedCount,reasonCounts:readiness.reasonCounts,today:readiness.today})
+    res.json({preparedCount,existingCount,dueCount:readiness.dueCount,dueCountTruncated:readiness.dueCountTruncated,readyCount:readiness.readyCount,blockedCount:readiness.blockedCount,reasonCounts:readiness.reasonCounts,today})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
