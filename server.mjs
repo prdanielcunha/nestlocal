@@ -95,6 +95,9 @@ async function rateLimit(req,key,orgId){
 }
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
+const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
+const growthChannels=new Set(['xray','instagram','phone','email','referral','partner','organic','other']);
+const growthAngles=new Set(['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other']);
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,Number(value)||0));
 const signal=v=>clamp(v,0,1);
 const timestampIso=v=>v?.toDate?.().toISOString?.()||null;
@@ -105,6 +108,45 @@ function growthFitScore(signals={}){
 function growthPainScore(signals={}){
   const weights={quoteLoss:25,noFollowUp:20,noReactivation:15,agendaChaos:15,volume:10,ownerFeelsPain:5,urgency:10};
   return Math.round(Object.entries(weights).reduce((total,[key,weight])=>total+signal(signals[key])*weight,0)*100)/100;
+}
+function growthAcquisition(body={},fallback={}){
+  const channel=clean(body.channel||fallback.channel||'other').toLowerCase();
+  const angle=clean(body.angle||fallback.angle||'other').toLowerCase();
+  return {
+    channel:growthChannels.has(channel)?channel:'other',
+    angle:growthAngles.has(angle)?angle:'other',
+    campaign:clean(body.campaign||fallback.campaign).slice(0,80)
+  };
+}
+function growthLeadStage(lead={}){
+  const stored=Number(lead.highestStage);
+  if(Number.isFinite(stored)&&stored>=0)return stored;
+  if(growthStageRank[lead.status]!==undefined)return growthStageRank[lead.status];
+  const history=Array.isArray(lead.stageHistory)?lead.stageHistory:[];
+  return history.reduce((max,event)=>Math.max(max,growthStageRank[event?.status]??0),0);
+}
+function growthFunnelMetrics(leads=[]){
+  const stages=['new','contacted','replied','diagnostic','demo','trial','customer'];
+  const funnel={};
+  for(const [index,stage] of stages.entries())funnel[stage]=leads.filter(lead=>growthLeadStage(lead)>=index).length;
+  const rate=(a,b)=>a>0?Math.round((b/a)*1000)/10:0;
+  const conversions={
+    contactRate:rate(funnel.new,funnel.contacted),
+    replyRate:rate(funnel.contacted,funnel.replied),
+    diagnosticRate:rate(funnel.replied,funnel.diagnostic),
+    demoRate:rate(funnel.diagnostic,funnel.demo),
+    trialRate:rate(funnel.demo,funnel.trial),
+    customerRate:rate(funnel.trial,funnel.customer),
+    leadToCustomer:rate(funnel.new,funnel.customer)
+  };
+  const groupBy=key=>Object.values(leads.reduce((acc,lead)=>{
+    const value=clean(key(lead))||'unknown';
+    if(!acc[value])acc[value]={key:value,leads:0,customers:0};
+    acc[value].leads++;
+    if(growthLeadStage(lead)>=growthStageRank.customer)acc[value].customers++;
+    return acc;
+  },{})).map(group=>({...group,conversionRate:rate(group.leads,group.customers)})).sort((a,b)=>b.leads-a.leads||b.customers-a.customers);
+  return {total:leads.length,funnel,conversions,byChannel:groupBy(lead=>lead.acquisition?.channel||lead.source),byAngle:groupBy(lead=>lead.acquisition?.angle),bySegment:groupBy(lead=>lead.segment)};
 }
 function diagnosticProjection(body={}){
   const monthlyQuotes=clamp(body.monthlyQuotes,0,5000);
@@ -161,7 +203,7 @@ app.post('/api/public/growth/diagnostic',async(req,res)=>{
     if(!projection||businessName.length<2||contactName.length<2||contactPhone.length<10||city.length<2||segment.length<2||b.acceptedTerms!==true)return sendError(res,400,'INVALID_DIAGNOSTIC');
     const ref=db.collection('nestlocal_growth_leads').doc();
     await ref.create({
-      source:'revenue_xray',status:'new',businessName,contactName,phone:contactPhone,city,segment,
+      source:'revenue_xray',status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:'public_xray'}],acquisition:growthAcquisition({channel:'xray',angle:'revenue_visibility',campaign:'revenue_xray'}),businessName,contactName,phone:contactPhone,city,segment,
       metrics:{monthlyQuotes:projection.monthlyQuotes,averageTicketCents:projection.averageTicketCents,followUpRate:projection.followUpRate,whatsappShare:projection.whatsappShare,teamSize:projection.teamSize,needsScheduling:projection.needsScheduling,repeatable:projection.repeatable,manualOperation:projection.manualOperation},
       fitSignals:projection.fitSignals,painSignals:projection.painSignals,fitScore:projection.fitScore,painScore:projection.painScore,
       opportunity:{unfollowedQuotes:projection.unfollowedQuotes,recoveryAssumption:projection.recoveryAssumption,monthlyOpportunityCents:projection.monthlyOpportunityCents},
@@ -178,7 +220,9 @@ app.use('/api/admin/nestlocal/growth',authenticate,requireGrowthAdmin);
 app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
   try{
     const snap=await db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(100).get();
-    res.json({leads:snap.docs.map(doc=>{const d=doc.data();return{id:doc.id,...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),consent:undefined}})});
+    const raw=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
+    const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],consent:undefined}));
+    res.json({leads,metrics:growthFunnelMetrics(raw)});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -189,7 +233,7 @@ app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
     const fitSignals={quote:signal(rawSignals.quote),whatsapp:signal(rawSignals.whatsapp),scheduling:signal(rawSignals.scheduling),recurrence:signal(rawSignals.recurrence),demand:signal(rawSignals.demand),smallTeam:signal(rawSignals.smallTeam),ownerInvolved:signal(rawSignals.ownerInvolved),noStrongSystem:signal(rawSignals.noStrongSystem)};
     if(businessName.length<2||city.length<2||segment.length<2)return sendError(res,400,'INVALID_LEAD');
     const ref=db.collection('nestlocal_growth_leads').doc(),fitScore=growthFitScore(fitSignals);
-    await ref.create({source:'manual_radar',status:'new',businessName,contactName,phone:contactPhone,city,segment,fitSignals,fitScore,painSignals:{},painScore:0,nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:clean(b.notes).slice(0,1000),createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    await ref.create({source:'manual_radar',status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),businessName,contactName,phone:contactPhone,city,segment,fitSignals,fitScore,painSignals:{},painScore:0,nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:clean(b.notes).slice(0,1000),createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     res.status(201).json({id:ref.id,fitScore});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
@@ -197,17 +241,36 @@ app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
 app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
   try{
     const id=safeId(req.params.leadId);if(!id)return sendError(res,400,'INVALID_LEAD');
-    const b=req.body||{},update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    if(b.status!==undefined){const status=clean(b.status);if(!growthStatuses.has(status))return sendError(res,400,'INVALID_STATUS');update.status=status}
-    if(b.nextAction!==undefined)update.nextAction=clean(b.nextAction).slice(0,300);
-    if(b.notes!==undefined)update.notes=clean(b.notes).slice(0,1000);
-    if(b.scheduleFollowUpDays!==undefined){const days=clamp(b.scheduleFollowUpDays,0,365);update.nextContactAt=admin.firestore.Timestamp.fromMillis(Date.now()+days*86400000)}
-    if(b.nextContactAt!==undefined){const ms=Date.parse(clean(b.nextContactAt));if(!Number.isFinite(ms))return sendError(res,400,'INVALID_DATE');update.nextContactAt=admin.firestore.Timestamp.fromMillis(ms)}
-    if(b.painSignals&&typeof b.painSignals==='object'){
-      const p=b.painSignals;update.painSignals={quoteLoss:signal(p.quoteLoss),noFollowUp:signal(p.noFollowUp),noReactivation:signal(p.noReactivation),agendaChaos:signal(p.agendaChaos),volume:signal(p.volume),ownerFeelsPain:signal(p.ownerFeelsPain),urgency:signal(p.urgency)};update.painScore=growthPainScore(update.painSignals);
-    }
-    await db.doc(`nestlocal_growth_leads/${id}`).set(update,{merge:true});res.json({ok:true,painScore:update.painScore});
-  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+    const b=req.body||{},ref=db.doc(`nestlocal_growth_leads/${id}`);
+    let result={painScore:undefined};
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('LEAD_NOT_FOUND');
+      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      if(b.status!==undefined){
+        const status=clean(b.status);if(!growthStatuses.has(status))throw new TypeError('INVALID_STATUS');
+        update.status=status;
+        if(status!==current.status){
+          update.stageHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid});
+          const currentHighest=growthLeadStage(current),rank=growthStageRank[status];
+          update.highestStage=rank===undefined?currentHighest:Math.max(currentHighest,rank);
+        }
+      }
+      if(b.nextAction!==undefined)update.nextAction=clean(b.nextAction).slice(0,300);
+      if(b.notes!==undefined)update.notes=clean(b.notes).slice(0,1000);
+      if(b.scheduleFollowUpDays!==undefined){const days=clamp(b.scheduleFollowUpDays,0,365);update.nextContactAt=admin.firestore.Timestamp.fromMillis(Date.now()+days*86400000)}
+      if(b.nextContactAt!==undefined){const ms=Date.parse(clean(b.nextContactAt));if(!Number.isFinite(ms))throw new TypeError('INVALID_DATE');update.nextContactAt=admin.firestore.Timestamp.fromMillis(ms)}
+      if(b.acquisition&&typeof b.acquisition==='object')update.acquisition=growthAcquisition(b.acquisition,current.acquisition||{});
+      if(b.painSignals&&typeof b.painSignals==='object'){
+        const p=b.painSignals;update.painSignals={quoteLoss:signal(p.quoteLoss),noFollowUp:signal(p.noFollowUp),noReactivation:signal(p.noReactivation),agendaChaos:signal(p.agendaChaos),volume:signal(p.volume),ownerFeelsPain:signal(p.ownerFeelsPain),urgency:signal(p.urgency)};update.painScore=growthPainScore(update.painSignals);result.painScore=update.painScore;
+      }
+      tx.set(ref,update,{merge:true});
+    });
+    res.json({ok:true,painScore:result.painScore});
+  }catch(e){
+    console.error(e);
+    if(['LEAD_NOT_FOUND','INVALID_STATUS','INVALID_DATE'].includes(e?.message))return sendError(res,e.message==='LEAD_NOT_FOUND'?404:400,e.message);
+    sendError(res,500,'INTERNAL_ERROR')
+  }
 });
 
 app.get('/api/public/stores/:storeSlug',async(req,res)=>{
