@@ -64,3 +64,11 @@ test('Today labels the metric as assisted rather than causal revenue', () => {
     "assisted-metric",
   ]) assert.ok(client.includes(token), `missing ${token}`);
 });
+
+
+test('Home composition has no build-time placeholder left at runtime', () => {
+  const client = read('../web/live.js');
+  assert.equal(client.includes('metricAnchor'), false);
+  assert.ok(client.includes("t('conversion')"));
+  assert.ok(client.includes("assisted.assistedRevenueCents"));
+});
