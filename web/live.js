@@ -43,6 +43,11 @@ Object.assign(D.pt,{accepted:'Aprovado',declined:'Recusado',approveQuote:'Aprova
 Object.assign(D.en,{accepted:'Approved',declined:'Declined',approveQuote:'Approve quote',declineQuote:'Not now',quoteApproved:'Quote approved',quoteDeclined:'Quote declined',decisionHelp:'Your decision is recorded so the business can continue the service.',scheduleNext:'The business can now confirm scheduling.'});
 Object.assign(D.es,{accepted:'Aprobado',declined:'Rechazado',approveQuote:'Aprobar presupuesto',declineQuote:'Ahora no',quoteApproved:'Presupuesto aprobado',quoteDeclined:'Presupuesto rechazado',decisionHelp:'Tu decisión queda registrada para que la empresa continúe la atención.',scheduleNext:'Ahora la empresa puede confirmar la agenda.'});
 
+
+Object.assign(D.pt,{actionEngineTitle:'O que fazer agora',actionEngineHelp:'Prioridades calculadas a partir dos fatos reais da operação.',action_schedule:'Agendar orçamento aprovado',action_execute:'Atender serviço agendado',action_finish:'Finalizar serviço em execução',action_review:'Revisar novo pedido',action_followup:'Cobrar resposta do orçamento',action_collect:'Acompanhar pagamento',action_reactivate:'Reativar cliente',openRequests:'Abrir pedidos',priority:'Prioridade'});
+Object.assign(D.en,{actionEngineTitle:'What to do now',actionEngineHelp:'Priorities calculated from real operational facts.',action_schedule:'Schedule approved quote',action_execute:'Handle scheduled service',action_finish:'Finish service in progress',action_review:'Review new request',action_followup:'Follow up on quote',action_collect:'Follow up on payment',action_reactivate:'Reactivate customer',openRequests:'Open requests',priority:'Priority'});
+Object.assign(D.es,{actionEngineTitle:'Qué hacer ahora',actionEngineHelp:'Prioridades calculadas a partir de hechos reales de la operación.',action_schedule:'Agendar presupuesto aprobado',action_execute:'Atender servicio agendado',action_finish:'Finalizar servicio en ejecución',action_review:'Revisar nueva solicitud',action_followup:'Dar seguimiento al presupuesto',action_collect:'Acompañar el pago',action_reactivate:'Reactivar cliente',openRequests:'Abrir solicitudes',priority:'Prioridad'});
+
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -73,9 +78,35 @@ function reactivationRow(c){
   const wa=String(c.phone||'').replace(/\D/g,''),msg=encodeURIComponent(t('reactivationMessage'));
   return `<div class="reactivation-row"><div><strong>${esc(c.name||'—')}</strong><span>${esc(c.nextServiceDate||'—')} · ${esc(c.nextServiceReason||c.lastServiceId||'')}</span></div><div><small>${t('lifetimeRevenue')}: ${money(c.lifetimeRevenueCents||0)}</small>${wa?`<a class="button small" target="_blank" rel="noopener" href="https://wa.me/${esc(wa)}?text=${msg}">WhatsApp</a>`:''}</div></div>`;
 }
+const localDateIso=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}`};
+const timestampMs=value=>{if(!value)return 0;if(typeof value==='string')return Date.parse(value)||0;if(Number.isFinite(value._seconds))return value._seconds*1000;if(Number.isFinite(value.seconds))return value.seconds*1000;return 0};
+function nextBestActions(){
+  const requests=S.data.requests||[],customers=S.data.customers||[],today=localDateIso(),now=Date.now(),actions=[];
+  for(const r of requests){
+    const customerName=r.customer?.name||'—',amount=r.commercial?.finalAmountCents??r.quote?.totalCents??0;
+    if(r.status==='in_progress')actions.push({type:'finish',priority:100,requestId:r.id,customerName,amount});
+    else if(r.status==='accepted')actions.push({type:'schedule',priority:96,requestId:r.id,customerName,amount});
+    else if(r.status==='scheduled'&&(r.schedule?.date||r.preference?.date)&&String(r.schedule?.date||r.preference?.date)<=today)actions.push({type:'execute',priority:92,requestId:r.id,customerName,amount,dueDate:r.schedule?.date||r.preference?.date});
+    else if(['new','reviewing'].includes(r.status))actions.push({type:'review',priority:82,requestId:r.id,customerName,amount});
+    else if(r.status==='quoted'){
+      const created=timestampMs(r.updatedAt)||timestampMs(r.createdAt);
+      if(!created||now-created>=48*60*60*1000)actions.push({type:'followup',priority:76,requestId:r.id,customerName,amount});
+    } else if(r.status==='completed'&&['pending','partial'].includes(r.commercial?.paymentStatus||'')){
+      actions.push({type:'collect',priority:72,requestId:r.id,customerName,amount:Math.max(0,Number(r.commercial?.finalAmountCents??r.quote?.totalCents??0)-Number(r.commercial?.amountPaidCents||0))});
+    }
+  }
+  for(const c of customers){
+    if(c.nextServiceDate&&c.nextServiceDate<=today)actions.push({type:'reactivate',priority:66,customerId:c.id,customerName:c.name||'—',phone:c.phone||'',dueDate:c.nextServiceDate,amount:c.lifetimeRevenueCents||0});
+  }
+  return actions.sort((a,b)=>b.priority-a.priority||String(a.customerName).localeCompare(String(b.customerName))).slice(0,20);
+}
+function actionRow(a){
+  const wa=String(a.phone||'').replace(/\D/g,''),msg=encodeURIComponent(t('reactivationMessage'));
+  return `<div class="next-action"><div><span class="action-priority">${t('priority')} ${esc(a.priority)}</span><strong>${t(`action_${a.type}`)}</strong><small>${esc(a.customerName)}${a.dueDate?` · ${esc(a.dueDate)}`:''}${a.amount?` · ${money(a.amount)}`:''}</small></div><div>${a.type==='reactivate'&&wa?`<a class="button small" target="_blank" rel="noopener" href="https://wa.me/${esc(wa)}?text=${msg}">WhatsApp</a>`:`<button class="button small" data-action-page="requests">${t('openRequests')}</button>`}</div></div>`;
+}
 function today(){
-  const a=S.data.requests||[],customers=S.data.customers||[],open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=new Date().toISOString().slice(0,10),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso);
-  return `<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${open.length}</strong><small>${t('realData')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric"><span>${t('customers')}</span><strong>${S.data.customerCount||0}</strong><small>${t('realData')}</small></article><article class="card metric"><span>${t('reactivations')}</span><strong>${returns.length}</strong><small>${t('reactivationHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article></div><article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+  const a=S.data.requests||[],customers=S.data.customers||[],open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=localDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
+  return `<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric"><span>${t('customers')}</span><strong>${S.data.customerCount||0}</strong><small>${t('realData')}</small></article><article class="card metric"><span>${t('reactivations')}</span><strong>${returns.length}</strong><small>${t('reactivationHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article></div>${actions.length?`<article class="card next-actions-card"><div class="section-title"><div><h2>${t('actionEngineTitle')}</h2><p class="help">${t('actionEngineHelp')}</p></div><span>${actions.length}</span></div><div class="next-actions-list">${actions.slice(0,10).map(actionRow).join('')}</div></article>`:''}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function requests(){const a=S.data.requests||[];return `<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>`}
 function agenda(){const a=(S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status));return `<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>`}
@@ -146,6 +177,7 @@ async function loadPublic(){try{S.store=await api(`/api/public/stores/${encodeUR
 async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 function bind(){
   document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=async()=>{S.page=x.dataset.nav;if(S.page==='growth'&&isGrowthAdmin()){S.growth=null;render();try{await loadGrowth()}catch(e){toast(e.message)}}render()});
+  document.querySelectorAll('[data-action-page]').forEach(x=>x.onclick=()=>{S.page=x.dataset.actionPage;render()});
   document.querySelectorAll('[data-lang]').forEach(x=>x.onchange=()=>{S.lang=x.value;localStorage.setItem('nl_lang',S.lang);render()});
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{sessionStorage.setItem('nl_auth_started_at',String(Date.now()));await signInWithRedirect(auth,new GoogleAuthProvider())}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message)}});
   document.querySelector('#logout')?.addEventListener('click',()=>signOut(auth));
