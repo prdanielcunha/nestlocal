@@ -32,7 +32,7 @@ test('non-HVAC playbooks do not invent prices', () => {
   }
 });
 
-test('client lets the owner choose a playbook and adapts public qualifiers', () => {
+test('client lets the owner choose a playbook and the active public view adapts qualifiers', () => {
   const client = read('../web/live.js');
   for (const token of [
     'bootstrap-form',
@@ -40,13 +40,14 @@ test('client lets the owner choose a playbook and adapts public qualifiers', () 
     'const serviceName=',
     'publicServiceId',
     'id="public-service"',
-    'selected?.requiresEquipmentType!==false',
-    'selected?.requiresSafeAccess!==false',
     'templateClimate',
     'templateCleaning',
     'templatePest',
     'templateGeneral',
   ]) assert.ok(client.includes(token), `missing ${token}`);
+  const activeView = client.slice(client.indexOf('function publicViewV2'));
+  assert.ok(activeView.includes('selected?.requiresEquipmentType!==false'));
+  assert.ok(activeView.includes('selected?.requiresSafeAccess!==false'));
 });
 
 test('playbook onboarding copy remains translated in PT EN ES', () => {

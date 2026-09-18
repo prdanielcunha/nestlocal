@@ -97,3 +97,42 @@ O sistema não toma a decisão comercial sozinho. O score serve para ordenar ate
 4. Ajustar pesos somente com dados reais.
 5. Integrar uma fonte oficial de prospecção/enriquecimento apenas depois que o processo manual estiver validado.
 6. Habilitar mensagens apenas com canal oficial, opt-in e governança.
+
+
+## Funil e atribuição
+
+O Radar registra a progressão comercial sem perder histórico.
+
+Etapas mensuradas:
+
+1. novo;
+2. contatado;
+3. respondeu;
+4. diagnóstico;
+5. demo;
+6. trial;
+7. cliente.
+
+Cada mudança de estágio adiciona um evento em `stageHistory` e preserva `highestStage`. Assim, mover um lead para follow-up ou para outro estado operacional não apaga o fato de que ele já chegou a uma etapa anterior.
+
+As métricas exibem:
+
+- taxa de contato;
+- taxa de resposta;
+- resposta → diagnóstico;
+- diagnóstico → demo;
+- demo → trial;
+- trial → cliente;
+- lead → cliente.
+
+### Atribuição de aquisição
+
+Leads podem registrar:
+
+- canal: Raio-X, Instagram, ligação, e-mail, indicação, parceiro, orgânico ou outro;
+- argumento: receita invisível, orçamento sem follow-up, reativação, horário ocioso, caos no WhatsApp, indicação ou outro;
+- campanha livre.
+
+O objetivo é aprender com dados reais quais abordagens geram avanço no funil. O Radar mostra volume e conversão por argumento, sem declarar causalidade quando a amostra ainda é pequena.
+
+O Raio-X entra automaticamente com canal `xray`, argumento `revenue_visibility` e campanha `revenue_xray`.
