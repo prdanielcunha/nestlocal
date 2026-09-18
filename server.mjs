@@ -112,7 +112,14 @@ const timestampIso=v=>v?.toDate?.().toISOString?.()||null;
 function validTimeZone(value){
   try{new Intl.DateTimeFormat('en-US',{timeZone:value}).format(new Date());return true}catch{return false}
 }
-const dateAfterDays=days=>new Date(Date.now()+Number(days)*86400000).toISOString().slice(0,10);
+function localIsoDate(timeZone,date=new Date()){
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(date).filter(x=>x.type!=='literal').map(x=>[x.type,x.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+function addIsoDays(isoDate,days){
+  const match=/^(\d{4})-(\d{2})-(\d{2})$/.exec(clean(isoDate));if(!match)return '';
+  return new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])+Number(days),12)).toISOString().slice(0,10);
+}
 const timestampMillis=v=>v?.toMillis?.()||v?.toDate?.().getTime?.()||0;
 const freshAssistance=(value,maxDays)=>value&&timestampMillis(value.at)>0&&(Date.now()-timestampMillis(value.at))<=maxDays*86400000;
 function growthFitScore(signals={}){
@@ -543,7 +550,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       };
       const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus),currentSlotId=clean(current.schedule?.slotId);
       const completedNow=nextStatus==='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
-      let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null,serviceRef=null;
+      let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null,serviceRef=null,settingsRef=null;
       if(shouldHoldSlot){
         if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
         memberRef=db.doc(`organizations/${req.access.orgId}/members/${nextSchedule.assignedTo}`);
@@ -553,13 +560,15 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(currentSlotId&&currentSlotId!==nextSlotId)oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`);
       if(completedNow&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
       if(completedNow&&serviceId)serviceRef=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${serviceId}`);
+      if(completedNow)settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);
 
-      const [member,slot,oldSlot,customer,service]=await Promise.all([
+      const [member,slot,oldSlot,customer,service,settings]=await Promise.all([
         memberRef?tx.get(memberRef):Promise.resolve(null),
         slotRef?tx.get(slotRef):Promise.resolve(null),
         oldSlotRef?tx.get(oldSlotRef):Promise.resolve(null),
         customerRef?tx.get(customerRef):Promise.resolve(null),
-        serviceRef?tx.get(serviceRef):Promise.resolve(null)
+        serviceRef?tx.get(serviceRef):Promise.resolve(null),
+        settingsRef?tx.get(settingsRef):Promise.resolve(null)
       ]);
 
       if(memberRef&&(!member?.exists||inactive(member.data())||!(clean(member.data()?.role||member.data()?.organizationRole).toLowerCase()==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true)))throw new TypeError('INVALID_ASSIGNEE');
@@ -587,7 +596,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
           update['attribution.assisted']=true;update['attribution.actionEventId']=clean(assistance.actionEventId);update['attribution.actionType']=clean(assistance.actionType);
         }
         if(customerRef){
-          const lifetime=Number(customer?.data()?.lifetimeRevenueCents||0),explicitDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):null,currentDate=clean(current.return?.nextServiceDate),ruleDays=Number(service?.data()?.returnAfterDays||0),autoDate=explicitDate===null&&!currentDate&&Number.isInteger(ruleDays)&&ruleDays>0?dateAfterDays(ruleDays):'',nextServiceDate=explicitDate!==null?explicitDate:(currentDate||autoDate),manualReason=clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),autoReason=autoDate?clean(service?.data()?.name||current.serviceId):'',nextServiceReason=manualReason||autoReason;
+          const lifetime=Number(customer?.data()?.lifetimeRevenueCents||0),explicitDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):null,currentDate=clean(current.return?.nextServiceDate),ruleDays=Number(service?.data()?.returnAfterDays||0),orgTimeZone=clean(settings?.data()?.timezone)||'America/Sao_Paulo',completedLocalDate=localIsoDate(validTimeZone(orgTimeZone)?orgTimeZone:'UTC'),autoDate=explicitDate===null&&!currentDate&&Number.isInteger(ruleDays)&&ruleDays>0?addIsoDays(completedLocalDate,ruleDays):'',nextServiceDate=explicitDate!==null?explicitDate:(currentDate||autoDate),manualReason=clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),autoReason=autoDate?clean(service?.data()?.name||current.serviceId):'',nextServiceReason=manualReason||autoReason;
           if(autoDate){update['return.nextServiceDate']=autoDate;update['return.reason']=nextServiceReason;update['return.source']='service_rule';update['return.ruleDays']=ruleDays}
           tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
