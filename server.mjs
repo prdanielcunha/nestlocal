@@ -433,9 +433,20 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
     const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`);
     const target=await targetRef.get();if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
-    const eventRef=db.collection(`${root}/nestlocal_action_events`).doc(),at=admin.firestore.Timestamp.now(),event={id:eventRef.id,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
-    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventRef.id,actionType,channel,at,by:req.identity.uid},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
-    res.status(201).json({id:eventRef.id,actionType,channel,status:'completed_by_user'});
+    const data=target.data(),now=Date.now();
+    if(actionType==='quote_followup'){
+      const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
+      if(data.status!=='quoted'||!updatedAt||now-updatedAt<48*60*60*1000)return sendError(res,409,'FOLLOWUP_NOT_DUE');
+    }
+    if(actionType==='customer_reactivation'){
+      const nextDate=clean(data.nextServiceDate),today=new Date().toISOString().slice(0,10);
+      if(!nextDate||nextDate>today)return sendError(res,409,'REACTIVATION_NOT_DUE');
+    }
+    const day=new Date().toISOString().slice(0,10),eventId=hash(`${actionType}|${requestId||customerId}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
+    if(existing.exists)return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',idempotent:true});
+    const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
+    res.status(201).json({id:eventId,actionType,channel,status:'completed_by_user'});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
