@@ -119,7 +119,7 @@ function growthAcquisition(body={},fallback={}){
   };
 }
 const growthKey=value=>clean(value).normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-const growthFingerprint=({businessName,city,phone:contactPhone})=>hash(`${growthKey(businessName)}|${growthKey(city)}|${phone(contactPhone)}`).slice(0,32);
+const growthFingerprint=({businessName,city})=>hash(`${growthKey(businessName)}|${growthKey(city)}`).slice(0,32);
 async function existingGrowthFingerprints(fingerprints=[]){
   const unique=[...new Set(fingerprints.filter(Boolean))],found=new Set();
   for(let i=0;i<unique.length;i+=30){
