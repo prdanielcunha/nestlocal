@@ -47,3 +47,10 @@
 
 .lifecycle-actions{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
 @media(max-width:520px){.lifecycle-actions{display:grid;grid-template-columns:1fr}.lifecycle-actions .button{width:100%}}
+
+
+/* Assisted revenue actions */
+.assistance-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.assisted-metric{border-color:rgba(139,230,192,.16)}
+.assisted-metric strong{color:#91e8c1}
+@media(max-width:520px){.assistance-actions{width:100%}.assistance-actions .button{flex:1}}
