@@ -95,6 +95,9 @@ async function rateLimit(req,key,orgId){
 }
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
+const requestStatuses=new Set(['new','reviewing','quoted','scheduled','in_progress','completed','cancelled']);
+const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
+const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
 const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
 const growthChannels=new Set(['xray','instagram','phone','email','referral','partner','organic','other']);
 const growthAngles=new Set(['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other']);
@@ -345,7 +348,7 @@ app.get('/api/session',authenticate,async(req,res)=>{
   try{const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists)return sendError(res,403,'USER_NOT_FOUND');const data=user.data();let ids=[data.organizationId,data.primaryOrganizationId,data.activeOrganizationId,...(Array.isArray(data.organizations)?data.organizations:[])].filter(x=>typeof x==='string');const legacy=await db.collection('organization_members').where('uid','==',req.identity.uid).limit(50).get();ids.push(...legacy.docs.filter(x=>!inactive(x.data())).map(x=>x.data().organizationId).filter(Boolean));const administrative=globalRoles.has(data.systemRole);if(administrative){const all=await db.collection('organizations').limit(50).get();ids.push(...all.docs.map(x=>x.id))}ids=[...new Set(ids)];const docs=await Promise.all(ids.map(async id=>{const [org,subscription]=await Promise.all([db.doc(`organizations/${id}`).get(),db.doc(`subscriptions/${id}`).get()]);if(!org.exists||inactive(org.data()))return null;const appSubscription=subscription.data()?.apps?.nestlocal||null,appRecord=org.data()?.apps?.nestlocal||null,status=administrative?'administrative':clean(appSubscription?.status||appRecord?.status).toLowerCase(),plan=administrative?'pro':clean(appSubscription?.plan||appRecord?.plan||'essential').toLowerCase();return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:administrative||activeSubscriptionStatuses.has(status),status,plan,limits:planLimits[plan]||planLimits.essential}}}));res.json({user:{uid:req.identity.uid,displayName:data.displayName||req.identity.name||'',systemRole:data.systemRole||'user'},organizations:docs.filter(Boolean)})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
-  try{const monthId=new Date().toISOString().slice(0,7);const [settings,services,requests,customers,usage,members]=await Promise.all([db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_customers`).limit(100).get(),db.doc(`organizations/${req.access.orgId}/nestlocal_usage/${monthId}`).get(),db.collection(`organizations/${req.access.orgId}/members`).limit(100).get()]);const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}});res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settings.exists?settings.data():null,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customerCount:customers.size,team})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{const monthId=new Date().toISOString().slice(0,7);const [settings,services,requests,customers,usage,members]=await Promise.all([db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),db.collection(`organizations/${req.access.orgId}/nestlocal_customers`).limit(100).get(),db.doc(`organizations/${req.access.orgId}/nestlocal_usage/${monthId}`).get(),db.collection(`organizations/${req.access.orgId}/members`).limit(100).get()]);const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}});res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settings.exists?settings.data():null,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customers.docs.map(x=>({id:x.id,...x.data()})),customerCount:customers.size,team})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
@@ -364,7 +367,69 @@ app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,as
 
 app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIndex',authenticate,authorize,async(req,res)=>{try{const requestId=safeId(req.params.requestId),index=Number(req.params.photoIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>4)return sendError(res,404,'NOT_FOUND');const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),attachment=doc.data()?.attachments?.[index];if(!doc.exists||!attachment?.path||!attachment.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/`))return sendError(res,404,'NOT_FOUND');res.set({'Content-Type':attachment.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="pedido-${requestId}-${index+1}"`});admin.storage().bucket().file(attachment.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res)}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
-app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{const status=clean(req.body?.status),requestId=safeId(req.params.requestId);if(!requestId||!['new','reviewing','quoted','scheduled','completed','cancelled'].includes(status))return sendError(res,400,'INVALID_STATUS');await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).update({status,updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.json({ok:true})});
+app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),b=req.body||{};if(!requestId)return sendError(res,400,'INVALID_REQUEST');
+    const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`);
+    let response={ok:true};
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
+      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      if(b.status!==undefined){
+        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');
+        update.status=status;
+        if(status!==current.status){
+          update.statusHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.identity.uid});
+          if(status==='in_progress'&&!current.execution?.startedAt)update['execution.startedAt']=admin.firestore.FieldValue.serverTimestamp();
+          if(status==='completed'&&!current.execution?.completedAt)update['execution.completedAt']=admin.firestore.FieldValue.serverTimestamp();
+        }
+      }
+      if(b.scheduledDate!==undefined){
+        const value=clean(b.scheduledDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_SCHEDULE_DATE');update['schedule.date']=value;
+      }
+      if(b.scheduledWindow!==undefined){
+        const value=clean(b.scheduledWindow);if(value&&!serviceWindows.has(value))throw new TypeError('INVALID_SCHEDULE_WINDOW');update['schedule.window']=value;
+      }
+      if(b.assignedTo!==undefined)update['schedule.assignedTo']=clean(b.assignedTo).slice(0,100);
+      if(b.executionNotes!==undefined)update['execution.notes']=clean(b.executionNotes).slice(0,1500);
+      if(b.finalAmountCents!==undefined){
+        const value=Number(b.finalAmountCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.finalAmountCents']=value;
+      }
+      if(b.amountPaidCents!==undefined){
+        const value=Number(b.amountPaidCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.amountPaidCents']=value;
+      }
+      if(b.paymentStatus!==undefined){
+        const value=clean(b.paymentStatus);if(!paymentStatuses.has(value))throw new TypeError('INVALID_PAYMENT_STATUS');update['commercial.paymentStatus']=value;
+      }
+      if(b.nextServiceDate!==undefined){
+        const value=clean(b.nextServiceDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_NEXT_SERVICE_DATE');update['return.nextServiceDate']=value;
+      }
+      if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
+
+      const nextStatus=clean(b.status||current.status);
+      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt;
+      if(completedNow){
+        const finalAmount=Number.isSafeInteger(Number(b.finalAmountCents))?Number(b.finalAmountCents):Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0);
+        update.completionRecordedAt=admin.firestore.FieldValue.serverTimestamp();
+        const customerId=safeId(current.customerId);
+        if(customerId){
+          const customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`),customer=await tx.get(customerRef);
+          const lifetime=Number(customer.data()?.lifetimeRevenueCents||0);
+          const nextServiceDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):clean(current.return?.nextServiceDate);
+          tx.set(customerRef,{name:current.customer?.name||customer.data()?.name||'',phone:current.customer?.phone||customer.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        }
+      } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
+        tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      }
+      tx.update(ref,update);response={ok:true,status:nextStatus};
+    });
+    res.json(response);
+  }catch(e){
+    console.error(e);const code=e?.message;
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_NEXT_SERVICE_DATE'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    sendError(res,500,'INTERNAL_ERROR')
+  }
+});
 
 app.use((err,_req,res,_next)=>{console.error(err);sendError(res,err?.code==='LIMIT_FILE_SIZE'?413:400,err?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'INVALID_UPLOAD')});
 app.use((_req,res)=>sendError(res,404,'NOT_FOUND'));
