@@ -136,3 +136,22 @@ Leads podem registrar:
 O objetivo é aprender com dados reais quais abordagens geram avanço no funil. O Radar mostra volume e conversão por argumento, sem declarar causalidade quando a amostra ainda é pequena.
 
 O Raio-X entra automaticamente com canal `xray`, argumento `revenue_visibility` e campanha `revenue_xray`.
+
+
+## Importação em lote e deduplicação
+
+O Radar aceita até 50 prospects por lote.
+
+A interface permite colar diretamente uma tabela do Google Sheets. Quando identifica a estrutura da planilha inicial do projeto (Empresa, Cidade, Segmento, Telefone, sinais do score etc.), ela converte automaticamente as colunas para o modelo do Radar.
+
+A API:
+
+- valida cada linha separadamente;
+- ignora linhas inválidas sem derrubar todo o lote;
+- elimina repetidos dentro do próprio lote;
+- consulta repetidos já existentes;
+- retorna quantos foram criados e quais índices foram ignorados.
+
+A deduplicação inicial usa uma impressão digital de **nome normalizado da empresa + cidade**. Telefone não participa da identidade porque um mesmo negócio pode trocar ou divulgar números diferentes.
+
+Essa identidade é uma heurística de aquisição, não um identificador legal. Quando o enriquecimento oficial com CNPJ/Place ID for habilitado, esses identificadores devem ter precedência para reconciliar entidades.
