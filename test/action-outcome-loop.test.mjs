@@ -27,8 +27,8 @@ test('human outcome stays separate from assisted-revenue contact fact',()=>{
 
 test('same-day idempotent event can refine outcome without duplicating contact',()=>{
   const server=read('../server.mjs');
-  assert.ok(server.includes("eventRef.set({outcome,outcomeNote,snoozeDays,nextEligibleDate,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})"));
-  assert.ok(server.includes("targetRef.set({assistanceCooldowns,lastAssistanceOutcome},{merge:true})"));
+  assert.ok(server.includes("tx.set(eventRef,{outcome,outcomeNote,snoozeDays,nextEligibleDate,metricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})"));
+  assert.ok(server.includes("tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true})"));
   assert.ok(server.includes("idempotent:true"));
 });
 

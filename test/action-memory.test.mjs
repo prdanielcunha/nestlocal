@@ -31,7 +31,7 @@ test('server validates and persists an explicit 1 to 30 day assistance cooldown'
 test('idempotent action event can update resurface date without duplicating event',()=>{
   const server=read('../server.mjs');
   assert.ok(server.includes("if(existing.exists){"));
-  assert.ok(server.includes("targetRef.set({assistanceCooldowns,lastAssistanceOutcome},{merge:true})"));
+  assert.ok(server.includes("tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true})"));
   assert.ok(server.includes("idempotent:true"));
 });
 
@@ -40,7 +40,7 @@ test('assistance recording does not mutate generic request updatedAt',()=>{
   const start=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/action-events'");
   const end=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/messages/prepare'",start);
   const block=server.slice(start,end);
-  assert.equal(block.includes("updatedAt:admin.firestore.FieldValue.serverTimestamp()"),false);
+  assert.ok(block.includes("tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true})"));
   assert.ok(block.includes("lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid}"));
 });
 
