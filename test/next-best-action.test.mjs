@@ -42,7 +42,7 @@ test('Today renders the action engine and keeps WhatsApp manual', () => {
   for (const token of [
     'actionEngineTitle',
     'function actionRow',
-    'data-open-request="${esc(a.requestId||'')}"',
+    "data-open-request=\"${esc(a.requestId||\'\')}\"",
     'reactivationMessage',
     'https://wa.me/',
   ]) assert.ok(client.includes(token), `missing ${token}`);
