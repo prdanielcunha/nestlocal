@@ -495,11 +495,11 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     }
     const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
     if(existing.exists){
-      await targetRef.set({assistanceCooldowns,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      await targetRef.set({assistanceCooldowns},{merge:true});
       return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',nextEligibleDate,idempotent:true});
     }
     const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
-    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},assistanceCooldowns,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
+    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},assistanceCooldowns},{merge:true});await batch.commit();
     res.status(201).json({id:eventId,actionType,channel,status:'completed_by_user',nextEligibleDate});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
