@@ -475,13 +475,14 @@ app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,as
 
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),requestId=safeId(b.requestId),customerId=safeId(b.customerId);
+    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
     if(!assistanceActionTypes.has(actionType)||!assistanceChannels.has(channel))return sendError(res,400,'INVALID_ACTION_EVENT');
+    if(!Number.isSafeInteger(snoozeDays)||snoozeDays<1||snoozeDays>30)return sendError(res,400,'INVALID_SNOOZE_DAYS');
     if(actionType==='quote_followup'&&!requestId)return sendError(res,400,'REQUEST_REQUIRED');
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
     const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
     const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
-    const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now();
+    const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),nextEligibleDate=addIsoDays(today,snoozeDays),assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
       if(data.status!=='quoted'||!updatedAt||now-updatedAt<48*60*60*1000)return sendError(res,409,'FOLLOWUP_NOT_DUE');
@@ -493,10 +494,13 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       if(channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
     const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
-    if(existing.exists)return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',idempotent:true});
-    const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
-    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
-    res.status(201).json({id:eventId,actionType,channel,status:'completed_by_user'});
+    if(existing.exists){
+      await targetRef.set({assistanceCooldowns,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',nextEligibleDate,idempotent:true});
+    }
+    const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},assistanceCooldowns,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});await batch.commit();
+    res.status(201).json({id:eventId,actionType,channel,status:'completed_by_user',nextEligibleDate});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
