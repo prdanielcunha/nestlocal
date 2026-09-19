@@ -21,13 +21,14 @@ test('action idempotency is separated by channel and organization local day', ()
 
 test('client only exposes WhatsApp action when compatible consent exists', () => {
   const client = read('../web/live.js');
+  const playbooks = read('../web/action-playbooks.js');
   for (const token of [
     "whatsappAllowed:r.messagingConsent?.serviceUpdates?.accepted===true",
     "whatsappAllowed:c.messaging?.consents?.maintenanceReminders?.accepted===true",
-    "phone&&a.whatsappAllowed",
-    "phone&&whatsappAllowed",
+    "playbook.whatsappAllowed&&phone",
     "whatsappNoOptIn",
   ]) assert.ok(client.includes(token), `missing ${token}`);
+  assert.ok(playbooks.includes("if(action.whatsappAllowed!==true)"), 'playbook readiness must fail closed without purpose consent');
 });
 
 test('phone stays available as an explicit non-WhatsApp channel', () => {
