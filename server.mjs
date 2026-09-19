@@ -483,7 +483,11 @@ app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/rebook',auth
     await db.runTransaction(async tx=>{
       const customerSnap=await tx.get(customerRef);
       if(!customerSnap.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
-      const customer=customerSnap.data(),dueDate=clean(customer.nextServiceDate);
+      const customer=customerSnap.data(),activeReturnRequestId=safeId(customer.activeReturnRequestId),dueDate=clean(customer.nextServiceDate);
+      if(activeReturnRequestId){
+        const activeSnap=await tx.get(db.doc(`${root}/nestlocal_requests/${activeReturnRequestId}`));
+        if(activeSnap.exists&&!['completed','declined','cancelled'].includes(clean(activeSnap.data()?.status))){result={requestId:activeReturnRequestId,idempotent:true,status:clean(activeSnap.data()?.status)||'reviewing',existingActive:true};return}
+      }
       if(!dueDate||dueDate>today)throw new TypeError('REACTIVATION_NOT_DUE');
       const serviceId=safeId(req.body?.serviceId)||safeId(customer.lastServiceId),sourceRequestId=safeId(customer.lastRequestId);
       if(!serviceId)throw new TypeError('SERVICE_REQUIRED');
@@ -696,7 +700,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         if(customerRef){
           const lifetime=Number(customer?.data()?.lifetimeRevenueCents||0),explicitDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):null,currentDate=clean(current.return?.nextServiceDate),ruleDays=Number(service?.data()?.returnAfterDays||0),orgTimeZone=clean(settings?.data()?.timezone)||'America/Sao_Paulo',completedLocalDate=localIsoDate(validTimeZone(orgTimeZone)?orgTimeZone:'UTC'),autoDate=explicitDate===null&&!currentDate&&Number.isInteger(ruleDays)&&ruleDays>0?addIsoDays(completedLocalDate,ruleDays):'',nextServiceDate=explicitDate!==null?explicitDate:(currentDate||autoDate),manualReason=clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),autoReason=autoDate?clean(service?.data()?.name||current.serviceId):'',nextServiceReason=manualReason||autoReason;
           if(autoDate){update['return.nextServiceDate']=autoDate;update['return.reason']=nextServiceReason;update['return.source']='service_rule';update['return.ruleDays']=ruleDays}
-          tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',activeReturnRequestId:admin.firestore.FieldValue.delete(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+          tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',...(customer?.data()?.activeReturnRequestId===requestId?{activeReturnRequestId:admin.firestore.FieldValue.delete()}:{}),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
       } else if(rebookTerminal&&customerRef&&customer?.data()?.activeReturnRequestId===requestId){
         tx.set(customerRef,{activeReturnRequestId:admin.firestore.FieldValue.delete(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
