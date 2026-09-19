@@ -18,7 +18,7 @@ test('non-contact Autopilot actions target the exact request instead of generic 
 test('deep-link navigation opens and scrolls the target request',()=>{
   for(const token of [
     "querySelectorAll('[data-open-request]')",
-    "S.page='requests';S.focusRequestId=id;render()",
+    "S.page='requests';S.focusRequestId=id;S.autopilotRequestId=id;render()",
     "target.open=true",
     "target.classList.add('focused-request')",
     "target.scrollIntoView({behavior:'smooth',block:'center'})",
@@ -26,8 +26,8 @@ test('deep-link navigation opens and scrolls the target request',()=>{
 });
 
 test('normal navigation and organization switches clear stale request focus',()=>{
-  assert.ok(client.includes("S.focusRequestId='';S.page=x.dataset.nav"));
-  assert.ok(client.includes("S.focusRequestId='';S.orgId=e.target.value"));
+  assert.ok(client.includes("S.focusRequestId='';S.autopilotRequestId='';S.page=x.dataset.nav"));
+  assert.ok(client.includes("S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value"));
 });
 
 test('focused request has a visible but temporary responsive-safe treatment',()=>{
