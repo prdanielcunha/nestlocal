@@ -152,6 +152,7 @@ jobs:
           grep -q 'growthFunnelView' /tmp/nestlocal-live.js
           grep -q 'parseGrowthBatch' /tmp/nestlocal-live.js
           grep -q 'nextBestActions' /tmp/nestlocal-live.js
+          grep -q 'outcomeLearningCard' /tmp/nestlocal-live.js
           grep -q 'data-decision="accepted"' /tmp/nestlocal-live.js
 
           fetch https://nestlocal.millionsnest.com/growth.css > /tmp/nestlocal-growth.css
@@ -161,7 +162,9 @@ jobs:
           fetch https://nestlocal.millionsnest.com/operations.css > /tmp/nestlocal-operations.css
           grep -q '.lifecycle-form' /tmp/nestlocal-operations.css
           grep -q '.next-action' /tmp/nestlocal-operations.css
+          grep -q '.learning-metrics' /tmp/nestlocal-operations.css
 
           fetch https://nestlocal.web.app/live.js > /tmp/nestlocal-alias-live.js
           grep -q 'revenueXrayView' /tmp/nestlocal-alias-live.js
           grep -q 'nextBestActions' /tmp/nestlocal-alias-live.js
+          grep -q 'outcomeLearningCard' /tmp/nestlocal-alias-live.js
