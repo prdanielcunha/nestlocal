@@ -122,6 +122,30 @@ function addIsoDays(isoDate,days){
   return new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])+Number(days),12)).toISOString().slice(0,10);
 }
 const timestampMillis=v=>v?.toMillis?.()||v?.toDate?.().getTime?.()||0;
+const metricCount=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?Math.floor(n):0};
+const bumpMetric=(source,key,delta)=>{const next={...(source||{})},current=metricCount(next[key]);next[key]=Math.max(0,current+delta);return next};
+function updateActionMetric(metric={}, {day,outcome,channel,actionType,previousOutcome='',counted=false}={}){
+  let total=metricCount(metric.total),outcomes={...(metric.outcomes||{})},channels={...(metric.channels||{})},actionTypes={...(metric.actionTypes||{})};
+  if(!counted){
+    total+=1;outcomes=bumpMetric(outcomes,outcome,1);channels=bumpMetric(channels,channel,1);actionTypes=bumpMetric(actionTypes,actionType,1);
+  }else if(previousOutcome&&previousOutcome!==outcome){
+    outcomes=bumpMetric(outcomes,previousOutcome,-1);outcomes=bumpMetric(outcomes,outcome,1);
+  }
+  return {date:day,total,outcomes,channels,actionTypes};
+}
+function actionOutcomeSnapshot(rows=[], {periodStart='',periodEnd=''}={}){
+  const outcomes={unresolved:0,no_response:0,asked_later:0,positive_signal:0,not_interested:0},channels={whatsapp:0,phone:0,email:0,other:0},actionTypes={quote_followup:0,customer_reactivation:0};
+  let total=0,daysWithData=0;
+  for(const row of rows){
+    const rowTotal=metricCount(row?.total);total+=rowTotal;if(rowTotal>0)daysWithData+=1;
+    for(const key of Object.keys(outcomes))outcomes[key]+=metricCount(row?.outcomes?.[key]);
+    for(const key of Object.keys(channels))channels[key]+=metricCount(row?.channels?.[key]);
+    for(const key of Object.keys(actionTypes))actionTypes[key]+=metricCount(row?.actionTypes?.[key]);
+  }
+  const responseRecorded=outcomes.asked_later+outcomes.positive_signal+outcomes.not_interested;
+  return {windowDays:30,periodStart,periodEnd,total,responseRecorded,positiveSignals:outcomes.positive_signal,noResponses:outcomes.no_response,askedLater:outcomes.asked_later,notInterested:outcomes.not_interested,unresolved:outcomes.unresolved,channels,actionTypes,daysWithData};
+}
+
 const freshAssistance=(value,maxDays)=>value&&timestampMillis(value.at)>0&&(Date.now()-timestampMillis(value.at))<=maxDays*86400000;
 function growthFitScore(signals={}){
   const weights={quote:20,whatsapp:20,scheduling:15,recurrence:15,demand:10,smallTeam:10,ownerInvolved:5,noStrongSystem:5};
@@ -429,8 +453,8 @@ app.get('/api/session',authenticate,async(req,res)=>{
 
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
-    const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200;
-    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics]=await Promise.all([
+    const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
+    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
       db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
       db.collection(`${root}/nestlocal_customers`).limit(100).get(),
@@ -438,10 +462,11 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.doc(`${root}/nestlocal_usage/${monthId}`).get(),
       db.collection(`${root}/members`).limit(100).get(),
       db.collection(`${root}/nestlocal_message_outbox`).orderBy('createdAt','desc').limit(30).get(),
-      db.doc(`${root}/nestlocal_metrics/revenue`).get()
+      db.doc(`${root}/nestlocal_metrics/revenue`).get(),
+      db.collection(`${root}/nestlocal_action_metrics`).where('date','>=',actionMetricStart).orderBy('date').limit(31).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()}));
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0}})
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today})})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -495,17 +520,23 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       if(!nextDate||nextDate>today)return sendError(res,409,'REACTIVATION_NOT_DUE');
       if(channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
-    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get(),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
-    if(existing.exists){
-      await Promise.all([
-        eventRef.set({outcome,outcomeNote,snoozeDays,nextEligibleDate,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}),
-        targetRef.set({assistanceCooldowns,lastAssistanceOutcome},{merge:true})
-      ]);
-      return res.json({id:eventId,actionType,channel,outcome,outcomeNote,status:existing.data()?.status||'completed_by_user',nextEligibleDate,idempotent:true});
-    }
-    const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
-    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});await batch.commit();
-    res.status(201).json({id:eventId,actionType,channel,outcome,outcomeNote,status:'completed_by_user',nextEligibleDate});
+    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),metricRef=db.doc(`${root}/nestlocal_action_metrics/${day}`),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
+    let response=null;
+    await db.runTransaction(async tx=>{
+      const [existing,metricSnap]=await Promise.all([tx.get(eventRef),tx.get(metricRef)]),existingData=existing.exists?existing.data():null,previousOutcome=assistanceOutcomes.has(clean(existingData?.outcome))?clean(existingData.outcome):'unresolved',counted=existingData?.metricsRecorded===true;
+      const metric=updateActionMetric(metricSnap.exists?metricSnap.data():{}, {day,outcome,channel,actionType,previousOutcome,counted});
+      if(existing.exists){
+        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,nextEligibleDate,metricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true});
+        tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
+        response={id:eventId,actionType,channel,outcome,outcomeNote,status:existingData?.status||'completed_by_user',nextEligibleDate,idempotent:true};
+        return;
+      }
+      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,metricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+      tx.create(eventRef,event);tx.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
+      response={id:eventId,actionType,channel,outcome,outcomeNote,status:'completed_by_user',nextEligibleDate};
+    });
+    res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
