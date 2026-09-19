@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -122,30 +123,6 @@ function addIsoDays(isoDate,days){
   return new Date(Date.UTC(Number(match[1]),Number(match[2])-1,Number(match[3])+Number(days),12)).toISOString().slice(0,10);
 }
 const timestampMillis=v=>v?.toMillis?.()||v?.toDate?.().getTime?.()||0;
-const metricCount=value=>{const n=Number(value);return Number.isFinite(n)&&n>0?Math.floor(n):0};
-const bumpMetric=(source,key,delta)=>{const next={...(source||{})},current=metricCount(next[key]);next[key]=Math.max(0,current+delta);return next};
-function updateActionMetric(metric={}, {day,outcome,channel,actionType,previousOutcome='',counted=false}={}){
-  let total=metricCount(metric.total),outcomes={...(metric.outcomes||{})},channels={...(metric.channels||{})},actionTypes={...(metric.actionTypes||{})};
-  if(!counted){
-    total+=1;outcomes=bumpMetric(outcomes,outcome,1);channels=bumpMetric(channels,channel,1);actionTypes=bumpMetric(actionTypes,actionType,1);
-  }else if(previousOutcome&&previousOutcome!==outcome){
-    outcomes=bumpMetric(outcomes,previousOutcome,-1);outcomes=bumpMetric(outcomes,outcome,1);
-  }
-  return {date:day,total,outcomes,channels,actionTypes};
-}
-function actionOutcomeSnapshot(rows=[], {periodStart='',periodEnd=''}={}){
-  const outcomes={unresolved:0,no_response:0,asked_later:0,positive_signal:0,not_interested:0},channels={whatsapp:0,phone:0,email:0,other:0},actionTypes={quote_followup:0,customer_reactivation:0};
-  let total=0,daysWithData=0;
-  for(const row of rows){
-    const rowTotal=metricCount(row?.total);total+=rowTotal;if(rowTotal>0)daysWithData+=1;
-    for(const key of Object.keys(outcomes))outcomes[key]+=metricCount(row?.outcomes?.[key]);
-    for(const key of Object.keys(channels))channels[key]+=metricCount(row?.channels?.[key]);
-    for(const key of Object.keys(actionTypes))actionTypes[key]+=metricCount(row?.actionTypes?.[key]);
-  }
-  const responseRecorded=outcomes.asked_later+outcomes.positive_signal+outcomes.not_interested;
-  return {windowDays:30,periodStart,periodEnd,total,responseRecorded,positiveSignals:outcomes.positive_signal,noResponses:outcomes.no_response,askedLater:outcomes.asked_later,notInterested:outcomes.not_interested,unresolved:outcomes.unresolved,channels,actionTypes,daysWithData};
-}
-
 const freshAssistance=(value,maxDays)=>value&&timestampMillis(value.at)>0&&(Date.now()-timestampMillis(value.at))<=maxDays*86400000;
 function growthFitScore(signals={}){
   const weights={quote:20,whatsapp:20,scheduling:15,recurrence:15,demand:10,smallTeam:10,ownerInvolved:5,noStrongSystem:5};
