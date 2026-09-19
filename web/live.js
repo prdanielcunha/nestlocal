@@ -183,7 +183,7 @@ function nextBestActions(){
     else if(['new','reviewing'].includes(r.status))actions.push({type:'review',priority:82,requestId:r.id,customerName,amount});
     else if(r.status==='quoted'){
       const created=timestampMs(r.updatedAt)||timestampMs(r.createdAt);
-      if(!created||now-created>=48*60*60*1000)actions.push({type:'followup',priority:76,requestId:r.id,customerName,amount,phone,whatsappAllowed:r.messagingConsent?.serviceUpdates?.accepted===true});
+      if(!created||now-created>=48*60*60*1000)actions.push({type:'followup',priority:76,requestId:r.id,customerName,amount,phone,ageHours:created?Math.floor((now-created)/(60*60*1000)):48,whatsappAllowed:r.messagingConsent?.serviceUpdates?.accepted===true});
     } else if(r.status==='completed'&&['pending','partial'].includes(r.commercial?.paymentStatus||'')){
       actions.push({type:'collect',priority:72,requestId:r.id,customerName,amount:Math.max(0,Number(r.commercial?.finalAmountCents??r.quote?.totalCents??0)-Number(r.commercial?.amountPaidCents||0))});
     }
@@ -193,18 +193,33 @@ function nextBestActions(){
   }
   return actions.sort((a,b)=>b.priority-a.priority||String(a.customerName).localeCompare(String(b.customerName))).slice(0,20);
 }
-function actionRow(a){
+function actionControls(a){
   const phone=String(a.phone||'').replace(/\D/g,''),isAssist=['followup','reactivate'].includes(a.type),actionType=a.type==='followup'?'quote_followup':a.type==='reactivate'?'customer_reactivation':'',msg=encodeURIComponent(a.type==='reactivate'?t('reactivationMessage'):'Olá! Tudo bem? Passando para saber se ficou alguma dúvida sobre o orçamento.');
   const whatsappActions=isAssist&&phone&&a.whatsappAllowed?`<a class="button small" target="_blank" rel="noopener" href="https://wa.me/${esc(phone)}?text=${msg}">WhatsApp</a><button class="button small" data-assistance="${esc(actionType)}" data-assistance-channel="whatsapp" data-request-id="${esc(a.requestId||'')}" data-customer-id="${esc(a.customerId||'')}">${t('recordWhatsapp')}</button>`:'';
   const phoneActions=isAssist&&phone?`<a class="button small" href="tel:+${esc(phone)}">${t('call')}</a><button class="button small" data-assistance="${esc(actionType)}" data-assistance-channel="phone" data-request-id="${esc(a.requestId||'')}" data-customer-id="${esc(a.customerId||'')}">${t('recordCall')}</button>`:'';
   const consentNote=isAssist&&phone&&!a.whatsappAllowed?`<span class="consent-status blocked">${t('whatsappNoOptIn')}</span>`:'';
-  return `<div class="next-action"><div><span class="action-priority">${t('priority')} ${esc(a.priority)}</span><strong>${t(`action_${a.type}`)}</strong><small>${esc(a.customerName)}${a.dueDate?` · ${esc(a.dueDate)}`:''}${a.amount?` · ${money(a.amount)}`:''}</small></div><div class="assistance-actions">${isAssist?`${whatsappActions}${phoneActions}${consentNote}`:`<button class="button small" data-action-page="requests">${t('openRequests')}</button>`}</div></div>`;
+  return isAssist?`${whatsappActions}${phoneActions}${consentNote}`:`<button class="button small" data-action-page="requests">${t('openRequests')}</button>`;
+}
+function actionReason(a){
+  return t(a.reasonKey).replace('{n}',String(a.reasonValue||0));
+}
+function urgencyLabel(a){
+  return a.urgency==='now'?t('focusNow'):a.urgency==='next'?t('focusNext'):t('focusOpportunity');
+}
+function actionRow(a){
+  return `<div class="next-action"><div><span class="action-priority ${esc(a.urgency||'')}">${urgencyLabel(a)}</span><strong>${t(`action_${a.type}`)}</strong><small>${esc(a.customerName)}${a.dueDate?` · ${esc(a.dueDate)}`:''}${a.amount?` · ${money(a.amount)}`:''}</small><p class="action-reason"><b>${t('whyNow')}</b> ${esc(actionReason(a))}</p></div><div class="assistance-actions">${actionControls(a)}</div></div>`;
+}
+function focusQueueCard(actions){
+  const queue=buildFocusQueue(actions,organizationDateIso());
+  if(!queue.focus)return '';
+  const focus=queue.focus;
+  return `<article class="card focus-queue"><div class="section-title"><div><h2>${t('focusQueue')}</h2><p class="help">${t('focusQueueHelp')}</p></div><span>${queue.total}</span></div><section class="focus-action"><div class="focus-copy"><span class="action-priority ${esc(focus.urgency)}">${urgencyLabel(focus)}</span><h3>${t(`action_${focus.type}`)}</h3><p class="focus-person">${esc(focus.customerName)}${focus.dueDate?` · ${esc(focus.dueDate)}`:''}${focus.amount?` · ${money(focus.amount)}`:''}</p><div class="why-card"><span>${t('whyNow')}</span><strong>${esc(actionReason(focus))}</strong></div></div><div class="focus-controls assistance-actions">${actionControls(focus)}</div></section>${queue.next.length?`<div class="focus-next"><div class="focus-next-head"><strong>${t('focusNext')}</strong>${queue.remainingCount?`<span>+${queue.remainingCount} ${t('moreActions')}</span>`:''}</div>${queue.next.map(actionRow).join('')}</div>`:''}</article>`;
 }
 
 
 function today(){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
-  return `<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article></div>${opportunityPulseCard()}${smartFillCard()}${actions.length?`<article class="card next-actions-card"><div class="section-title"><div><h2>${t('actionEngineTitle')}</h2><p class="help">${t('actionEngineHelp')}</p></div><span>${actions.length}</span></div><div class="next-actions-list">${actions.slice(0,10).map(actionRow).join('')}</div></article>`:''}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+  return `<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article></div>${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function requests(){const a=S.data.requests||[];return `<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>`}
 function agenda(){const a=(S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status));return `<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>`}
