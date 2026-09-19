@@ -100,6 +100,7 @@ const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const messageCategories=new Set(['service_update','maintenance_reminder']);
 const assistanceActionTypes=new Set(['quote_followup','customer_reactivation']);
 const assistanceChannels=new Set(['whatsapp','phone','email','other']);
+const assistanceOutcomes=new Set(['unresolved','no_response','asked_later','positive_signal','not_interested']);
 const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
 const capacityWindows=new Set(['morning','afternoon','evening']);
 const scheduleSlotStatuses=new Set(['scheduled','in_progress']);
@@ -475,8 +476,9 @@ app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,as
 
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
+    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
     if(!assistanceActionTypes.has(actionType)||!assistanceChannels.has(channel))return sendError(res,400,'INVALID_ACTION_EVENT');
+    if(!assistanceOutcomes.has(outcome))return sendError(res,400,'INVALID_ACTION_OUTCOME');
     if(!Number.isSafeInteger(snoozeDays)||snoozeDays<1||snoozeDays>30)return sendError(res,400,'INVALID_SNOOZE_DAYS');
     if(actionType==='quote_followup'&&!requestId)return sendError(res,400,'REQUEST_REQUIRED');
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
@@ -493,14 +495,17 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       if(!nextDate||nextDate>today)return sendError(res,409,'REACTIVATION_NOT_DUE');
       if(channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
-    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get();
+    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),existing=await eventRef.get(),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
     if(existing.exists){
-      await targetRef.set({assistanceCooldowns},{merge:true});
-      return res.json({id:eventId,actionType,channel,status:existing.data()?.status||'completed_by_user',nextEligibleDate,idempotent:true});
+      await Promise.all([
+        eventRef.set({outcome,outcomeNote,snoozeDays,nextEligibleDate,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}),
+        targetRef.set({assistanceCooldowns,lastAssistanceOutcome},{merge:true})
+      ]);
+      return res.json({id:eventId,actionType,channel,outcome,outcomeNote,status:existing.data()?.status||'completed_by_user',nextEligibleDate,idempotent:true});
     }
-    const at=admin.firestore.Timestamp.now(),event={id:eventId,actionType,channel,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
-    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},assistanceCooldowns},{merge:true});await batch.commit();
-    res.status(201).json({id:eventId,actionType,channel,status:'completed_by_user',nextEligibleDate});
+    const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+    const batch=db.batch();batch.create(eventRef,event);batch.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});await batch.commit();
+    res.status(201).json({id:eventId,actionType,channel,outcome,outcomeNote,status:'completed_by_user',nextEligibleDate});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
