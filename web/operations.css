@@ -132,3 +132,26 @@
 .pulse-signal>em{color:var(--muted,#92a69e);font-size:.66rem;font-style:normal;line-height:1.35}
 @media(max-width:980px){.pulse-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.pulse-head{display:grid}.pulse-trust{justify-content:flex-start}.pulse-grid{grid-template-columns:1fr}.pulse-signal{padding:13px}.pulse-signal>span{white-space:normal}.opportunity-pulse{gap:14px}}
+
+
+/* Explainable Autopilot Focus Queue */
+.focus-queue{display:grid;gap:16px;margin-bottom:16px}
+.focus-action{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;padding:18px;border:1px solid rgba(139,230,192,.18);border-radius:17px;background:linear-gradient(140deg,rgba(91,206,160,.065),rgba(255,255,255,.015))}
+.focus-copy{display:grid;gap:7px;min-width:0}
+.focus-copy h3{margin:0;font-size:1.16rem;letter-spacing:-.025em}
+.focus-person{margin:0;color:var(--muted,#92a69e);font-size:.8rem}
+.focus-controls{align-self:center;justify-content:flex-end}
+.why-card{display:grid;gap:3px;margin-top:5px;padding:10px 12px;border-left:2px solid rgba(139,230,192,.32);background:rgba(255,255,255,.018);border-radius:0 10px 10px 0}
+.why-card span{color:var(--muted,#92a69e);font-size:.64rem;font-weight:700;text-transform:uppercase;letter-spacing:.055em}
+.why-card strong{font-size:.78rem;font-weight:650;line-height:1.45}
+.focus-next{display:grid;gap:8px}
+.focus-next-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 2px}
+.focus-next-head>strong{font-size:.78rem}
+.focus-next-head>span{color:var(--muted,#92a69e);font-size:.7rem}
+.action-reason{margin:2px 0 0;color:var(--muted,#92a69e);font-size:.7rem;line-height:1.4}
+.action-reason b{color:#cfe4dc;font-weight:650}
+.action-priority.now{background:rgba(139,230,192,.12);color:#9cf0c9}
+.action-priority.next{background:rgba(217,178,124,.09);color:#e2bd8b}
+.action-priority.opportunity{background:rgba(255,255,255,.055);color:#b8c8c2}
+@media(max-width:760px){.focus-action{grid-template-columns:1fr}.focus-controls{justify-content:flex-start}}
+@media(max-width:620px){.focus-queue{gap:13px}.focus-action{padding:15px}.focus-controls{display:grid;grid-template-columns:1fr 1fr;width:100%}.focus-controls .button{width:100%}.focus-controls .consent-status{grid-column:1/-1}.focus-next .next-action{padding:12px}}
