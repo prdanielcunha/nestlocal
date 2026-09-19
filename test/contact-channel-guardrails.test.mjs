@@ -24,8 +24,8 @@ test('client only exposes WhatsApp action when compatible consent exists', () =>
   for (const token of [
     "whatsappAllowed:r.messagingConsent?.serviceUpdates?.accepted===true",
     "whatsappAllowed:c.messaging?.consents?.maintenanceReminders?.accepted===true",
-    "phone&&a.whatsappAllowed",
-    "phone&&whatsappAllowed",
+    "playbook.whatsappAllowed&&phone",
+    "if(action.whatsappAllowed!==true)",
     "whatsappNoOptIn",
   ]) assert.ok(client.includes(token), `missing ${token}`);
 });
