@@ -1,3 +1,10 @@
+export function addIsoCalendarDays(isoDate, days) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || '')) || !Number.isInteger(Number(days))) return '';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(isoDate));
+  const value = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + Number(days), 12));
+  return Number.isFinite(value.getTime()) ? value.toISOString().slice(0, 10) : '';
+}
+
 export function daysBetweenIso(from, to) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(to || ''))) return 0;
   const a = Date.parse(from + 'T12:00:00Z');

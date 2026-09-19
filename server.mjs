@@ -478,15 +478,16 @@ app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,as
 
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
+    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),resumeOn=clean(b.resumeOn),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
     if(!assistanceActionTypes.has(actionType)||!assistanceChannels.has(channel))return sendError(res,400,'INVALID_ACTION_EVENT');
     if(!assistanceOutcomes.has(outcome))return sendError(res,400,'INVALID_ACTION_OUTCOME');
     if(!Number.isSafeInteger(snoozeDays)||snoozeDays<1||snoozeDays>30)return sendError(res,400,'INVALID_SNOOZE_DAYS');
+    if(resumeOn&&!/^\d{4}-\d{2}-\d{2}$/.test(resumeOn))return sendError(res,400,'INVALID_RESUME_DATE');
     if(actionType==='quote_followup'&&!requestId)return sendError(res,400,'REQUEST_REQUIRED');
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
     const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
     const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
-    const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),nextEligibleDate=addIsoDays(today,snoozeDays),assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
+    const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),maxResumeDate=addIsoDays(today,90);if(resumeOn&&(resumeOn<=today||resumeOn>maxResumeDate))return sendError(res,400,'INVALID_RESUME_DATE');const nextEligibleDate=resumeOn||addIsoDays(today,snoozeDays),resurfaceMode=resumeOn?'date':'days',assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
       if(data.status!=='quoted'||!updatedAt||now-updatedAt<48*60*60*1000)return sendError(res,409,'FOLLOWUP_NOT_DUE');
@@ -503,15 +504,15 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       const [existing,metricSnap]=await Promise.all([tx.get(eventRef),tx.get(metricRef)]),existingData=existing.exists?existing.data():null,previousOutcome=assistanceOutcomes.has(clean(existingData?.outcome))?clean(existingData.outcome):'unresolved',counted=existingData?.metricsRecorded===true;
       const metric=updateActionMetric(metricSnap.exists?metricSnap.data():{}, {day,outcome,channel,actionType,previousOutcome,counted});
       if(existing.exists){
-        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,nextEligibleDate,metricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true});
         tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
-        response={id:eventId,actionType,channel,outcome,outcomeNote,status:existingData?.status||'completed_by_user',nextEligibleDate,idempotent:true};
+        response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:existingData?.status||'completed_by_user',idempotent:true};
         return;
       }
-      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,nextEligibleDate,metricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
       tx.create(eventRef,event);tx.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
-      response={id:eventId,actionType,channel,outcome,outcomeNote,status:'completed_by_user',nextEligibleDate};
+      response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:'completed_by_user'};
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
