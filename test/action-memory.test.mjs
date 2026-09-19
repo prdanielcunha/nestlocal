@@ -16,15 +16,15 @@ test('invalid cooldown data fails open instead of hiding work forever',()=>{
   assert.equal(actionCooldownAllows({assistanceCooldowns:{quote_followup:'2026-09-20'}},'quote_followup','invalid'),true);
 });
 
-test('server validates and persists an explicit 1 to 30 day assistance cooldown',()=>{
+test('server validates quick cooldowns and persists the resolved eligibility date',()=>{
   const server=read('../server.mjs');
   for(const token of [
     "snoozeDays=Number(b.snoozeDays??1)",
     "snoozeDays<1||snoozeDays>30",
     "'INVALID_SNOOZE_DAYS'",
-    "nextEligibleDate=addIsoDays(today,snoozeDays)",
+    "nextEligibleDate=resumeOn||addIsoDays(today,snoozeDays)",
     "assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate}",
-    "snoozeDays,nextEligibleDate",
+    "snoozeDays,resumeOn,resurfaceMode,nextEligibleDate",
   ]) assert.ok(server.includes(token),'missing '+token);
 });
 
@@ -56,8 +56,8 @@ test('Action Assistant exposes explicit resurface choices and sends the selectio
     "remindAfterContact:'Depois de registrar'",
     'id="action-snooze-days"',
     "const defaultSnooze=action.type==='followup'?2:1",
-    "snoozeDays=Number(document.querySelector('#action-snooze-days')?.value||1)",
-    "snoozeDays})",
+    "snoozeValue=document.querySelector('#action-snooze-days')?.value||'1'",
+    "snoozeDays=snoozeValue==='custom'?1:Number(snoozeValue)",
     "contactRecordedSnoozed",
   ]) assert.ok(client.includes(token),'missing '+token);
 });
