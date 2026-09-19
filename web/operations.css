@@ -155,3 +155,8 @@
 .action-priority.opportunity{background:rgba(255,255,255,.055);color:#b8c8c2}
 @media(max-width:760px){.focus-action{grid-template-columns:1fr}.focus-controls{justify-content:flex-start}}
 @media(max-width:620px){.focus-queue{gap:13px}.focus-action{padding:15px}.focus-controls{display:grid;grid-template-columns:1fr 1fr;width:100%}.focus-controls .button{width:100%}.focus-controls .consent-status{grid-column:1/-1}.focus-next .next-action{padding:12px}}
+
+
+/* Action deep-link */
+.request{scroll-margin-top:96px}
+.request.focused-request{border-color:rgba(139,230,192,.42);box-shadow:0 0 0 1px rgba(139,230,192,.12),0 14px 44px rgba(0,0,0,.16);background:rgba(91,206,160,.035);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
