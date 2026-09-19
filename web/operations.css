@@ -200,3 +200,11 @@
 .assist-snooze{display:grid;gap:7px;padding:12px;border:1px solid rgba(139,230,192,.13);border-radius:13px;background:rgba(91,206,160,.025);color:#dcebe5;font-size:.74rem;font-weight:700}
 .assist-snooze select{width:100%;min-height:40px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035);color:#eef7f3;font:inherit}
 .assist-snooze small{color:var(--muted,#92a69e);font-size:.66rem;font-weight:500;line-height:1.4}
+
+
+/* Reactivation -> new service request */
+.assist-rebook{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px;border:1px solid rgba(139,230,192,.18);border-radius:14px;background:linear-gradient(135deg,rgba(91,206,160,.055),rgba(255,255,255,.015))}
+.assist-rebook>div{display:grid;gap:4px}
+.assist-rebook strong{font-size:.82rem}
+.assist-rebook small{max-width:480px;color:var(--muted,#92a69e);font-size:.68rem;line-height:1.45}
+@media(max-width:620px){.assist-rebook{grid-template-columns:1fr}.assist-rebook .button{width:100%}}
