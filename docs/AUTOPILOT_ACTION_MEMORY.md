@@ -21,20 +21,27 @@ Ao registrar uma ligação ou WhatsApp, o endpoint:
 
 aceita:
 
-`snoozeDays`
+`snoozeDays` ou, opcionalmente, `resumeOn`.
 
-Regras:
+Regras de `snoozeDays`:
 
 - inteiro;
 - mínimo 1;
 - máximo 30;
 - padrão 1 quando não informado.
 
+Regras de `resumeOn`:
+
+- formato `YYYY-MM-DD`;
+- precisa ser posterior ao dia atual da organização;
+- no máximo 90 dias à frente;
+- quando informado, prevalece sobre `snoozeDays`.
+
 O dia atual é calculado no fuso da organização.
 
 A próxima elegibilidade é:
 
-`addIsoDays(today, snoozeDays)`
+`resumeOn || addIsoDays(today, snoozeDays)`
 
 ## Persistência
 
@@ -101,7 +108,9 @@ No Action Assistant o usuário escolhe quando a ação deve voltar:
 
 - amanhã;
 - em 2 dias;
-- em 7 dias.
+- em 7 dias;
+- em 30 dias;
+- em uma data exata escolhida manualmente, até 90 dias.
 
 Padrões:
 
@@ -128,3 +137,24 @@ A memória não:
 - remove permanentemente uma ação.
 
 Ela apenas controla quando uma ação assistida volta a ser elegível para a fila.
+
+
+## Data exata
+
+A opção de data exata existe para situações como “me chama dia 15” ou “retorne no começo do mês que vem”.
+
+Ela não é inferida da observação e não é escolhida pela IA. O usuário seleciona explicitamente a data.
+
+O backend valida a data no calendário da organização e registra:
+
+- `resumeOn`;
+- `resurfaceMode = "date"`;
+- `nextEligibleDate`.
+
+Nos atalhos rápidos, registra:
+
+- `resurfaceMode = "days"`;
+- `snoozeDays`;
+- `nextEligibleDate`.
+
+Assim a fila continua determinística e auditável.

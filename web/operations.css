@@ -200,6 +200,12 @@
 .assist-snooze{display:grid;gap:7px;padding:12px;border:1px solid rgba(139,230,192,.13);border-radius:13px;background:rgba(91,206,160,.025);color:#dcebe5;font-size:.74rem;font-weight:700}
 .assist-snooze select{width:100%;min-height:40px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035);color:#eef7f3;font:inherit}
 .assist-snooze small{color:var(--muted,#92a69e);font-size:.66rem;font-weight:500;line-height:1.4}
+.assist-resume-date{display:grid;gap:7px;padding:9px 0 2px}
+.assist-resume-date[hidden]{display:none}
+.assist-resume-date b{font-size:.69rem;font-weight:700}
+.assist-resume-date input{width:100%;min-height:40px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035);color:#eef7f3;font:inherit;color-scheme:dark}
+.assist-resume-date small{font-size:.64rem}
+
 
 
 /* Autopilot outcome loop */
