@@ -473,6 +473,63 @@ app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,a
 app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,async(req,res)=>{
   try{const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);const [settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);if(!settings.exists||services.empty)return sendError(res,409,'CATALOG_INCOMPLETE');const data=settings.data();const list=services.docs.map(x=>({id:x.id,...x.data()}));for(const s of list){if(s.mode==='fixed')quote({catalog:{organizationId:req.access.orgId,version:'validation',status:'published',currency:'BRL',validForMinutes:data.validForMinutes,coverageCodes:data.coverageCodes,services:[s]},request:{serviceId:s.id,quantity:1,coverageCode:data.coverageCodes[0],equipmentType:s.requiresEquipmentType===false?undefined:s.equipmentTypes?.[0],safeAccess:s.requiresSafeAccess===false?undefined:true},now:new Date()})}const version=`v${Date.now()}`,directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`);await db.runTransaction(async tx=>{const directory=await tx.get(directoryRef);if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});tx.set(settingsRef,{published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});const batch=db.batch();for(const s of services.docs)batch.set(s.ref,{published:true,catalogVersion:version},{merge:true});await batch.commit();res.json({ok:true,version,publicPath:`/s/${data.slug}`})}catch(e){console.error(e);sendError(res,e?.message==='SLUG_TAKEN'?409:409,e?.message==='SLUG_TAKEN'?'SLUG_TAKEN':'CATALOG_INCOMPLETE')}});
 
+app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/rebook',authenticate,authorize,async(req,res)=>{
+  try{
+    const customerId=safeId(req.params.customerId),confirmedByOperator=req.body?.confirmedByOperator===true;
+    if(!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
+    if(!confirmedByOperator)return sendError(res,400,'REBOOK_CONFIRMATION_REQUIRED');
+    const root=`organizations/${req.access.orgId}`,settingsSnap=await db.doc(`${root}/nestlocal_settings/public`).get(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),monthId=new Date().toISOString().slice(0,7),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`);
+    let result=null;
+    await db.runTransaction(async tx=>{
+      const customerSnap=await tx.get(customerRef);
+      if(!customerSnap.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+      const customer=customerSnap.data(),dueDate=clean(customer.nextServiceDate);
+      if(!dueDate||dueDate>today)throw new TypeError('REACTIVATION_NOT_DUE');
+      const serviceId=safeId(req.body?.serviceId)||safeId(customer.lastServiceId),sourceRequestId=safeId(customer.lastRequestId);
+      if(!serviceId)throw new TypeError('SERVICE_REQUIRED');
+      if(!sourceRequestId)throw new TypeError('REBOOK_SOURCE_REQUIRED');
+      const serviceRef=db.doc(`${root}/nestlocal_services/${serviceId}`),sourceRequestRef=db.doc(`${root}/nestlocal_requests/${sourceRequestId}`),requestId=hash(`reactivation_rebook|${customerId}|${serviceId}|${today}`).slice(0,28),requestRef=db.doc(`${root}/nestlocal_requests/${requestId}`);
+      const [serviceSnap,sourceRequestSnap,requestSnap,usageSnap]=await Promise.all([tx.get(serviceRef),tx.get(sourceRequestRef),tx.get(requestRef),tx.get(usageRef)]);
+      if(!serviceSnap.exists)throw new TypeError('SERVICE_NOT_FOUND');
+      if(!sourceRequestSnap.exists||safeId(sourceRequestSnap.data()?.customerId)!==customerId)throw new TypeError('REBOOK_SOURCE_REQUIRED');
+      if(requestSnap.exists){result={requestId,idempotent:true,status:requestSnap.data()?.status||'reviewing'};return}
+      const count=Number(usageSnap.data()?.requestCount||0);if(count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');
+      const source=sourceRequestSnap.data(),sameService=safeId(source.serviceId)===serviceId,at=admin.firestore.Timestamp.now(),lastAssistance=customer.lastAssistance,assisted=lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90);
+      const record={
+        organizationId:req.access.orgId,
+        customerId,
+        customer:{name:clean(customer.name||source.customer?.name).slice(0,100),phone:phone(customer.phone||source.customer?.phone)},
+        address:{line:clean(source.address?.line).slice(0,180),city:clean(source.address?.city).slice(0,80),coverageCode:clean(source.address?.coverageCode).slice(0,80)},
+        preference:{date:'',window:'flexible'},
+        serviceId,
+        quantity:sameService&&Number.isSafeInteger(Number(source.quantity))?Math.max(1,Math.min(10,Number(source.quantity))):1,
+        equipmentType:sameService?clean(source.equipmentType).slice(0,40):'',
+        safeAccess:sameService&&source.safeAccess===true,
+        note:'',
+        status:'reviewing',
+        statusHistory:[{status:'reviewing',at,by:req.identity.uid}],
+        quote:{outcome:'review',currency:'BRL',totalCents:null,reasons:['REACTIVATION_REBOOK_REVIEW_REQUIRED']},
+        source:'reactivation_rebook',
+        reactivationIntent:{confirmedByOperator:true,at,by:req.identity.uid,customerId,sourceRequestId,sourceDueDate:dueDate,sourceActionEventId:assisted?clean(lastAssistance.id):''},
+        messagingConsent:{serviceUpdates:{accepted:false,version:'reactivation-rebook-2026-09',acceptedAt:null,source:'fresh_opt_in_required'}},
+        createdAt:admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+      if(assisted)record.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};
+      tx.create(requestRef,record);
+      tx.set(customerRef,{activeReturnRequestId:requestId,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      result={requestId,idempotent:false,status:'reviewing'};
+    });
+    res.status(result?.idempotent?200:201).json(result);
+  }catch(e){
+    console.error(e);const code=e?.message;
+    if(code==='CUSTOMER_NOT_FOUND')return sendError(res,404,code);
+    if(['REACTIVATION_NOT_DUE','SERVICE_REQUIRED','SERVICE_NOT_FOUND','REBOOK_SOURCE_REQUIRED','PLAN_REQUEST_LIMIT'].includes(code))return sendError(res,code==='PLAN_REQUEST_LIMIT'?429:409,code);
+    sendError(res,500,'INTERNAL_ERROR')
+  }
+});
+
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
@@ -598,7 +655,8 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         slotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${nextSlotId}`);
       }
       if(currentSlotId&&currentSlotId!==nextSlotId)oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`);
-      if(completedNow&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
+      const rebookTerminal=current.source==='reactivation_rebook'&&['completed','declined','cancelled'].includes(nextStatus)&&nextStatus!==current.status;
+      if((completedNow||rebookTerminal)&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
       if(completedNow&&serviceId)serviceRef=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${serviceId}`);
       if(completedNow)settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);
 
@@ -638,8 +696,10 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         if(customerRef){
           const lifetime=Number(customer?.data()?.lifetimeRevenueCents||0),explicitDate=b.nextServiceDate!==undefined?clean(b.nextServiceDate):null,currentDate=clean(current.return?.nextServiceDate),ruleDays=Number(service?.data()?.returnAfterDays||0),orgTimeZone=clean(settings?.data()?.timezone)||'America/Sao_Paulo',completedLocalDate=localIsoDate(validTimeZone(orgTimeZone)?orgTimeZone:'UTC'),autoDate=explicitDate===null&&!currentDate&&Number.isInteger(ruleDays)&&ruleDays>0?addIsoDays(completedLocalDate,ruleDays):'',nextServiceDate=explicitDate!==null?explicitDate:(currentDate||autoDate),manualReason=clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),autoReason=autoDate?clean(service?.data()?.name||current.serviceId):'',nextServiceReason=manualReason||autoReason;
           if(autoDate){update['return.nextServiceDate']=autoDate;update['return.reason']=nextServiceReason;update['return.source']='service_rule';update['return.ruleDays']=ruleDays}
-          tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+          tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',activeReturnRequestId:admin.firestore.FieldValue.delete(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
+      } else if(rebookTerminal&&customerRef&&customer?.data()?.activeReturnRequestId===requestId){
+        tx.set(customerRef,{activeReturnRequestId:admin.firestore.FieldValue.delete(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
         tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }
