@@ -160,3 +160,9 @@
 /* Action deep-link */
 .request{scroll-margin-top:96px}
 .request.focused-request{border-color:rgba(139,230,192,.42);box-shadow:0 0 0 1px rgba(139,230,192,.12),0 14px 44px rgba(0,0,0,.16);background:rgba(91,206,160,.035);transition:border-color .2s ease,box-shadow .2s ease,background .2s ease}
+
+
+/* Autopilot continuity */
+.autopilot-context{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:-2px 0 12px;padding:9px 11px;border:1px solid rgba(139,230,192,.15);border-radius:11px;background:rgba(91,206,160,.035)}
+.autopilot-context span{color:#bfe7d6;font-size:.7rem;font-weight:700}
+@media(max-width:560px){.autopilot-context{align-items:flex-start;flex-direction:column}.autopilot-context .button{width:100%}}
