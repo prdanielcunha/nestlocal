@@ -194,3 +194,9 @@
 .assist-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 @media(max-width:760px){.assist-backdrop{align-items:end;padding:0}.action-assistant{max-height:92vh;border-radius:20px 20px 0 0;padding:17px}.assist-facts{grid-template-columns:1fr 1fr}.assist-readiness{grid-template-columns:1fr}}
 @media(max-width:520px){.assist-facts{grid-template-columns:1fr}.assist-actions{display:grid;grid-template-columns:1fr 1fr}.assist-actions .button{width:100%}.assist-head{gap:10px}}
+
+
+/* Autopilot action memory */
+.assist-snooze{display:grid;gap:7px;padding:12px;border:1px solid rgba(139,230,192,.13);border-radius:13px;background:rgba(91,206,160,.025);color:#dcebe5;font-size:.74rem;font-weight:700}
+.assist-snooze select{width:100%;min-height:40px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035);color:#eef7f3;font:inherit}
+.assist-snooze small{color:var(--muted,#92a69e);font-size:.66rem;font-weight:500;line-height:1.4}

@@ -61,3 +61,11 @@ export function buildFocusQueue(actions = [], today = '') {
     total: decorated.length,
   };
 }
+
+
+export function actionCooldownAllows(entity={},actionType='',today=''){
+  const next=String(entity?.assistanceCooldowns?.[actionType]||'').trim();
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(next))return true;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(String(today||'')))return true;
+  return next<=today;
+}
