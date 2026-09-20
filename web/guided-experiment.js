@@ -37,6 +37,23 @@ export function experimentForAction(experiments=[],action={}){
   return {experiment:active,eligible:true,suggestedVariant:active.nextVariant};
 }
 
+const actionTypeForAction=action=>action?.type==='followup'?'quote_followup':action?.type==='reactivate'?'customer_reactivation':'';
+
+export function experimentContextForAction(experiments=[],action={}){
+  const actionType=actionTypeForAction(action);if(!actionType)return null;
+  const rows=(experiments||[]).filter(Boolean);
+  if(rows.some(exp=>exp.status==='active'&&exp.actionType===actionType))return null;
+  for(const exp of rows){
+    if(exp.status==='active'||exp.actionType!==actionType||exp.review?.decision!=='context_only'||exp.reviewStale===true)continue;
+    const snapshot=exp.review?.snapshot;if(!snapshot||snapshot.actionType!==actionType||snapshot.version!==1)continue;
+    const variants=['whatsapp','phone'].map(key=>{const row=snapshot.variants?.[key]||{};return{key,total:count(row.total),responses:count(row.responses),positive:count(row.positiveSignals),comparable:row.comparable===true,responseRate:Number.isFinite(Number(row.responseRate))?Number(row.responseRate):null,positiveRate:Number.isFinite(Number(row.positiveRate))?Number(row.positiveRate):null}});
+    if(!variants.some(row=>row.total>0))continue;
+    return {id:String(exp.id||snapshot.experimentId||''),actionType,note:String(exp.review?.note||''),sampleTotal:count(snapshot.sampleTotal),complete:snapshot.complete===true,comparable:snapshot.comparable===true,variants,responseSpreadPp:Number.isFinite(Number(snapshot.responseSpreadPp))?Number(snapshot.responseSpreadPp):null,positiveSpreadPp:Number.isFinite(Number(snapshot.positiveSpreadPp))?Number(snapshot.positiveSpreadPp):null};
+  }
+  return null;
+}
+
+
 export function buildExperimentReviewModel(raw={}){
   const experiment=normalizeExperiment(raw);if(!experiment)return null;
   const variants=experiment.variants.map(key=>{
@@ -94,6 +111,21 @@ export function renderGuidedExperiment({experiments=[],snapshot={},canManage=fal
   }
   const history=recent?`<div class="experiment-history"><span>${recent.status==='completed'?t('experimentCompleted'):t('experimentStopped')}</span><strong>${esc(actionLabel(recent.actionType,t))}</strong><div class="experiment-progress">${progressRows({experiment:recent,t,esc})}</div><small>${t('experimentHistoryGuardrail')}</small>${renderExperimentReview({experiment:recent,state,t,esc})}</div>`:'';
   return `<div class="guided-experiment"><div class="guided-experiment-title"><div><span>${t('guidedExperiment')}</span><strong>${t('guidedExperimentTitle')}</strong></div><small>${t('guidedExperimentGuardrail')}</small></div>${body}${history}</div>`;
+}
+
+
+export function renderExperimentContext({context,t,esc}){
+  if(!context)return '';
+  const rows=context.variants.map(row=>{
+    const label=esc(variantLabel(row.key,t));
+    if(!row.comparable||row.responseRate===null)return `<div class="assist-context-variant"><strong>${label}</strong><small>${t('contextSampleOnly').replace('{n}',String(row.total))}</small></div>`;
+    const response=t('contextResponseRate').replace('{rate}',String(row.responseRate)).replace('{responses}',String(row.responses)).replace('{total}',String(row.total));
+    return `<div class="assist-context-variant"><strong>${label}</strong><small>${esc(response)}</small></div>`;
+  }).join('');
+  const spread=context.comparable&&context.responseSpreadPp!==null?`<div class="assist-context-spread"><span>${t('contextObservedSpread')}</span><strong>${context.responseSpreadPp} pp</strong></div>`:'';
+  const incomplete=!context.complete?`<small class="assist-context-limit">${t('contextIncompleteExperiment')}</small>`:'';
+  const note=context.note?`<p>${esc(context.note)}</p>`:'';
+  return `<div class="assist-context"><div class="assist-context-head"><span>${t('operationalMemory')}</span><strong>${t('reviewedContext')}</strong><small>${t('reviewedContextHelp')}</small></div><div class="assist-context-grid">${rows}</div>${spread}${incomplete}${note}<small class="assist-context-guardrail">${t('reviewedContextGuardrail')}</small></div>`;
 }
 
 export function renderExperimentAssist({match,t,esc}){
