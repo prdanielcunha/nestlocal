@@ -79,3 +79,42 @@ export function canCountNewExperimentSample(raw={},variant=''){
   const experiment=normalizeExperiment(raw);
   return experiment.status==='active'&&experiment.variants.includes(variant)&&experiment.progress[variant].total<experiment.targetPerVariant&&!experiment.complete;
 }
+
+export function experimentReviewSnapshot(raw={}){
+  const experiment=normalizeExperiment(raw);
+  const variants={};
+  for(const key of experiment.variants){
+    const row=experiment.progress[key]||{total:0,outcomes:emptyOutcomes(),responseRecorded:0,positiveSignals:0};
+    const total=count(row.total),comparable=total>=5;
+    variants[key]={
+      total,
+      responses:count(row.responseRecorded),
+      positiveSignals:count(row.positiveSignals),
+      noResponses:count(row.outcomes?.no_response),
+      comparable,
+      responseRate:comparable?Math.round(count(row.responseRecorded)/total*100):null,
+      positiveRate:comparable?Math.round(count(row.positiveSignals)/total*100):null,
+    };
+  }
+  const pair=experiment.variants.map(key=>variants[key]),comparable=pair.length===2&&pair.every(row=>row.comparable);
+  const responseSpreadPp=comparable?Math.abs(pair[0].responseRate-pair[1].responseRate):null;
+  const positiveSpreadPp=comparable?Math.abs(pair[0].positiveRate-pair[1].positiveRate):null;
+  return {
+    version:1,
+    experimentId:experiment.id,
+    status:experiment.status,
+    actionType:experiment.actionType,
+    targetPerVariant:experiment.targetPerVariant,
+    sampleTotal:experiment.total,
+    complete:experiment.complete,
+    comparable,
+    variants,
+    responseSpreadPp,
+    positiveSpreadPp,
+    limitations:[
+      ...(experiment.complete?[]:['target_incomplete']),
+      ...(comparable?[]:['small_variant_sample']),
+      'descriptive_only',
+    ],
+  };
+}
