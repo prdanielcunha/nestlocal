@@ -42,8 +42,8 @@ export function normalizeExperiment(raw={}){
       remaining:Math.max(0,targetPerVariant-total),
     };
   }
-  const complete=variants.length===2&&variants.every(v=>progress[v].total>=targetPerVariant);
-  const nextVariant=variants.length?variants.slice().sort((a,b)=>progress[a].total-progress[b].total||variants.indexOf(a)-variants.indexOf(b))[0]:'';
+  const complete=variants.length===2&&variants.every(v=>progress[v].total>=targetPerVariant),openVariants=variants.filter(v=>progress[v].total<targetPerVariant);
+  const nextVariant=openVariants.length?openVariants.slice().sort((a,b)=>progress[a].total-progress[b].total||variants.indexOf(a)-variants.indexOf(b))[0]:'';
   return {
     id:String(raw.id||''),
     status:String(raw.status||''),
