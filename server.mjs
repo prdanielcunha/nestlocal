@@ -506,41 +506,68 @@ app.post('/api/organizations/:orgId/nestlocal/experiments/:experimentId/stop',au
 
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),resumeOn=clean(b.resumeOn),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
+    const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),resumeOn=clean(b.resumeOn),experimentId=safeId(b.experimentId),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
     if(!assistanceActionTypes.has(actionType)||!assistanceChannels.has(channel))return sendError(res,400,'INVALID_ACTION_EVENT');
     if(!assistanceOutcomes.has(outcome))return sendError(res,400,'INVALID_ACTION_OUTCOME');
     if(!Number.isSafeInteger(snoozeDays)||snoozeDays<1||snoozeDays>30)return sendError(res,400,'INVALID_SNOOZE_DAYS');
     if(resumeOn&&!/^\d{4}-\d{2}-\d{2}$/.test(resumeOn))return sendError(res,400,'INVALID_RESUME_DATE');
     if(actionType==='quote_followup'&&!requestId)return sendError(res,400,'REQUEST_REQUIRED');
     if(actionType==='customer_reactivation'&&!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
-    const root=`organizations/${req.access.orgId}`,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
+    const root=`organizations/${req.access.orgId}`,targetType=requestId?'request':'customer',targetId=requestId||customerId,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
     const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
     const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),maxResumeDate=addIsoDays(today,90);if(resumeOn&&(resumeOn<=today||resumeOn>maxResumeDate))return sendError(res,400,'INVALID_RESUME_DATE');const nextEligibleDate=resumeOn||addIsoDays(today,snoozeDays),resurfaceMode=resumeOn?'date':'days',assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
+    const targetPhone=requestId?phone(data.customer?.phone):phone(data.phone),whatsappEligible=actionType==='quote_followup'?data.messagingConsent?.serviceUpdates?.accepted===true:data.messaging?.consents?.maintenanceReminders?.accepted===true,experimentTargetEligible=Boolean(targetPhone)&&whatsappEligible;
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
       if(data.status!=='quoted'||!updatedAt||now-updatedAt<48*60*60*1000)return sendError(res,409,'FOLLOWUP_NOT_DUE');
-      if(channel==='whatsapp'&&data.messagingConsent?.serviceUpdates?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
+      if(channel==='whatsapp'&&!whatsappEligible)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
     if(actionType==='customer_reactivation'){
       const nextDate=clean(data.nextServiceDate);
       if(!nextDate||nextDate>today)return sendError(res,409,'REACTIVATION_NOT_DUE');
-      if(channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
+      if(channel==='whatsapp'&&!whatsappEligible)return sendError(res,409,'WHATSAPP_OPT_IN_REQUIRED');
     }
-    const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),metricRef=db.doc(`${root}/nestlocal_action_metrics/${day}`),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
+    const day=today,eventId=hash(`${actionType}|${targetId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),metricRef=db.doc(`${root}/nestlocal_action_metrics/${day}`),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
     let response=null;
     await db.runTransaction(async tx=>{
       const [existing,metricSnap]=await Promise.all([tx.get(eventRef),tx.get(metricRef)]),existingData=existing.exists?existing.data():null,previousOutcome=assistanceOutcomes.has(clean(existingData?.outcome))?clean(existingData.outcome):'unresolved',counted=existingData?.metricsRecorded===true,cohortCounted=existingData?.cohortMetricsRecorded===true;
       const metric=updateActionMetric(metricSnap.exists?metricSnap.data():{}, {day,outcome,channel,actionType,previousOutcome,counted,cohortCounted});
+      const existingExperimentId=safeId(existingData?.experimentId),linkedExperimentId=existingExperimentId||(!existing.exists?experimentId:''),experimentRef=linkedExperimentId?db.doc(`${root}/nestlocal_experiments/${linkedExperimentId}`):null,sampleRef=linkedExperimentId?db.doc(`${root}/nestlocal_experiment_samples/${hash(`${linkedExperimentId}|${targetType}|${targetId}`).slice(0,32)}`):null,stateRef=linkedExperimentId?db.doc(`${root}/nestlocal_experiment_state/active`):null;
+      let experimentSnap=null,sampleSnap=null,experimentCounted=false,experimentReason='',experimentCompleted=false,experimentVariant='';
+      if(experimentRef&&sampleRef)[experimentSnap,sampleSnap]=await Promise.all([tx.get(experimentRef),tx.get(sampleRef)]);
+      if(existingExperimentId&&experimentSnap?.exists&&existingData?.experimentRecorded===true){
+        const expData={id:experimentSnap.id,...experimentSnap.data()},updated=updateExperimentProgress(expData,{variant:existingData.experimentVariant||channel,outcome,previousOutcome,counted:true});
+        experimentVariant=existingData.experimentVariant||channel;experimentCounted=true;
+        tx.set(experimentRef,{progress:updated.progress,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        if(sampleSnap?.exists)tx.set(sampleRef,{outcome,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      }else if(!existing.exists&&experimentId){
+        if(!experimentSnap?.exists)experimentReason='EXPERIMENT_NOT_AVAILABLE';
+        else{
+          const expData={id:experimentSnap.id,...experimentSnap.data()};
+          if(expData.status!=='active')experimentReason='EXPERIMENT_NOT_ACTIVE';
+          else if(expData.actionType!==actionType)experimentReason='EXPERIMENT_ACTION_MISMATCH';
+          else if(!experimentTargetEligible)experimentReason='EXPERIMENT_TARGET_NOT_ELIGIBLE';
+          else if(sampleSnap?.exists)experimentReason='EXPERIMENT_TARGET_ALREADY_USED';
+          else if(!canCountNewExperimentSample(expData,channel))experimentReason='EXPERIMENT_VARIANT_FULL';
+          else{
+            const updated=updateExperimentProgress(expData,{variant:channel,outcome,counted:false});experimentVariant=channel;experimentCounted=true;experimentCompleted=updated.complete;
+            tx.set(experimentRef,{progress:updated.progress,status:experimentCompleted?'completed':'active',completedAt:experimentCompleted?admin.firestore.FieldValue.serverTimestamp():(expData.completedAt||null),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+            tx.create(sampleRef,{experimentId,targetType,targetId,variant:channel,eventId,outcome,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+            if(experimentCompleted)tx.set(stateRef,{activeExperimentId:'',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+          }
+        }
+      }else if(existing.exists&&experimentId&&!existingExperimentId)experimentReason='EXPERIMENT_EVENT_ALREADY_RECORDED';
+      const experimentFields=experimentCounted?{experimentId:linkedExperimentId,experimentVariant,experimentRecorded:true}:{};
       if(existing.exists){
-        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,...experimentFields,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true});
         tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
-        response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:existingData?.status||'completed_by_user',idempotent:true};
+        response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:existingData?.status||'completed_by_user',idempotent:true,experiment:{id:linkedExperimentId||experimentId||'',counted:experimentCounted,variant:experimentVariant,completed:experimentCompleted,reason:experimentReason}};
         return;
       }
-      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType,targetId,status:'completed_by_user',snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,...experimentFields,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
       tx.create(eventRef,event);tx.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
-      response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:'completed_by_user'};
+      response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:'completed_by_user',experiment:{id:experimentCounted?linkedExperimentId:(experimentId||''),counted:experimentCounted,variant:experimentVariant,completed:experimentCompleted,reason:experimentReason}};
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
