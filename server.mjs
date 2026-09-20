@@ -4,7 +4,7 @@ import admin from 'firebase-admin';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
-import { canCountNewExperimentSample, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
+import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -504,6 +504,25 @@ app.post('/api/organizations/:orgId/nestlocal/experiments/:experimentId/stop',au
   }catch(e){console.error(e);if(e?.message==='EXPERIMENT_NOT_FOUND')return sendError(res,404,'EXPERIMENT_NOT_FOUND');sendError(res,500,'INTERNAL_ERROR')}
 });
 
+app.post('/api/organizations/:orgId/nestlocal/experiments/:experimentId/review',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const experimentId=safeId(req.params.experimentId),decision=clean(req.body?.decision),note=clean(req.body?.note).slice(0,180);
+    if(!experimentId)return sendError(res,400,'INVALID_EXPERIMENT');
+    if(decision!=='context_only')return sendError(res,400,'INVALID_EXPERIMENT_REVIEW');
+    const root=`organizations/${req.access.orgId}`,experimentRef=db.doc(`${root}/nestlocal_experiments/${experimentId}`),at=admin.firestore.Timestamp.now();
+    let response=null;
+    await db.runTransaction(async tx=>{
+      const experiment=await tx.get(experimentRef);if(!experiment.exists)throw new TypeError('EXPERIMENT_NOT_FOUND');
+      const data={id:experiment.id,...experiment.data()};if(data.status==='active')throw new TypeError('EXPERIMENT_REVIEW_NOT_READY');
+      const snapshot=experimentReviewSnapshot(data),review={version:1,decision,note,snapshot,by:req.identity.uid,at};
+      tx.set(experimentRef,{review,reviewStale:false,reviewedAt:at,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      response={id:experimentId,status:data.status,review:{decision,note,snapshot,stale:false}};
+    });
+    res.json(response);
+  }catch(e){console.error(e);if(e?.message==='EXPERIMENT_NOT_FOUND')return sendError(res,404,'EXPERIMENT_NOT_FOUND');if(e?.message==='EXPERIMENT_REVIEW_NOT_READY')return sendError(res,409,'EXPERIMENT_REVIEW_NOT_READY');sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},actionType=clean(b.actionType),channel=clean(b.channel||'other'),outcome=clean(b.outcome||'unresolved').toLowerCase(),outcomeNote=clean(b.outcomeNote).slice(0,180),resumeOn=clean(b.resumeOn),experimentId=safeId(b.experimentId),requestId=safeId(b.requestId),customerId=safeId(b.customerId),snoozeDays=Number(b.snoozeDays??1);
@@ -536,9 +555,9 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       let experimentSnap=null,sampleSnap=null,experimentCounted=false,experimentReason='',experimentCompleted=false,experimentVariant='';
       if(experimentRef&&sampleRef)[experimentSnap,sampleSnap]=await Promise.all([tx.get(experimentRef),tx.get(sampleRef)]);
       if(existingExperimentId&&experimentSnap?.exists&&existingData?.experimentRecorded===true){
-        const expData={id:experimentSnap.id,...experimentSnap.data()},updated=updateExperimentProgress(expData,{variant:existingData.experimentVariant||channel,outcome,previousOutcome,counted:true});
+        const expData={id:experimentSnap.id,...experimentSnap.data()},updated=updateExperimentProgress(expData,{variant:existingData.experimentVariant||channel,outcome,previousOutcome,counted:true}),reviewStale=expData.reviewStale===true||(previousOutcome!==outcome&&Boolean(expData.review?.decision));
         experimentVariant=existingData.experimentVariant||channel;experimentCounted=true;
-        tx.set(experimentRef,{progress:updated.progress,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        tx.set(experimentRef,{progress:updated.progress,reviewStale,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         if(sampleSnap?.exists)tx.set(sampleRef,{outcome,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }else if(!existing.exists&&experimentId){
         if(!experimentSnap?.exists)experimentReason='EXPERIMENT_NOT_AVAILABLE';
