@@ -154,6 +154,8 @@ jobs:
           grep -q 'nextBestActions' /tmp/nestlocal-live.js
           grep -q 'outcomeLearningCard' /tmp/nestlocal-live.js
           grep -q 'explainableInsights' /tmp/nestlocal-live.js
+          grep -q 'data-start-experiment' /tmp/nestlocal-live.js
+          grep -q 'data-experiment-id' /tmp/nestlocal-live.js
           grep -q 'action-resume-date' /tmp/nestlocal-live.js
           grep -q 'data-decision="accepted"' /tmp/nestlocal-live.js
 
@@ -166,10 +168,13 @@ jobs:
           grep -q '.next-action' /tmp/nestlocal-operations.css
           grep -q '.learning-metrics' /tmp/nestlocal-operations.css
           grep -q '.learning-insight-status' /tmp/nestlocal-operations.css
+          grep -q '.guided-experiment' /tmp/nestlocal-operations.css
+          grep -q '.assist-experiment' /tmp/nestlocal-operations.css
 
           fetch https://nestlocal.web.app/live.js > /tmp/nestlocal-alias-live.js
           grep -q 'revenueXrayView' /tmp/nestlocal-alias-live.js
           grep -q 'nextBestActions' /tmp/nestlocal-alias-live.js
           grep -q 'outcomeLearningCard' /tmp/nestlocal-alias-live.js
           grep -q 'explainableInsights' /tmp/nestlocal-alias-live.js
+          grep -q 'data-start-experiment' /tmp/nestlocal-alias-live.js
           grep -q 'action-resume-date' /tmp/nestlocal-alias-live.js
