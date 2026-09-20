@@ -256,3 +256,41 @@
 
 @media(max-width:760px){.learning-metrics{grid-template-columns:1fr 1fr}.learning-breakdowns,.learning-insights{grid-template-columns:1fr}.learning-insight-head{display:grid}.learning-insight-head small{max-width:none;text-align:left}}
 @media(max-width:420px){.learning-metrics{grid-template-columns:1fr 1fr}.learning-metrics>div{min-height:76px;padding:11px}.learning-metrics strong{font-size:1.2rem}.learning-insight-row{grid-template-columns:1fr}.learning-insight-row>span{justify-items:start;text-align:left}}
+
+
+/* Guided Autopilot experiments */
+.learning-stack{display:grid;gap:14px}
+.experiment-card{overflow:hidden}
+.guided-experiment{display:grid;gap:14px}
+.guided-experiment-title{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.guided-experiment-title>div{display:grid;gap:4px}
+.guided-experiment-title span,.experiment-head span,.experiment-next span,.experiment-history>span{color:var(--muted,#92a69e);font-size:.64rem;font-weight:750;text-transform:uppercase;letter-spacing:.055em}
+.guided-experiment-title strong{font-size:.95rem;letter-spacing:-.015em}
+.guided-experiment-title>small{max-width:260px;color:var(--muted,#92a69e);font-size:.65rem;line-height:1.45;text-align:right}
+.experiment-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:13px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(255,255,255,.018)}
+.experiment-head>div{display:grid;gap:4px}
+.experiment-head strong{font-size:.78rem}
+.experiment-head small{color:var(--muted,#92a69e);font-size:.65rem;line-height:1.45}
+.experiment-head.muted{border-style:dashed}
+.experiment-progress{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.experiment-variant{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:12px;border:1px solid rgba(255,255,255,.06);border-radius:13px;background:rgba(255,255,255,.012)}
+.experiment-variant>div,.experiment-variant>span{display:grid;gap:3px}
+.experiment-variant>span{text-align:right;justify-items:end}
+.experiment-variant strong,.experiment-variant b{font-size:.73rem}
+.experiment-variant small{color:var(--muted,#92a69e);font-size:.63rem;line-height:1.35}
+.experiment-next{display:grid;gap:4px;padding:12px;border:1px solid rgba(139,230,192,.16);border-radius:13px;background:rgba(91,206,160,.035)}
+.experiment-next strong{font-size:.82rem}
+.experiment-next small{color:var(--muted,#92a69e);font-size:.64rem;line-height:1.45}
+.experiment-start{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(120px,.7fr) auto;gap:9px;align-items:end}
+.experiment-start label{display:grid;gap:6px;color:var(--muted,#92a69e);font-size:.66rem}
+.experiment-start select{width:100%;min-height:40px;padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.035);color:#eef7f3;font:inherit}
+.experiment-history{display:grid;gap:8px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06)}
+.experiment-history>strong{font-size:.75rem}
+.experiment-history>small{color:var(--muted,#92a69e);font-size:.63rem;line-height:1.45}
+.assist-experiment{display:grid;gap:4px;padding:12px 13px;border:1px solid rgba(139,230,192,.18);border-radius:13px;background:rgba(91,206,160,.04)}
+.assist-experiment.muted{border-color:rgba(255,255,255,.07);background:rgba(255,255,255,.018)}
+.assist-experiment span{color:var(--muted,#92a69e);font-size:.63rem;font-weight:750;text-transform:uppercase;letter-spacing:.055em}
+.assist-experiment strong{font-size:.78rem}
+.assist-experiment small{color:var(--muted,#92a69e);font-size:.64rem;line-height:1.45}
+@media(max-width:760px){.guided-experiment-title{display:grid}.guided-experiment-title>small{text-align:left;max-width:none}.experiment-start{grid-template-columns:1fr 1fr}.experiment-start .button{grid-column:1/-1}.experiment-progress{grid-template-columns:1fr}}
+@media(max-width:420px){.experiment-start{grid-template-columns:1fr}.experiment-start .button{grid-column:auto}.experiment-variant{grid-template-columns:1fr}.experiment-variant>span{text-align:left;justify-items:start}}
