@@ -7,8 +7,8 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('WhatsApp action events require purpose-specific consent', () => {
   const server = read('../server.mjs');
   for (const token of [
-    "channel==='whatsapp'&&data.messagingConsent?.serviceUpdates?.accepted!==true",
-    "channel==='whatsapp'&&data.messaging?.consents?.maintenanceReminders?.accepted!==true",
+    "whatsappEligible=actionType==='quote_followup'?data.messagingConsent?.serviceUpdates?.accepted===true:data.messaging?.consents?.maintenanceReminders?.accepted===true",
+    "channel==='whatsapp'&&!whatsappEligible",
     "WHATSAPP_OPT_IN_REQUIRED",
   ]) assert.ok(server.includes(token), `missing ${token}`);
 });
@@ -16,7 +16,7 @@ test('WhatsApp action events require purpose-specific consent', () => {
 test('action idempotency is separated by channel and organization local day', () => {
   const server = read('../server.mjs');
   assert.ok(server.includes("today=localIsoDate(timeZone)"));
-  assert.ok(server.includes("${actionType}|${requestId||customerId}|${channel}|${day}"));
+  assert.ok(server.includes("${actionType}|${targetId}|${channel}|${day}"));
 });
 
 test('client only exposes WhatsApp action when compatible consent exists', () => {
