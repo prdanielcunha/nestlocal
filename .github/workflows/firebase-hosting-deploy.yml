@@ -136,45 +136,55 @@ jobs:
               --retry 12 --retry-delay 5 --retry-all-errors \
               --connect-timeout 10 --max-time 30 "$1"
           }
+          fetch_until_contains() {
+            local url="$1" file="$2"
+            shift 2
+            for attempt in $(seq 1 10); do
+              local separator='?'
+              [[ "$url" == *'?'* ]] && separator='&'
+              if fetch "${url}${separator}smoke=${GITHUB_SHA}-${attempt}" > "$file"; then
+                local ready=1
+                for pattern in "$@"; do
+                  if ! grep -qF "$pattern" "$file"; then
+                    ready=0
+                    break
+                  fi
+                done
+                if [[ "$ready" -eq 1 ]]; then
+                  return 0
+                fi
+              fi
+              echo "Waiting for deployed content at $url (attempt $attempt/10)" >&2
+              sleep 3
+            done
+            echo "Expected deployed content did not propagate at $url" >&2
+            return 1
+          }
 
           fetch https://nestlocal.millionsnest.com/api/health > /tmp/nestlocal-health.json
           jq -e '.ok == true and .service == "nestlocal-api"' /tmp/nestlocal-health.json >/dev/null
 
-          fetch https://nestlocal.millionsnest.com/ > /tmp/nestlocal-home.html
-          grep -q 'id="app"' /tmp/nestlocal-home.html
-          grep -q '/live.js' /tmp/nestlocal-home.html
+          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js'
+          fetch_until_contains https://nestlocal.millionsnest.com/raio-x /tmp/nestlocal-xray.html 'id="app"'
 
-          fetch https://nestlocal.millionsnest.com/raio-x > /tmp/nestlocal-xray.html
-          grep -q 'id="app"' /tmp/nestlocal-xray.html
+          fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
+            'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
+            'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
+            'data-experiment-id' 'action-resume-date' 'data-decision="accepted"'
 
-          fetch https://nestlocal.millionsnest.com/live.js > /tmp/nestlocal-live.js
-          grep -q 'revenueXrayView' /tmp/nestlocal-live.js
-          grep -q 'growthFunnelView' /tmp/nestlocal-live.js
-          grep -q 'parseGrowthBatch' /tmp/nestlocal-live.js
-          grep -q 'nextBestActions' /tmp/nestlocal-live.js
-          grep -q 'outcomeLearningCard' /tmp/nestlocal-live.js
-          grep -q 'explainableInsights' /tmp/nestlocal-live.js
-          grep -q 'data-start-experiment' /tmp/nestlocal-live.js
-          grep -q 'data-experiment-id' /tmp/nestlocal-live.js
-          grep -q 'action-resume-date' /tmp/nestlocal-live.js
-          grep -q 'data-decision="accepted"' /tmp/nestlocal-live.js
+          fetch_until_contains https://nestlocal.millionsnest.com/guided-experiment.js /tmp/nestlocal-guided-experiment.js \
+            'renderGuidedExperiment' 'experimentForAction' 'guidedExperimentState'
 
-          fetch https://nestlocal.millionsnest.com/growth.css > /tmp/nestlocal-growth.css
-          grep -q '.xray-shell' /tmp/nestlocal-growth.css
-          grep -q '.growth-funnel' /tmp/nestlocal-growth.css
+          fetch_until_contains https://nestlocal.millionsnest.com/growth.css /tmp/nestlocal-growth.css \
+            '.xray-shell' '.growth-funnel'
 
-          fetch https://nestlocal.millionsnest.com/operations.css > /tmp/nestlocal-operations.css
-          grep -q '.lifecycle-form' /tmp/nestlocal-operations.css
-          grep -q '.next-action' /tmp/nestlocal-operations.css
-          grep -q '.learning-metrics' /tmp/nestlocal-operations.css
-          grep -q '.learning-insight-status' /tmp/nestlocal-operations.css
-          grep -q '.guided-experiment' /tmp/nestlocal-operations.css
-          grep -q '.assist-experiment' /tmp/nestlocal-operations.css
+          fetch_until_contains https://nestlocal.millionsnest.com/operations.css /tmp/nestlocal-operations.css \
+            '.lifecycle-form' '.next-action' '.learning-metrics' '.learning-insight-status' \
+            '.guided-experiment' '.assist-experiment'
 
-          fetch https://nestlocal.web.app/live.js > /tmp/nestlocal-alias-live.js
-          grep -q 'revenueXrayView' /tmp/nestlocal-alias-live.js
-          grep -q 'nextBestActions' /tmp/nestlocal-alias-live.js
-          grep -q 'outcomeLearningCard' /tmp/nestlocal-alias-live.js
-          grep -q 'explainableInsights' /tmp/nestlocal-alias-live.js
-          grep -q 'data-start-experiment' /tmp/nestlocal-alias-live.js
-          grep -q 'action-resume-date' /tmp/nestlocal-alias-live.js
+          fetch_until_contains https://nestlocal.web.app/live.js /tmp/nestlocal-alias-live.js \
+            'revenueXrayView' 'nextBestActions' 'outcomeLearningCard' 'explainableInsights' \
+            'data-start-experiment' 'action-resume-date'
+
+          fetch_until_contains https://nestlocal.web.app/guided-experiment.js /tmp/nestlocal-alias-guided-experiment.js \
+            'renderGuidedExperiment' 'experimentForAction'
