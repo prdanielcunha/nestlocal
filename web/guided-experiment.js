@@ -9,8 +9,8 @@ const normalizeExperiment=raw=>{
   const variants=Array.isArray(raw.variants)?raw.variants.filter(v=>['whatsapp','phone'].includes(v)).slice(0,2):['whatsapp','phone'];
   const target=Math.max(5,count(raw.targetPerVariant)||5),progress={};
   for(const variant of variants){
-    const row=raw.progress?.[variant]||{},summary=outcomes(row);
-    progress[variant]={total:count(row.total),responses:summary.responses,positive:summary.positive};
+    const row=raw.progress?.[variant]||{},summary=outcomes(row),hasSummary=Number.isFinite(Number(row.responses))||Number.isFinite(Number(row.positive));
+    progress[variant]={total:count(row.total),responses:hasSummary?count(row.responses):summary.responses,positive:hasSummary?count(row.positive):summary.positive,outcomes:{...(row.outcomes||{})}};
   }
   const open=variants.filter(v=>(progress[v]?.total||0)<target);
   const nextVariant=open.slice().sort((a,b)=>(progress[a]?.total||0)-(progress[b]?.total||0)||variants.indexOf(a)-variants.indexOf(b))[0]||'';
