@@ -46,9 +46,9 @@ export function experimentContextForAction(experiments=[],action={}){
   for(const exp of rows){
     if(exp.status==='active'||exp.actionType!==actionType||exp.review?.decision!=='context_only'||exp.reviewStale===true)continue;
     const snapshot=exp.review?.snapshot;if(!snapshot||snapshot.actionType!==actionType||snapshot.version!==1)continue;
-    const variants=['whatsapp','phone'].map(key=>{const row=snapshot.variants?.[key]||{};return{key,total:count(row.total),responses:count(row.responses),positive:count(row.positiveSignals),comparable:row.comparable===true,responseRate:Number.isFinite(Number(row.responseRate))?Number(row.responseRate):null,positiveRate:Number.isFinite(Number(row.positiveRate))?Number(row.positiveRate):null}});
+    const variants=['whatsapp','phone'].map(key=>{const row=snapshot.variants?.[key]||{},responseRate=row.responseRate==null?null:Number(row.responseRate),positiveRate=row.positiveRate==null?null:Number(row.positiveRate);return{key,total:count(row.total),responses:count(row.responses),positive:count(row.positiveSignals),comparable:row.comparable===true,responseRate:Number.isFinite(responseRate)?responseRate:null,positiveRate:Number.isFinite(positiveRate)?positiveRate:null}});
     if(!variants.some(row=>row.total>0))continue;
-    return {id:String(exp.id||snapshot.experimentId||''),actionType,note:String(exp.review?.note||''),sampleTotal:count(snapshot.sampleTotal),complete:snapshot.complete===true,comparable:snapshot.comparable===true,variants,responseSpreadPp:Number.isFinite(Number(snapshot.responseSpreadPp))?Number(snapshot.responseSpreadPp):null,positiveSpreadPp:Number.isFinite(Number(snapshot.positiveSpreadPp))?Number(snapshot.positiveSpreadPp):null};
+    return {id:String(exp.id||snapshot.experimentId||''),actionType,note:String(exp.review?.note||''),sampleTotal:count(snapshot.sampleTotal),complete:snapshot.complete===true,comparable:snapshot.comparable===true,variants,responseSpreadPp:snapshot.responseSpreadPp==null?null:(Number.isFinite(Number(snapshot.responseSpreadPp))?Number(snapshot.responseSpreadPp):null),positiveSpreadPp:snapshot.positiveSpreadPp==null?null:(Number.isFinite(Number(snapshot.positiveSpreadPp))?Number(snapshot.positiveSpreadPp):null)};
   }
   return null;
 }
