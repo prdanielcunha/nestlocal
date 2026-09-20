@@ -501,16 +501,16 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     const day=today,eventId=hash(`${actionType}|${requestId||customerId}|${channel}|${day}`).slice(0,32),eventRef=db.doc(`${root}/nestlocal_action_events/${eventId}`),metricRef=db.doc(`${root}/nestlocal_action_metrics/${day}`),outcomeAt=admin.firestore.Timestamp.now(),lastAssistanceOutcome={outcome,outcomeNote,at:outcomeAt,by:req.identity.uid};
     let response=null;
     await db.runTransaction(async tx=>{
-      const [existing,metricSnap]=await Promise.all([tx.get(eventRef),tx.get(metricRef)]),existingData=existing.exists?existing.data():null,previousOutcome=assistanceOutcomes.has(clean(existingData?.outcome))?clean(existingData.outcome):'unresolved',counted=existingData?.metricsRecorded===true;
-      const metric=updateActionMetric(metricSnap.exists?metricSnap.data():{}, {day,outcome,channel,actionType,previousOutcome,counted});
+      const [existing,metricSnap]=await Promise.all([tx.get(eventRef),tx.get(metricRef)]),existingData=existing.exists?existing.data():null,previousOutcome=assistanceOutcomes.has(clean(existingData?.outcome))?clean(existingData.outcome):'unresolved',counted=existingData?.metricsRecorded===true,cohortCounted=existingData?.cohortMetricsRecorded===true;
+      const metric=updateActionMetric(metricSnap.exists?metricSnap.data():{}, {day,outcome,channel,actionType,previousOutcome,counted,cohortCounted});
       if(existing.exists){
-        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        tx.set(eventRef,{outcome,outcomeNote,snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,outcomeUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         tx.set(targetRef,{assistanceCooldowns,lastAssistanceOutcome},{merge:true});
         tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
         response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:existingData?.status||'completed_by_user',idempotent:true};
         return;
       }
-      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+      const at=outcomeAt,event={id:eventId,actionType,channel,outcome,outcomeNote,targetType:requestId?'request':'customer',targetId:requestId||customerId,status:'completed_by_user',snoozeDays,resumeOn,resurfaceMode,nextEligibleDate,metricsRecorded:true,cohortMetricsRecorded:true,by:req.identity.uid,at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
       tx.create(eventRef,event);tx.set(targetRef,{lastAssistance:{id:eventId,actionType,channel,at,by:req.identity.uid},lastAssistanceOutcome,assistanceCooldowns},{merge:true});tx.set(metricRef,{...metric,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
       response={id:eventId,actionType,channel,outcome,outcomeNote,resurfaceMode,nextEligibleDate,status:'completed_by_user'};
     });
