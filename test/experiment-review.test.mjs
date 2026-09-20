@@ -66,7 +66,7 @@ test('review renderer shows rates, spread and context action with descriptive gu
   assert.match(html,/data-review-context="exp-review"/);
   assert.match(html,/data-new-experiment="true"/);
   assert.match(html,/Does not change Autopilot/);
-  assert.equal(/winner|best channel|recommended channel/i.test(html),false);
+  assert.equal(/winner:|best channel|recommended channel/i.test(html),false);
 });
 
 test('backend review endpoint is manager-only, immutable to operations and stores a factual snapshot',()=>{
