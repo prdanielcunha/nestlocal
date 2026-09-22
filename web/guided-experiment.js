@@ -39,18 +39,42 @@ export function experimentForAction(experiments=[],action={}){
 
 const actionTypeForAction=action=>action?.type==='followup'?'quote_followup':action?.type==='reactivate'?'customer_reactivation':'';
 
-export function experimentContextForAction(experiments=[],action={}){
+const contextFromSnapshot=({snapshot,note='',sourceExperimentId='',source='experiment'}={})=>{
+  if(!snapshot||snapshot.version!==1||!['quote_followup','customer_reactivation'].includes(snapshot.actionType))return null;
+  const variants=['whatsapp','phone'].map(key=>{const row=snapshot.variants?.[key]||{},responseRate=row.responseRate==null?null:Number(row.responseRate),positiveRate=row.positiveRate==null?null:Number(row.positiveRate);return{key,total:count(row.total),responses:count(row.responses),positive:count(row.positiveSignals),comparable:row.comparable===true,responseRate:Number.isFinite(responseRate)?responseRate:null,positiveRate:Number.isFinite(positiveRate)?positiveRate:null}});
+  if(!variants.some(row=>row.total>0))return null;
+  return {id:String(sourceExperimentId||snapshot.experimentId||''),source,actionType:snapshot.actionType,note:String(note||''),sampleTotal:count(snapshot.sampleTotal),complete:snapshot.complete===true,comparable:snapshot.comparable===true,variants,responseSpreadPp:snapshot.responseSpreadPp==null?null:(Number.isFinite(Number(snapshot.responseSpreadPp))?Number(snapshot.responseSpreadPp):null),positiveSpreadPp:snapshot.positiveSpreadPp==null?null:(Number.isFinite(Number(snapshot.positiveSpreadPp))?Number(snapshot.positiveSpreadPp):null)};
+};
+
+export function experimentContextForAction(experiments=[],action={},decisionMemory={}){
   const actionType=actionTypeForAction(action);if(!actionType)return null;
   const rows=(experiments||[]).filter(Boolean);
   if(rows.some(exp=>exp.status==='active'&&exp.actionType===actionType))return null;
+  const canonical=decisionMemory?.[actionType];
+  if(canonical&&canonical.decision==='context_only'&&canonical.stale!==true&&canonical.snapshot?.actionType===actionType){
+    const context=contextFromSnapshot({snapshot:canonical.snapshot,note:canonical.note,sourceExperimentId:canonical.sourceExperimentId,source:'decision_memory'});
+    if(context)return context;
+  }
   for(const exp of rows){
     if(exp.status==='active'||exp.actionType!==actionType||exp.review?.decision!=='context_only'||exp.reviewStale===true)continue;
-    const snapshot=exp.review?.snapshot;if(!snapshot||snapshot.actionType!==actionType||snapshot.version!==1)continue;
-    const variants=['whatsapp','phone'].map(key=>{const row=snapshot.variants?.[key]||{},responseRate=row.responseRate==null?null:Number(row.responseRate),positiveRate=row.positiveRate==null?null:Number(row.positiveRate);return{key,total:count(row.total),responses:count(row.responses),positive:count(row.positiveSignals),comparable:row.comparable===true,responseRate:Number.isFinite(responseRate)?responseRate:null,positiveRate:Number.isFinite(positiveRate)?positiveRate:null}});
-    if(!variants.some(row=>row.total>0))continue;
-    return {id:String(exp.id||snapshot.experimentId||''),actionType,note:String(exp.review?.note||''),sampleTotal:count(snapshot.sampleTotal),complete:snapshot.complete===true,comparable:snapshot.comparable===true,variants,responseSpreadPp:snapshot.responseSpreadPp==null?null:(Number.isFinite(Number(snapshot.responseSpreadPp))?Number(snapshot.responseSpreadPp):null),positiveSpreadPp:snapshot.positiveSpreadPp==null?null:(Number.isFinite(Number(snapshot.positiveSpreadPp))?Number(snapshot.positiveSpreadPp):null)};
+    const context=contextFromSnapshot({snapshot:exp.review?.snapshot,note:exp.review?.note,sourceExperimentId:exp.id,source:'experiment_fallback'});
+    if(context&&context.actionType===actionType)return context;
   }
   return null;
+}
+
+export function decisionMemoryLibrary(decisionMemory={},experiments=[]){
+  const rows=[];
+  for(const actionType of ['quote_followup','customer_reactivation']){
+    const canonical=decisionMemory?.[actionType];
+    if(canonical?.decision==='context_only'&&canonical.snapshot?.actionType===actionType){
+      rows.push({actionType,source:'decision_memory',sourceExperimentId:String(canonical.sourceExperimentId||''),note:String(canonical.note||''),stale:canonical.stale===true,context:contextFromSnapshot({snapshot:canonical.snapshot,note:canonical.note,sourceExperimentId:canonical.sourceExperimentId,source:'decision_memory'})});
+      continue;
+    }
+    const fallback=(experiments||[]).find(exp=>exp?.status!=='active'&&exp?.actionType===actionType&&exp?.review?.decision==='context_only');
+    if(fallback)rows.push({actionType,source:'experiment_fallback',sourceExperimentId:String(fallback.id||''),note:String(fallback.review?.note||''),stale:fallback.reviewStale===true,context:contextFromSnapshot({snapshot:fallback.review?.snapshot,note:fallback.review?.note,sourceExperimentId:fallback.id,source:'experiment_fallback'})});
+  }
+  return rows;
 }
 
 
@@ -98,7 +122,21 @@ const renderExperimentReview=({experiment,state,t,esc})=>{
 };
 
 
-export function renderGuidedExperiment({experiments=[],snapshot={},canManage=false,t,esc}){
+export function renderDecisionMemoryLibrary({decisionMemory={},experiments=[],t,esc}){
+  const rows=decisionMemoryLibrary(decisionMemory,experiments);
+  if(!rows.length)return '';
+  const cards=rows.map(row=>{
+    const status=row.stale?t('memoryStale'):row.source==='decision_memory'?t('memoryCanonical'):t('memoryLegacyFallback');
+    const action=actionLabel(row.actionType,t),context=row.context;
+    const sample=context?t('memorySample').replace('{n}',String(context.sampleTotal)):t('memoryUnavailable');
+    const spread=context?.comparable&&context.responseSpreadPp!==null?t('memorySpread').replace('{n}',String(context.responseSpreadPp)):t('memoryDescriptiveOnly');
+    const note=row.note?`<small class="decision-memory-note">${esc(row.note)}</small>`:'';
+    return `<div class="decision-memory-row ${row.stale?'stale':''}"><div><span>${esc(status)}</span><strong>${esc(action)}</strong><small>${esc(sample)} · ${esc(spread)}</small>${note}</div><b>${row.source==='decision_memory'?t('memoryStored'):t('memoryPendingCanonical')}</b></div>`;
+  }).join('');
+  return `<section class="decision-memory-library"><div class="decision-memory-head"><div><span>${t('learningLibrary')}</span><strong>${t('learningLibraryTitle')}</strong></div><small>${t('learningLibraryHelp')}</small></div><div class="decision-memory-list">${cards}</div><small class="decision-memory-guardrail">${t('learningLibraryGuardrail')}</small></section>`;
+}
+
+export function renderGuidedExperiment({experiments=[],decisionMemory={},snapshot={},canManage=false,t,esc}){
   const state=guidedExperimentState(experiments,snapshot,canManage),active=state.active,recent=state.recent;
   let body='';
   if(active){
@@ -110,7 +148,8 @@ export function renderGuidedExperiment({experiments=[],snapshot={},canManage=fal
     body=`<div class="experiment-head muted"><div><span>${t('guidedExperiment')}</span><strong>${t('experimentCollecting')}</strong><small>${esc(reason)}</small></div></div>`;
   }
   const history=recent?`<div class="experiment-history"><span>${recent.status==='completed'?t('experimentCompleted'):t('experimentStopped')}</span><strong>${esc(actionLabel(recent.actionType,t))}</strong><div class="experiment-progress">${progressRows({experiment:recent,t,esc})}</div><small>${t('experimentHistoryGuardrail')}</small>${renderExperimentReview({experiment:recent,state,t,esc})}</div>`:'';
-  return `<div class="guided-experiment"><div class="guided-experiment-title"><div><span>${t('guidedExperiment')}</span><strong>${t('guidedExperimentTitle')}</strong></div><small>${t('guidedExperimentGuardrail')}</small></div>${body}${history}</div>`;
+  const library=renderDecisionMemoryLibrary({decisionMemory,experiments,t,esc});
+  return `<div class="guided-experiment"><div class="guided-experiment-title"><div><span>${t('guidedExperiment')}</span><strong>${t('guidedExperimentTitle')}</strong></div><small>${t('guidedExperimentGuardrail')}</small></div>${body}${history}${library}</div>`;
 }
 
 
