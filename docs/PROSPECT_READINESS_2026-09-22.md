@@ -45,9 +45,23 @@ A tela Clientes aceita colagem de até 100 linhas de Google Sheets/Excel por lot
 
 A importação **não** cria consentimento de WhatsApp. Clientes importados podem entrar na fila de retorno, mas mensagens oficiais continuam exigindo consentimento compatível.
 
-### 5. Garantia e retorno
+### 5. Garantia, evidência e pós-serviço
 
-Ao concluir um atendimento, o operador pode registrar próxima data de serviço e garantia. Isso é especialmente útil em portões, segurança, elétrica e manutenção.
+Ao concluir um atendimento, o operador pode registrar próxima data de serviço e garantia. A operação também pode anexar evidências privadas de antes/depois, imprimir uma OS e gerar um link seguro de avaliação do cliente.
+
+### 6. Plano de manutenção e campo
+
+Clientes recorrentes podem ter plano de manutenção com frequência, próxima visita e datas de contrato. Agenda e pedidos oferecem rota pelo endereço armazenado, sem fingir otimização automática de deslocamento.
+
+### 7. Portal seguro do cliente
+
+O mesmo acompanhamento seguro cobre orçamento, agenda, confirmação/solicitação de mudança, saldo registrado, garantia e próximo retorno. Se a empresa optar, pode exibir uma chave Pix quando houver saldo, sem afirmar baixa automática.
+
+### 8. Campanha Dossiê 42
+
+O Radar comercial possui uma importação única dos 42 prospects pesquisados em 22/09/2026. O score do dossiê é armazenado como **referência de fit**, separado do Fit Score calculado pelo produto e do Pain Score observado.
+
+Pain Score permanece zerado até existir conversa real.
 
 ## O que já está pronto para piloto
 
@@ -68,7 +82,16 @@ Ao concluir um atendimento, o operador pode registrar próxima data de serviço 
 - Receita Assistida;
 - Radar comercial e Pain Score;
 - importação de prospects;
+- campanha pronta para importar os 42 prospects do dossiê;
 - importação rápida de clientes;
+- evidências de campo antes/depois;
+- OS imprimível;
+- avaliações seguras e média factual;
+- planos de manutenção leves;
+- rota por endereço;
+- confirmação/alteração de agenda pelo cliente;
+- portal seguro com saldo, garantia e retorno;
+- Pix opcional como instrução de pagamento, com baixa manual;
 - PT/EN/ES;
 - garantia opcional.
 
@@ -84,11 +107,11 @@ A recorrência de manutenção está pronta, mas PMOC completo, contratos docume
 
 ### Cobrança do serviço dentro do NestLocal
 
-O app registra situação e valor pago, mas o pagamento do serviço do prestador ainda ocorre no canal externo definido pela empresa. A assinatura do SaaS continua centralizada no MillionsNest.
+O app registra situação, valor pago e saldo. A empresa pode expor uma chave Pix no acompanhamento seguro, mas não há criação de cobrança, conciliação bancária ou baixa automática. O pagamento do serviço continua externo até existir integração específica. A assinatura do SaaS continua centralizada no MillionsNest.
 
 ### Rotas otimizadas
 
-A agenda distribui trabalho por responsável e evita conflito de janela, mas não há roteirização geográfica/otimização automática de deslocamento.
+A agenda distribui trabalho por responsável, evita conflito de janela e oferece abertura de rota pelo endereço. Ainda não há roteirização geográfica/otimização automática de múltiplas paradas.
 
 ## Critério de demo
 
@@ -102,7 +125,10 @@ Toda demo deve usar dados próximos aos do prospect:
 6. um agendamento com responsável;
 7. uma conclusão;
 8. um retorno futuro;
-9. quando fizer sentido, uma garantia.
+9. quando fizer sentido, uma garantia;
+10. evidência antes/depois e OS;
+11. confirmação do horário pelo cliente;
+12. avaliação e retorno futuro.
 
 A demo deve terminar na Home, mostrando a próxima ação e como o sistema impede que a oportunidade suma.
 
