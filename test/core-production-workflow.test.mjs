@@ -84,7 +84,7 @@ test('lifecycle has explicit forward transitions and rejects arbitrary status ju
     "new:new Set(['reviewing','cancelled'])",
     "quoted:new Set(['accepted','declined','cancelled'])",
     "accepted:new Set(['scheduled','cancelled'])",
-    "scheduled:new Set(['in_progress','cancelled'])",
+    "scheduled:new Set(['in_progress','cancelled','no_show'])",
     "in_progress:new Set(['completed'])",
     'INVALID_STATUS_TRANSITION',
   ]) assert.ok(server.includes(token),'missing '+token);

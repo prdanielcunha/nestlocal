@@ -153,6 +153,9 @@ Medir desde o primeiro piloto:
 - tempo até follow-up;
 - valor orçado, aprovado e executado;
 - serviços agendados/concluídos;
+- cancelamentos e no-shows;
+- placar recente de recebidos, orçados, aprovados, executados, sem resposta, cancelados e no-shows;
+- valores orçados, aprovados e executados na janela operacional carregada;
 - saldo pendente;
 - clientes com retorno;
 - clientes reativados;

@@ -182,13 +182,14 @@ async function rateLimit(req,key,orgId){
 }
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
-const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled']);
+const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled','no_show']);
 const requestTransitions={
   new:new Set(['reviewing','cancelled']),
   reviewing:new Set(['cancelled']),
   quoted:new Set(['accepted','declined','cancelled']),
   accepted:new Set(['scheduled','cancelled']),
-  scheduled:new Set(['in_progress','cancelled']),
+  scheduled:new Set(['in_progress','cancelled','no_show']),
+  no_show:new Set(['scheduled','cancelled']),
   in_progress:new Set(['completed']),
   completed:new Set(),
   declined:new Set(),
@@ -485,7 +486,7 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     const root=`organizations/${orgId}`,[doc,settingsSnap]=await Promise.all([db.doc(`${root}/nestlocal_requests/${id}`).get(),db.doc(`${root}/nestlocal_settings/public`).get()]);
     if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
     const d=doc.data(),settings=settingsSnap.data()||{},displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null,paidCents=Math.max(0,Number(d.commercial?.amountPaidCents||0)),balanceCents=displayTotalCents===null?null:Math.max(0,displayTotalCents-paidCents);
-    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
       id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
@@ -510,7 +511,7 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
         if(existing===decision){result={ok:true,status:current.status,decision:existing,idempotent:true};return}
         throw new TypeError('DECISION_LOCKED');
       }
-      if(['scheduled','in_progress','completed','cancelled'].includes(current.status))throw new TypeError('DECISION_LOCKED');
+      if(['scheduled','in_progress','completed','cancelled','no_show'].includes(current.status))throw new TypeError('DECISION_LOCKED');
       const displayTotalCents=Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):null;
       if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');
       const nextStatus=decision,at=admin.firestore.Timestamp.now(),decisionUpdate={status:nextStatus,decision:{status:decision,at,source:'public_tracking'},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
