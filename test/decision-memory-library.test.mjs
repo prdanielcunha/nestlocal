@@ -58,11 +58,9 @@ test('canonical memory survives when the reviewed source experiment is no longer
   assert.equal(context?.sampleTotal,10);
 });
 
-test('stale canonical memory falls back to a valid recent reviewed experiment',()=>{
+test('stale canonical memory is authoritative and suppresses older fallback context',()=>{
   const context=experimentContextForAction([fallbackReview],{type:'followup'},{quote_followup:canonical({stale:true})});
-  assert.equal(context?.source,'experiment_fallback');
-  assert.equal(context?.note,'Fallback recente');
-  assert.equal(context?.variants[0].responseRate,80);
+  assert.equal(context,null);
 });
 
 test('stale canonical memory without valid fallback is not shown in Action Assistant',()=>{
