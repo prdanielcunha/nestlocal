@@ -595,6 +595,19 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const template=slug(req.params.template);if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');
+    const root=`organizations/${req.access.orgId}`,settingsRef=db.doc(`${root}/nestlocal_settings/public`),settings=await settingsRef.get();if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');
+    const services=servicePlaybooks[template].services,refs=services.map(service=>db.doc(`${root}/nestlocal_services/${service.id}`)),existing=await db.getAll(...refs),missing=services.map((service,index)=>({service,ref:refs[index],exists:existing[index]?.exists===true})).filter(x=>!x.exists);
+    if(!missing.length)return res.json({ok:true,template,addedCount:0,skippedCount:services.length});
+    const batch=db.batch();for(const item of missing)batch.create(item.ref,{...item.service,published:false,addedFromPlaybook:template,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+    batch.set(settingsRef,{published:false,lastPlaybookApplied:template,lastPlaybookAppliedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    await batch.commit();res.status(201).json({ok:true,template,addedCount:missing.length,skippedCount:services.length-missing.length,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo');
