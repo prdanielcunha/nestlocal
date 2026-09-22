@@ -182,13 +182,14 @@ async function rateLimit(req,key,orgId){
 }
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
-const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled']);
+const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled','no_show']);
 const requestTransitions={
   new:new Set(['reviewing','cancelled']),
   reviewing:new Set(['cancelled']),
   quoted:new Set(['accepted','declined','cancelled']),
   accepted:new Set(['scheduled','cancelled']),
-  scheduled:new Set(['in_progress','cancelled']),
+  scheduled:new Set(['in_progress','cancelled','no_show']),
+  no_show:new Set(['scheduled','cancelled']),
   in_progress:new Set(['completed']),
   completed:new Set(),
   declined:new Set(),
