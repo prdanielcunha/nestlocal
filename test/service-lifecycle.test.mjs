@@ -45,7 +45,7 @@ test('request UI supports scheduled, in progress and completed execution', () =>
   const client = read('../web/live.js');
   for (const token of [
     "'in_progress'",
-    'data-lifecycle=',
+    'data-request-operation=',
     "name=\"scheduledDate\"",
     "name=\"assignedTo\"",
     "name=\"finalAmount\"",

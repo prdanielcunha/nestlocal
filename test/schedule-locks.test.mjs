@@ -38,7 +38,7 @@ test('client schedules against real enabled team members', () => {
   const client = read('../web/live.js');
   for (const token of [
     "(S.data.team||[]).filter(m=>m.nestlocalEnabled)",
-    'data-confirm-schedule=',
+    'data-request-schedule=',
     "status:'scheduled'",
     'scheduleConflict',
     'chooseAssignee',

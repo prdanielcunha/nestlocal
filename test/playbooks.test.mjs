@@ -13,7 +13,7 @@ test('server exposes one product with multiple onboarding playbooks', () => {
     'pest:{services:[',
     'general:{services:[',
     "businessType:template",
-    "req.body?.template||'climate'",
+    "b.template||'general'",
     "REVIEW_CATALOG_BEFORE_PUBLISH",
   ]) assert.ok(server.includes(token), `missing ${token}`);
 });
@@ -36,7 +36,7 @@ test('client lets the owner choose a playbook and the active public view adapts 
   const client = read('../web/live.js');
   for (const token of [
     'bootstrap-form',
-    "template:f.get('template')||'climate'",
+    "template:f.get('template')||'general'",
     'const serviceName=',
     'publicServiceId',
     'id="public-service"',

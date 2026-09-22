@@ -18,7 +18,8 @@ test('non-contact Autopilot actions target the exact request instead of generic 
 test('deep-link navigation opens and scrolls the target request',()=>{
   for(const token of [
     "querySelectorAll('[data-open-request]')",
-    "S.page='requests';S.focusRequestId=id;S.autopilotRequestId=id;render()",
+    "const fromAutopilot=S.page==='today'",
+    "S.page='requests';S.focusRequestId=id;S.autopilotRequestId=fromAutopilot?id:'';render()",
     "target.open=true",
     "target.classList.add('focused-request')",
     "target.scrollIntoView({behavior:'smooth',block:'center'})",

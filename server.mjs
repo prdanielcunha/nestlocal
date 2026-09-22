@@ -38,7 +38,7 @@ const servicePlaybooks={
   ]}
 };
 const clean=v=>typeof v==='string'?v.trim():'';
-const slug=v=>clean(v).toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,60);
+const slug=v=>clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
 const phone=v=>clean(v).replace(/\D/g,'').slice(0,15);
 const hash=v=>crypto.createHash('sha256').update(v).digest('hex');
 const token=()=>crypto.randomBytes(24).toString('base64url');
@@ -47,6 +47,28 @@ const validImage=file=>(file.mimetype==='image/jpeg'&&file.buffer[0]===0xff&&fil
 const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','removed','revoked','archived'].includes(d?.status);
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const sendError=(res,status,code)=>res.status(status).json({error:code});
+const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
+function catalogReadiness(settings,services=[]){
+  const issues=[];
+  if(!settings){issues.push('SETUP_REQUIRED');return{ready:false,issues}}
+  if(clean(settings.businessName).length<2)issues.push('BUSINESS_NAME_REQUIRED');
+  if(slug(settings.slug).length<3)issues.push('SLUG_REQUIRED');
+  const coverage=Array.isArray(settings.coverageCodes)?settings.coverageCodes.map(slug).filter(Boolean):[];
+  if(!coverage.length)issues.push('COVERAGE_REQUIRED');
+  if(!validTimeZone(clean(settings.timezone||'America/Sao_Paulo')))issues.push('TIMEZONE_INVALID');
+  const list=Array.isArray(services)?services:[];
+  if(!list.length)issues.push('SERVICE_REQUIRED');
+  for(const service of list){
+    if(!service||!safeId(service.id)||!clean(service.name)||!['fixed','review'].includes(service.mode)){issues.push('SERVICE_INVALID');break}
+    if(service.mode==='fixed'){
+      try{
+        quote({catalog:{organizationId:'readiness',version:'validation',status:'published',currency:'BRL',validForMinutes:Number(settings.validForMinutes||30),coverageCodes:coverage.length?coverage:['validation'],services:[service]},request:{serviceId:service.id,quantity:1,coverageCode:coverage[0]||'validation',equipmentType:service.requiresEquipmentType===false?undefined:service.equipmentTypes?.[0],safeAccess:service.requiresSafeAccess===false?undefined:true},now:new Date()});
+      }catch{issues.push('SERVICE_INVALID');break}
+    }
+  }
+  return{ready:issues.length===0,issues:[...new Set(issues)]};
+}
+
 function nestLocalEntitlement(orgData={},subscriptionData={}){
   const appSubscription=subscriptionData?.apps?.nestlocal||null,orgApp=orgData?.apps?.nestlocal||null;
   const subscriptionStatus=clean(appSubscription?.status).toLowerCase(),organizationAppStatus=clean(orgApp?.status).toLowerCase();
@@ -124,6 +146,17 @@ async function rateLimit(req,key,orgId){
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
 const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled']);
+const requestTransitions={
+  new:new Set(['reviewing','cancelled']),
+  reviewing:new Set(['cancelled']),
+  quoted:new Set(['accepted','declined','cancelled']),
+  accepted:new Set(['scheduled','cancelled']),
+  scheduled:new Set(['in_progress','cancelled']),
+  in_progress:new Set(['completed']),
+  completed:new Set(),
+  declined:new Set(),
+  cancelled:new Set()
+};
 const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const messageCategories=new Set(['service_update','maintenance_reminder']);
 const assistanceActionTypes=new Set(['quote_followup','customer_reactivation']);
@@ -388,7 +421,7 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
 });
 
 app.get('/api/public/stores/:storeSlug',async(req,res)=>{
-  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:settings.data().whatsapp||'',currency:'BRL',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:settings.data().whatsapp||'',currency:'BRL',timezone:settings.data().timezone||'America/Sao_Paulo',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
   try{
@@ -399,11 +432,11 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
     if(name.length<2||customerPhone.length<10||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
     const [settingsSnap,servicesSnap]=await Promise.all([db.doc(`organizations/${org.id}/nestlocal_settings/public`).get(),db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get()]);
     if(!settingsSnap.exists||settingsSnap.data()?.published!==true)return sendError(res,409,'STORE_NOT_READY');
-    const settings=settingsSnap.data();const services=servicesSnap.docs.map(x=>({id:x.id,...x.data()}));
+    const settings=settingsSnap.data(),orgTimeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC';if(preferredDate<localIsoDate(orgTimeZone))return sendError(res,400,'INVALID_REQUEST');const services=servicesSnap.docs.map(x=>({id:x.id,...x.data()}));
     const result=quote({catalog:{organizationId:org.id,version:clean(settings.catalogVersion),status:'published',currency:'BRL',validForMinutes:Number(settings.validForMinutes||30),coverageCodes:settings.coverageCodes||[],services},request:{serviceId,quantity,coverageCode,equipmentType:clean(body.equipmentType),safeAccess:body.safeAccess===true},now:new Date()});
     const publicToken=`${org.id}.${token()}`;const requestRef=db.collection(`organizations/${org.id}/nestlocal_requests`).doc();const customerId=hash(customerPhone).slice(0,28);
-    const record={organizationId:org.id,customerId,customer:{name,phone:customerPhone},address:{line:addressLine,city:clean(body.city).slice(0,80),coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType:clean(body.equipmentType).slice(0,40),safeAccess:body.safeAccess===true,note:clean(body.note).slice(0,1000),status:'new',quote:{...result,reasons:[...result.reasons]},trackingTokenHash:hash(publicToken),consent:{accepted:true,version:'pilot-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},messagingConsent:{serviceUpdates:{accepted:serviceUpdatesOptIn,businessName:settings.businessName||org.name,version:'whatsapp-service-2026-09',acceptedAt:serviceUpdatesOptIn?admin.firestore.Timestamp.now():null},maintenanceReminders:{accepted:maintenanceOptIn,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:maintenanceOptIn?admin.firestore.Timestamp.now():null}},source:'public_store',createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    const monthId=new Date().toISOString().slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    const record={organizationId:org.id,customerId,customer:{name,phone:customerPhone},address:{line:addressLine,city:clean(body.city).slice(0,80),coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType:clean(body.equipmentType).slice(0,40),safeAccess:body.safeAccess===true,note:clean(body.note).slice(0,1000),status:'new',quote:{...result,reasons:[...result.reasons]},trackingTokenHash:hash(publicToken),trackingTokenHashes:[hash(publicToken)],consent:{accepted:true,version:'pilot-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},messagingConsent:{serviceUpdates:{accepted:serviceUpdatesOptIn,businessName:settings.businessName||org.name,version:'whatsapp-service-2026-09',acceptedAt:serviceUpdatesOptIn?admin.firestore.Timestamp.now():null},maintenanceReminders:{accepted:maintenanceOptIn,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:maintenanceOptIn?admin.firestore.Timestamp.now():null}},source:'public_store',createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    const monthId=localIsoDate(orgTimeZone).slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,trackingToken:publicToken,outcome:result.outcome,quote:{currency:result.currency,totalCents:result.totalCents,expiresAt:result.expiresAt,reasons:[...result.reasons]}});
   }catch(e){console.error(e);sendError(res,e?.message==='PLAN_REQUEST_LIMIT'?429:e instanceof TypeError?409:500,e?.message==='PLAN_REQUEST_LIMIT'?'PLAN_REQUEST_LIMIT':e instanceof TypeError?'QUOTE_UNAVAILABLE':'INTERNAL_ERROR')}
 });
@@ -411,7 +444,7 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
 app.get('/api/public/requests/:requestId',async(req,res)=>{
   try{
     const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');
-    const doc=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');
+    const doc=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
     const d=doc.data(),displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null;
     const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0;
     res.json({id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt});
@@ -426,7 +459,7 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
     const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${id}`);
     let result=null;
     await db.runTransaction(async tx=>{
-      const snap=await tx.get(ref);if(!snap.exists||snap.data().trackingTokenHash!==hash(t))throw new TypeError('NOT_FOUND');
+      const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
       const current=snap.data(),existing=clean(current.decision?.status);
       if(existing){
         if(existing===decision){result={ok:true,status:current.status,decision:existing,idempotent:true};return}
@@ -493,8 +526,8 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get(),
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()}));
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -502,7 +535,17 @@ app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,a
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
-  try{const template=clean(req.body?.template||'climate').toLowerCase();if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');const root=`organizations/${req.access.orgId}`;const settings=db.doc(`${root}/nestlocal_settings/public`);const existing=await settings.get();if(existing.exists)return res.json({created:false});const batch=db.batch();batch.create(settings,{businessName:req.access.org.name,slug:`${slug(req.access.org.slug||req.access.org.name)}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes:['londrina','cambe'],whatsapp:'',currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone:'America/Sao_Paulo',capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{
+    const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo');
+    if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');
+    if(businessName.length<2||!coverageCodes.length||!validTimeZone(timezone))return sendError(res,400,'ONBOARDING_DETAILS_REQUIRED');
+    const root=`organizations/${req.access.orgId}`,settings=db.doc(`${root}/nestlocal_settings/public`),existing=await settings.get();if(existing.exists)return res.json({created:false});
+    const baseSlug=slug(businessName||req.access.org.slug||req.access.org.name)||'negocio',batch=db.batch();
+    batch.create(settings,{businessName,slug:`${baseSlug}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes,whatsapp,currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone,capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});
+    await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
   const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
@@ -525,7 +568,16 @@ app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,a
 });
 
 app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,async(req,res)=>{
-  try{const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);const [settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);if(!settings.exists||services.empty)return sendError(res,409,'CATALOG_INCOMPLETE');const data=settings.data();const list=services.docs.map(x=>({id:x.id,...x.data()}));for(const s of list){if(s.mode==='fixed')quote({catalog:{organizationId:req.access.orgId,version:'validation',status:'published',currency:'BRL',validForMinutes:data.validForMinutes,coverageCodes:data.coverageCodes,services:[s]},request:{serviceId:s.id,quantity:1,coverageCode:data.coverageCodes[0],equipmentType:s.requiresEquipmentType===false?undefined:s.equipmentTypes?.[0],safeAccess:s.requiresSafeAccess===false?undefined:true},now:new Date()})}const version=`v${Date.now()}`,directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`);await db.runTransaction(async tx=>{const directory=await tx.get(directoryRef);if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});tx.set(settingsRef,{published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});const batch=db.batch();for(const s of services.docs)batch.set(s.ref,{published:true,catalogVersion:version},{merge:true});await batch.commit();res.json({ok:true,version,publicPath:`/s/${data.slug}`})}catch(e){console.error(e);sendError(res,e?.message==='SLUG_TAKEN'?409:409,e?.message==='SLUG_TAKEN'?'SLUG_TAKEN':'CATALOG_INCOMPLETE')}});
+  try{
+    const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`),[settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);
+    const data=settings.exists?settings.data():null,list=services.docs.map(x=>({id:x.id,...x.data()})),readiness=catalogReadiness(data,list);
+    if(!readiness.ready)return res.status(409).json({error:'PUBLISH_NOT_READY',issues:readiness.issues});
+    const version=`v${Date.now()}`,directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`);
+    await db.runTransaction(async tx=>{const directory=await tx.get(directoryRef);if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});tx.set(settingsRef,{published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    const batch=db.batch();for(const s of services.docs)batch.set(s.ref,{published:true,catalogVersion:version},{merge:true});await batch.commit();
+    res.json({ok:true,version,publicPath:`/s/${data.slug}`});
+  }catch(e){console.error(e);if(e?.message==='SLUG_TAKEN')return sendError(res,409,'SLUG_TAKEN');sendError(res,500,'INTERNAL_ERROR')}
+});
 
 app.post('/api/organizations/:orgId/nestlocal/experiments',authenticate,authorize,async(req,res)=>{
   try{
@@ -680,6 +732,38 @@ app.post('/api/organizations/:orgId/nestlocal/messages/prepare-due-reminders',au
 
 app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIndex',authenticate,authorize,async(req,res)=>{try{const requestId=safeId(req.params.requestId),index=Number(req.params.photoIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>4)return sendError(res,404,'NOT_FOUND');const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),attachment=doc.data()?.attachments?.[index];if(!doc.exists||!attachment?.path||!attachment.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/`))return sendError(res,404,'NOT_FOUND');res.set({'Content-Type':attachment.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="pedido-${requestId}-${index+1}"`});admin.storage().bucket().file(attachment.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res)}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
+app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
+  try{
+    const b=req.body||{},name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
+    if(name.length<2||customerPhone.length<10||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
+    const root=`organizations/${req.access.orgId}`,[settings,service]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${serviceId}`).get()]);
+    if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');if(!service.exists)return sendError(res,400,'INVALID_SERVICE');
+    const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
+    if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
+    const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    res.status(201).json({requestId:requestRef.id,status:'new'});
+  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),amountCents=Number(req.body?.amountCents),note=clean(req.body?.note).slice(0,500);if(!requestId||!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100000000)return sendError(res,400,'INVALID_QUOTE');
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);let response=null;
+    await db.runTransaction(async tx=>{const [snap,settings]=await Promise.all([tx.get(ref),tx.get(settingsRef)]);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},status=clean(current.status);if(!['new','reviewing','quoted'].includes(status)||current.decision?.status)throw new TypeError('QUOTE_LOCKED');const validForMinutes=Math.min(1440,Math.max(5,Number(settings.data()?.validForMinutes||30))),now=new Date(),expiresAt=new Date(now.getTime()+validForMinutes*60000).toISOString(),quoteData={...(current.quote||{}),organizationId:req.access.orgId,serviceId:current.serviceId,quantity:Number(current.quantity||1),currency:'BRL',outcome:'priced',reasons:[],totalCents:amountCents,source:'manual',manualNote:note,createdAt:current.quote?.createdAt||now.toISOString(),expiresAt};
+      const update={quote:quoteData,'commercial.quotedAmountCents':amountCents,quotedAt:admin.firestore.Timestamp.now(),quotedBy:req.identity.uid,status:'quoted',updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(status!=='quoted')update.statusHistory=admin.firestore.FieldValue.arrayUnion({status:'quoted',at:admin.firestore.Timestamp.now(),by:req.identity.uid});tx.update(ref,update);response={ok:true,status:'quoted',amountCents,expiresAt}});
+    res.json(response);
+  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/tracking-link',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId);if(!requestId)return sendError(res,400,'INVALID_REQUEST');const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),publicToken=`${req.access.orgId}.${token()}`,digest=hash(publicToken);let result=null;
+    await db.runTransaction(async tx=>{const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},amount=Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):0;if(amount<=0)throw new TypeError('QUOTE_NOT_READY');if(['cancelled'].includes(clean(current.status)))throw new TypeError('TRACKING_LOCKED');const hashes=[...new Set([...(Array.isArray(current.trackingTokenHashes)?current.trackingTokenHashes:[]),clean(current.trackingTokenHash),digest].filter(Boolean))].slice(-3);tx.update(ref,{trackingTokenHash:digest,trackingTokenHashes:hashes,trackingLinkIssuedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={requestId,trackingPath:`/track/${requestId}?token=${encodeURIComponent(publicToken)}`}});
+    res.json(result);
+  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(['QUOTE_NOT_READY','TRACKING_LOCKED'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),b=req.body||{};if(!requestId)return sendError(res,400,'INVALID_REQUEST');
@@ -689,7 +773,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
       const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       if(b.status!==undefined){
-        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');
+        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');
         update.status=status;
         if(status!==current.status){
           update.statusHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.identity.uid});
@@ -721,6 +805,13 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
       const nextStatus=clean(b.status||current.status);
+      if(b.finalAmountCents!==undefined||b.amountPaidCents!==undefined||b.paymentStatus!==undefined||nextStatus==='completed'){
+        const nextFinal=Number(b.finalAmountCents!==undefined?b.finalAmountCents:(current.commercial?.finalAmountCents??current.quote?.totalCents??0)),nextPaid=Number(b.amountPaidCents!==undefined?b.amountPaidCents:(current.commercial?.amountPaidCents||0)),nextPayment=clean(b.paymentStatus!==undefined?b.paymentStatus:(current.commercial?.paymentStatus||'pending'));
+        if(!Number.isSafeInteger(nextFinal)||nextFinal<0||!Number.isSafeInteger(nextPaid)||nextPaid<0||nextPaid>nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='pending'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='partial'&&!(nextPaid>0&&nextPaid<nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&nextPaid!==nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+      }
       const nextSchedule={
         date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
         window:b.scheduledWindow!==undefined?clean(b.scheduledWindow):clean(current.schedule?.window),
@@ -786,7 +877,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_NEXT_SERVICE_DATE'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_STATUS_TRANSITION'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
