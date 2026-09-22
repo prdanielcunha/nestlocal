@@ -474,3 +474,16 @@
 .pix-box code{overflow-wrap:anywhere;font-size:.82rem}
 .pix-box p{color:var(--muted,#92a69e);font-size:.74rem;line-height:1.45}
 @media(max-width:620px){.payment-settings{grid-template-columns:1fr}.payment-settings .section-title,.payment-settings .wide{grid-column:auto}.portal-money{grid-template-columns:1fr}.portal-actions .button{flex:1}}
+
+
+/* Pilot outcome scoreboard */
+.pilot-scoreboard{display:grid;gap:14px}
+.pilot-counts{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.pilot-counts>div,.pilot-values>div{display:grid;gap:3px;padding:10px;border:1px solid rgba(255,255,255,.065);border-radius:12px;background:rgba(255,255,255,.018)}
+.pilot-counts strong{font-size:1rem}
+.pilot-counts span,.pilot-values span{color:var(--muted,#92a69e);font-size:.65rem}
+.pilot-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.pilot-values strong{font-size:.9rem}
+.pilot-values .highlight{border-color:rgba(139,230,192,.2);background:rgba(91,206,160,.04)}
+@media(max-width:900px){.pilot-counts{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:620px){.pilot-counts{grid-template-columns:repeat(2,minmax(0,1fr))}.pilot-values{grid-template-columns:1fr}}
