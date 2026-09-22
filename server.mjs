@@ -408,14 +408,15 @@ app.post('/api/admin/nestlocal/growth/leads/batch',async(req,res)=>{
       const fingerprint=growthFingerprint({businessName,city,phone:contactPhone});
       if(seen.has(fingerprint)){issues.push({index,reason:'DUPLICATE_IN_BATCH'});continue}
       seen.add(fingerprint);
-      candidates.push({index,fingerprint,businessName,contactName,contactPhone,city,segment,fitSignals,fitScore:growthFitScore(fitSignals),acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',notes:clean(b.notes).slice(0,1000)});
+      const referenceFitScore=Number(b.referenceFitScore),safeReferenceFitScore=Number.isFinite(referenceFitScore)?Math.max(0,Math.min(100,referenceFitScore)):null,referenceClass=clean(b.referenceClass).slice(0,20),referenceAction=clean(b.referenceAction).slice(0,120),referenceSource=clean(b.referenceSource).slice(0,80);
+      candidates.push({index,fingerprint,businessName,contactName,contactPhone,city,segment,fitSignals,fitScore:growthFitScore(fitSignals),referenceFitScore:safeReferenceFitScore,referenceClass,referenceAction,referenceSource,acquisition:growthAcquisition(b,{channel:'other',angle:'other'}),nextAction:clean(b.nextAction).slice(0,300)||'Qualificar processo de orçamento, agenda e retorno',notes:clean(b.notes).slice(0,1000)});
     }
     const existing=await existingGrowthFingerprints(candidates.map(x=>x.fingerprint)),batch=db.batch(),created=[];
     for(const lead of candidates){
       if(existing.has(lead.fingerprint)){issues.push({index:lead.index,reason:'ALREADY_EXISTS'});continue}
       const ref=db.collection('nestlocal_growth_leads').doc();
-      batch.create(ref,{source:'batch_radar',fingerprint:lead.fingerprint,status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:lead.acquisition,businessName:lead.businessName,contactName:lead.contactName,phone:lead.contactPhone,city:lead.city,segment:lead.segment,fitSignals:lead.fitSignals,fitScore:lead.fitScore,painSignals:{},painScore:0,nextAction:lead.nextAction,nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:lead.notes,createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
-      created.push({index:lead.index,id:ref.id,fitScore:lead.fitScore});
+      batch.create(ref,{source:'batch_radar',fingerprint:lead.fingerprint,status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid}],acquisition:lead.acquisition,businessName:lead.businessName,contactName:lead.contactName,phone:lead.contactPhone,city:lead.city,segment:lead.segment,fitSignals:lead.fitSignals,fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore,referenceClass:lead.referenceClass,referenceAction:lead.referenceAction,referenceSource:lead.referenceSource,painSignals:{},painScore:0,nextAction:lead.nextAction,nextContactAt:admin.firestore.FieldValue.serverTimestamp(),notes:lead.notes,createdBy:req.growthAdmin.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      created.push({index:lead.index,id:ref.id,fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore});
     }
     if(created.length)await batch.commit();
     res.status(201).json({created,createdCount:created.length,skippedCount:issues.length,issues});
