@@ -114,3 +114,10 @@ radial-gradient(circle at 88% 18%,rgba(84,126,255,.10),transparent 30%),
 .growth-batch textarea{width:100%;resize:vertical;min-height:150px;border:1px solid rgba(255,255,255,.1);border-radius:13px;padding:13px 14px;background:#0d1d19;color:#f2faf7;font:500 .78rem/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;outline:none}
 .growth-batch textarea:focus{border-color:rgba(98,235,185,.6);box-shadow:0 0 0 3px rgba(98,235,185,.08)}
 @media(max-width:900px){.growth-side{position:static}}
+
+
+/* Dossier 42 campaign */
+.growth-dossier{display:grid;gap:14px}
+.growth-dossier .section-title{align-items:flex-start}
+.growth-scores .score.reference{border-color:rgba(140,180,255,.22);background:rgba(120,160,255,.055)}
+@media(max-width:720px){.growth-dossier .button{width:100%}.growth-scores{flex-wrap:wrap}}
