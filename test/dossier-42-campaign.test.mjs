@@ -46,3 +46,19 @@ test('Dossier 42 campaign stays responsive',()=>{
   const css=read('../web/growth.css');
   for(const token of ['.growth-dossier','.score.reference','@media(max-width:720px)']) assert.ok(css.includes(token),`missing ${token}`);
 });
+
+
+test('dossier leads get a segment-safe suggested approach without claiming unverified process facts',()=>{
+  const client=read('../web/live.js');
+  for(const token of [
+    'function growthOutreachScript(lead)',
+    "segment.includes('limpeza')",
+    "segment.includes('climat')",
+    "segment.includes('praga')",
+    "segment.includes('port')",
+    "segment.includes('eletr')",
+    'data-copy="${esc(growthOutreachScript(lead))}"',
+    "t('copyApproach')",
+  ]) assert.ok(client.includes(token),`missing ${token}`);
+  assert.equal(client.includes('sem sistema robusto aparente'),false);
+});
