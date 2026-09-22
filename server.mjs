@@ -770,6 +770,24 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
   }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');sendError(res,500,'INTERNAL_ERROR')}
 });
 
+app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/consent',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),b=req.body||{},purpose=clean(b.purpose),accepted=b.accepted,evidenceSource=clean(b.evidenceSource),evidenceNote=clean(b.evidenceNote).slice(0,180),confirmedByCustomer=b.confirmedByCustomer===true;
+    if(!requestId||!consentPurposes.has(purpose)||typeof accepted!=='boolean'||!consentEvidenceSources.has(evidenceSource)||!confirmedByCustomer)return sendError(res,400,'INVALID_CONSENT');
+    const root=`organizations/${req.access.orgId}`,requestRef=db.doc(`${root}/nestlocal_requests/${requestId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`),eventRef=db.collection(`${root}/nestlocal_consent_events`).doc(),at=admin.firestore.Timestamp.now();let result=null;
+    await db.runTransaction(async tx=>{
+      const [requestSnap,settingsSnap]=await Promise.all([tx.get(requestRef),tx.get(settingsRef)]);if(!requestSnap.exists)throw new TypeError('REQUEST_NOT_FOUND');
+      const request=requestSnap.data()||{},settings=settingsSnap.data()||{},customerId=safeId(request.customerId),customerRef=customerId?db.doc(`${root}/nestlocal_customers/${customerId}`):null,customerSnap=customerRef?await tx.get(customerRef):null;
+      const key=purpose==='service_updates'?'serviceUpdates':'maintenanceReminders',version=purpose==='service_updates'?'whatsapp-service-2026-09':'whatsapp-maintenance-2026-09',record={accepted,businessName:clean(settings.businessName||req.access.org.name),version,acceptedAt:accepted?at:null,revokedAt:accepted?null:at,source:'operator_recorded',evidenceSource,evidenceNote,recordedBy:req.identity.uid,recordedAt:at};
+      tx.set(requestRef,{[`messagingConsent.${key}`]:record,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      if(purpose==='maintenance_reminders'&&customerRef)tx.set(customerRef,{name:request.customer?.name||customerSnap?.data()?.name||'',phone:request.customer?.phone||customerSnap?.data()?.phone||'',[`messaging.consents.${key}`]:record,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      tx.create(eventRef,{requestId,customerId,purpose,accepted,evidenceSource,evidenceNote,recordedBy:req.identity.uid,recordedAt:at,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      result={ok:true,purpose,accepted,eventId:eventRef.id};
+    });
+    res.json(result);
+  }catch(e){console.error(e);if(e?.message==='REQUEST_NOT_FOUND')return sendError(res,404,'REQUEST_NOT_FOUND');sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),amountCents=Number(req.body?.amountCents),note=clean(req.body?.note).slice(0,500);if(!requestId||!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100000000)return sendError(res,400,'INVALID_QUOTE');
