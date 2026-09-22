@@ -517,11 +517,12 @@ app.get('/api/session',authenticate,async(req,res)=>{
 
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
-    const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
-    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
+    const root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),monthId=today.slice(0,7),dueLimit=200,actionMetricStart=addIsoDays(today,-29),requestPageSize=100,customerPageSize=100,activeRequestLimit=150;
+    const [services,recentRequests,activeRequests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
-      db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
-      db.collection(`${root}/nestlocal_customers`).limit(100).get(),
+      db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(requestPageSize).get(),
+      db.collection(`${root}/nestlocal_requests`).where('status','in',['new','reviewing','quoted','accepted','scheduled','in_progress']).limit(activeRequestLimit).get(),
+      db.collection(`${root}/nestlocal_customers`).orderBy(admin.firestore.FieldPath.documentId()).limit(customerPageSize).get(),
       db.collection(`${root}/nestlocal_customers`).where('nextServiceDate','<=',today).orderBy('nextServiceDate').limit(dueLimit).get(),
       db.doc(`${root}/nestlocal_usage/${monthId}`).get(),
       db.collection(`${root}/members`).limit(100).get(),
@@ -531,8 +532,26 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get(),
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows),requestMap=new Map();
+    [...activeRequests.docs,...recentRequests.docs].forEach(doc=>requestMap.set(doc.id,sanitizeRequestDoc(doc)));
+    const requestRows=[...requestMap.values()].sort((a,b)=>timestampMillis(b.createdAt)-timestampMillis(a.createdAt)),canManage=canManageNestLocal(req.access),recentLast=recentRequests.docs.at(-1),customerLast=customers.docs.at(-1);
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},accessCapabilities:{canManageSettings:canManage,canManageTeam:canManage,canManageExperiments:canManage},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requestRows,requestsPage:{hasMore:recentRequests.size===requestPageSize,nextCursor:recentLast?.id||''},operationalCoverage:{activeRequestsTruncated:activeRequests.size===activeRequestLimit,activeRequestLimit},customers:customerRows,customersPage:{hasMore:customers.size===customerPageSize,nextCursor:customerLast?.id||''},customerCountLoaded:customerRows.length,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage}});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.get('/api/organizations/:orgId/nestlocal/requests-page',authenticate,authorize,async(req,res)=>{
+  try{
+    const root=`organizations/${req.access.orgId}`,pageSize=Math.min(100,Math.max(20,Number(req.query.limit)||100)),cursor=safeId(req.query.cursor),collection=db.collection(`${root}/nestlocal_requests`);let query=collection.orderBy('createdAt','desc');if(cursor){const cursorDoc=await collection.doc(cursor).get();if(!cursorDoc.exists)return sendError(res,400,'INVALID_CURSOR');query=query.startAfter(cursorDoc)}
+    const snap=await query.limit(pageSize+1).get(),hasMore=snap.size>pageSize,docs=snap.docs.slice(0,pageSize),last=docs.at(-1);
+    res.json({items:docs.map(sanitizeRequestDoc),hasMore,nextCursor:hasMore?(last?.id||''):''});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.get('/api/organizations/:orgId/nestlocal/customers-page',authenticate,authorize,async(req,res)=>{
+  try{
+    const root=`organizations/${req.access.orgId}`,pageSize=Math.min(100,Math.max(20,Number(req.query.limit)||100)),cursor=safeId(req.query.cursor),collection=db.collection(`${root}/nestlocal_customers`);let query=collection.orderBy(admin.firestore.FieldPath.documentId());if(cursor){const cursorDoc=await collection.doc(cursor).get();if(!cursorDoc.exists)return sendError(res,400,'INVALID_CURSOR');query=query.startAfter(cursorDoc)}
+    const snap=await query.limit(pageSize+1).get(),hasMore=snap.size>pageSize,docs=snap.docs.slice(0,pageSize),last=docs.at(-1);
+    res.json({items:docs.map(doc=>({id:doc.id,...doc.data()})),hasMore,nextCursor:hasMore?(last?.id||''):''});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
