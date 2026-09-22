@@ -22,8 +22,10 @@ test('accepted and declined are first-class request statuses', () => {
   const client = read('../web/live.js');
   assert.ok(server.includes("'quoted','accepted','scheduled'"));
   assert.ok(server.includes("'completed','declined','cancelled'"));
-  assert.ok(client.includes("'quoted','accepted','scheduled'"));
-  assert.ok(client.includes("'completed','declined','cancelled'"));
+  assert.ok(client.includes('data-request-status="accepted"'));
+  assert.ok(client.includes('data-request-status="declined"'));
+  assert.ok(client.includes('data-request-status="in_progress"'));
+  assert.ok(client.includes("function operationPanel(r)"));
 });
 
 test('tracking page exposes only safe decision state and display total', () => {
