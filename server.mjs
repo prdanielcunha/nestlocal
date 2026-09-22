@@ -569,6 +569,32 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
+app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,authorize,async(req,res)=>{
+  try{
+    const rows=Array.isArray(req.body?.customers)?req.body.customers:[];if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
+    const prepared=[],seen=new Set(),skipped=[];
+    for(const [index,row] of rows.entries()){
+      const name=clean(row?.name).slice(0,100),customerPhone=phone(row?.phone),city=clean(row?.city).slice(0,80),addressLine=clean(row?.addressLine).slice(0,180),lastServiceLabel=clean(row?.lastServiceLabel).slice(0,120),lastServiceDate=clean(row?.lastServiceDate).slice(0,10),nextServiceDate=clean(row?.nextServiceDate).slice(0,10),nextServiceReason=clean(row?.nextServiceReason).slice(0,240);
+      if(name.length<2||customerPhone.length<10||(lastServiceDate&&!/^\d{4}-\d{2}-\d{2}$/.test(lastServiceDate))||(nextServiceDate&&!/^\d{4}-\d{2}-\d{2}$/.test(nextServiceDate))){skipped.push({index,reason:'INVALID_CUSTOMER'});continue}
+      const id=hash(customerPhone).slice(0,28);if(seen.has(id)){skipped.push({index,reason:'DUPLICATE_IN_BATCH'});continue}seen.add(id);
+      prepared.push({index,id,name,phone:customerPhone,city,addressLine,lastServiceLabel,lastServiceDate,nextServiceDate,nextServiceReason});
+    }
+    if(!prepared.length)return res.status(400).json({error:'INVALID_CUSTOMER_BATCH',importedCount:0,skippedCount:skipped.length,skipped});
+    const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),existing=await db.getAll(...refs),batch=db.batch();let createdCount=0,updatedCount=0;
+    for(const [i,item] of prepared.entries()){
+      if(existing[i]?.exists)updatedCount++;else createdCount++;
+      const data={name:item.name,phone:item.phone,source:'customer_import',updatedAt:admin.firestore.FieldValue.serverTimestamp(),importedAt:admin.firestore.FieldValue.serverTimestamp()};
+      if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
+      if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
+      if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
+      if(item.nextServiceDate){data.nextServiceDate=item.nextServiceDate;data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';data.nextServiceSource='customer_import'}
+      batch.set(refs[i],data,{merge:true});
+    }
+    await batch.commit();
+    res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo');
