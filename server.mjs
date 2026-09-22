@@ -133,6 +133,8 @@ function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc}={}){
 }
 
 const upload=multer({storage:multer.memoryStorage(),limits:{files:5,fileSize:5*1024*1024},fileFilter:(_req,file,cb)=>cb(null,['image/jpeg','image/png','image/webp'].includes(file.mimetype))});
+const evidenceUpload=multer({storage:multer.memoryStorage(),limits:{files:8,fileSize:8*1024*1024},fileFilter:(_req,file,cb)=>cb(null,['image/jpeg','image/png','image/webp'].includes(file.mimetype))});
+const reviewTokenValid=(record,value)=>{const digest=hash(value);return record?.reviewTokenHash===digest||(Array.isArray(record?.reviewTokenHashes)&&record.reviewTokenHashes.includes(digest))};
 
 async function authenticate(req,res,next){
   const value=req.headers.authorization||'';
@@ -517,6 +519,40 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
   }
 });
 
+app.get('/api/public/reviews/:requestId',async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!requestId||!orgId||!t)return sendError(res,404,'NOT_FOUND');
+    const root=`organizations/${orgId}`,[request,settings,service]=await Promise.all([db.doc(`${root}/nestlocal_requests/${requestId}`).get(),db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${requestId}`).get().catch(()=>null)]);
+    if(!request.exists||!reviewTokenValid(request.data(),t))return sendError(res,404,'NOT_FOUND');
+    const data=request.data()||{};if(data.status!=='completed')return sendError(res,409,'REVIEW_NOT_READY');
+    const serviceDoc=await db.doc(`${root}/nestlocal_services/${safeId(data.serviceId)}`).get();
+    res.set('Cache-Control','private,no-store');
+    res.json({requestId,businessName:clean(settings.data()?.businessName)||'Prestador',serviceName:clean(serviceDoc.data()?.name)||clean(data.serviceId),submitted:data.review?.submitted===true,rating:data.review?.submitted===true?Number(data.review?.rating||0):null});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/public/reviews/:requestId',async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]),rating=Number(req.body?.rating),comment=clean(req.body?.comment).slice(0,800);
+    if(!requestId||!orgId||!t||!Number.isInteger(rating)||rating<1||rating>5)return sendError(res,400,'INVALID_REVIEW');
+    if(!(await rateLimit(req,'review',orgId)))return sendError(res,429,'RATE_LIMITED');
+    const root=`organizations/${orgId}`,requestRef=db.doc(`${root}/nestlocal_requests/${requestId}`),reviewRef=db.doc(`${root}/nestlocal_reviews/${requestId}`),metricsRef=db.doc(`${root}/nestlocal_metrics/reviews`);let result=null;
+    await db.runTransaction(async tx=>{
+      const [request,existing,metrics]=await Promise.all([tx.get(requestRef),tx.get(reviewRef),tx.get(metricsRef)]);
+      if(!request.exists||!reviewTokenValid(request.data(),t))throw new TypeError('NOT_FOUND');
+      const current=request.data()||{};if(current.status!=='completed')throw new TypeError('REVIEW_NOT_READY');
+      if(existing.exists||current.review?.submitted===true){result={ok:true,idempotent:true,rating:Number(existing.data()?.rating||current.review?.rating||0)};return}
+      const at=admin.firestore.Timestamp.now(),customerId=safeId(current.customerId),serviceId=safeId(current.serviceId),record={requestId,customerId,serviceId,rating,comment,status:'submitted',source:'secure_review_link',submittedAt:at,createdAt:admin.firestore.FieldValue.serverTimestamp()};
+      tx.create(reviewRef,record);
+      tx.update(requestRef,{review:{submitted:true,rating,comment,submittedAt:at},updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      const previous=metrics.exists?metrics.data()||{}:{},distribution={...(previous.distribution||{})},key=String(rating);distribution[key]=Number(distribution[key]||0)+1;
+      tx.set(metricsRef,{count:Number(previous.count||0)+1,sumRatings:Number(previous.sumRatings||0)+rating,distribution,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:false});
+      result={ok:true,idempotent:false,rating};
+    });
+    res.status(result.idempotent?200:201).json(result);
+  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(code==='REVIEW_NOT_READY')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/public/requests/:requestId/photos',upload.array('photos',5),async(req,res)=>{
   try{const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');if(!(await rateLimit(req,'photos',orgId)))return sendError(res,429,'RATE_LIMITED');const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${id}`),doc=await ref.get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');const files=Array.isArray(req.files)?req.files:[];if(!files.length)return sendError(res,400,'PHOTOS_REQUIRED');if(!files.every(validImage))return sendError(res,415,'INVALID_PHOTO');const bucket=admin.storage().bucket();const saved=[];for(const [index,file] of files.entries()){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.mimetype];const path=`organizations/${orgId}/nestlocal/requests/${id}/${Date.now()}-${index}.${ext}`;await bucket.file(path).save(file.buffer,{resumable:false,metadata:{contentType:file.mimetype,cacheControl:'private,max-age=0',metadata:{organizationId:orgId,requestId:id}}});saved.push({path,contentType:file.mimetype,size:file.size})}await ref.update({attachments:admin.firestore.FieldValue.arrayUnion(...saved),updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.status(201).json({uploaded:saved.length})}catch(e){console.error(e);sendError(res,e?.code==='LIMIT_FILE_SIZE'?413:500,e?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'UPLOAD_FAILED')}});
 
@@ -548,7 +584,7 @@ app.get('/api/session',authenticate,async(req,res)=>{
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
     const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
-    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
+    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,reviewMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
       db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
       db.collection(`${root}/nestlocal_customers`).limit(100).get(),
@@ -557,12 +593,13 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/members`).limit(100).get(),
       db.collection(`${root}/nestlocal_message_outbox`).orderBy('createdAt','desc').limit(30).get(),
       db.doc(`${root}/nestlocal_metrics/revenue`).get(),
+      db.doc(`${root}/nestlocal_metrics/reviews`).get(),
       db.collection(`${root}/nestlocal_action_metrics`).where('date','>=',actionMetricStart).orderBy('date').limit(31).get(),
       db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get(),
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -828,6 +865,40 @@ app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authent
       const update={quote:quoteData,'commercial.quotedAmountCents':amountCents,quotedAt:admin.firestore.Timestamp.now(),quotedBy:req.identity.uid,status:'quoted',updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(status!=='quoted')update.statusHistory=admin.firestore.FieldValue.arrayUnion({status:'quoted',at:admin.firestore.Timestamp.now(),by:req.identity.uid});tx.update(ref,update);response={ok:true,status:'quoted',amountCents,expiresAt}});
     res.json(response);
   }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/review-link',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId);if(!requestId)return sendError(res,400,'INVALID_REQUEST');
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),publicToken=`${req.access.orgId}.${token()}`,digest=hash(publicToken);let result=null;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
+      const current=snap.data()||{};if(current.status!=='completed')throw new TypeError('REVIEW_NOT_READY');
+      const hashes=[...new Set([...(Array.isArray(current.reviewTokenHashes)?current.reviewTokenHashes:[]),clean(current.reviewTokenHash),digest].filter(Boolean))].slice(-3);
+      tx.update(ref,{reviewTokenHash:digest,reviewTokenHashes:hashes,reviewLinkIssuedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      result={requestId,reviewPath:`/review/${requestId}?token=${encodeURIComponent(publicToken)}`};
+    });
+    res.json(result);
+  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='REVIEW_NOT_READY')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/evidence',authenticate,authorize,evidenceUpload.array('photos',8),async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),phase=clean(req.body?.phase||'after').toLowerCase(),note=clean(req.body?.note).slice(0,300);if(!requestId||!['before','after','other'].includes(phase))return sendError(res,400,'INVALID_EVIDENCE');
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),doc=await ref.get();if(!doc.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const current=doc.data()||{};if(!['scheduled','in_progress','completed'].includes(current.status))return sendError(res,409,'EVIDENCE_NOT_READY');
+    const existing=Array.isArray(current.workEvidence)?current.workEvidence:[],files=Array.isArray(req.files)?req.files:[];if(!files.length)return sendError(res,400,'PHOTOS_REQUIRED');if(existing.length+files.length>24)return sendError(res,409,'EVIDENCE_LIMIT');if(!files.every(validImage))return sendError(res,415,'INVALID_PHOTO');
+    const bucket=admin.storage().bucket(),saved=[];for(const [index,file] of files.entries()){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.mimetype],path=`${root}/nestlocal/requests/${requestId}/evidence/${Date.now()}-${index}.${ext}`;await bucket.file(path).save(file.buffer,{resumable:false,metadata:{contentType:file.mimetype,cacheControl:'private,max-age=0',metadata:{organizationId:req.access.orgId,requestId,phase}}});saved.push({path,contentType:file.mimetype,size:file.size,phase,note,uploadedBy:req.identity.uid,uploadedAt:admin.firestore.Timestamp.now()})}
+    await ref.update({workEvidence:admin.firestore.FieldValue.arrayUnion(...saved),updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.status(201).json({uploaded:saved.length,total:existing.length+saved.length,phase});
+  }catch(e){console.error(e);sendError(res,e?.code==='LIMIT_FILE_SIZE'?413:500,e?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'UPLOAD_FAILED')}
+});
+
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/evidence/:evidenceIndex',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),index=Number(req.params.evidenceIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>23)return sendError(res,404,'NOT_FOUND');
+    const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),evidence=doc.data()?.workEvidence?.[index];if(!doc.exists||!evidence?.path||!evidence.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/evidence/`))return sendError(res,404,'NOT_FOUND');
+    res.set({'Content-Type':evidence.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="evidencia-${requestId}-${index+1}"`});admin.storage().bucket().file(evidence.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res);
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/tracking-link',authenticate,authorize,async(req,res)=>{
