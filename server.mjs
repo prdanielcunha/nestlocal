@@ -146,6 +146,17 @@ async function rateLimit(req,key,orgId){
 
 const growthStatuses=new Set(['new','contacted','replied','diagnostic','demo','trial','customer','follow_up','no_fit']);
 const requestStatuses=new Set(['new','reviewing','quoted','accepted','scheduled','in_progress','completed','declined','cancelled']);
+const requestTransitions={
+  new:new Set(['reviewing','cancelled']),
+  reviewing:new Set(['cancelled']),
+  quoted:new Set(['accepted','declined','cancelled']),
+  accepted:new Set(['scheduled','cancelled']),
+  scheduled:new Set(['in_progress','cancelled']),
+  in_progress:new Set(['completed']),
+  completed:new Set(),
+  declined:new Set(),
+  cancelled:new Set()
+};
 const paymentStatuses=new Set(['pending','partial','paid','cancelled']);
 const messageCategories=new Set(['service_update','maintenance_reminder']);
 const assistanceActionTypes=new Set(['quote_followup','customer_reactivation']);
@@ -762,7 +773,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
       const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       if(b.status!==undefined){
-        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');
+        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');
         update.status=status;
         if(status!==current.status){
           update.statusHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.identity.uid});
@@ -794,6 +805,13 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
       const nextStatus=clean(b.status||current.status);
+      if(b.finalAmountCents!==undefined||b.amountPaidCents!==undefined||b.paymentStatus!==undefined||nextStatus==='completed'){
+        const nextFinal=Number(b.finalAmountCents!==undefined?b.finalAmountCents:(current.commercial?.finalAmountCents??current.quote?.totalCents??0)),nextPaid=Number(b.amountPaidCents!==undefined?b.amountPaidCents:(current.commercial?.amountPaidCents||0)),nextPayment=clean(b.paymentStatus!==undefined?b.paymentStatus:(current.commercial?.paymentStatus||'pending'));
+        if(!Number.isSafeInteger(nextFinal)||nextFinal<0||!Number.isSafeInteger(nextPaid)||nextPaid<0||nextPaid>nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='pending'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='partial'&&!(nextPaid>0&&nextPaid<nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&nextPaid!==nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+      }
       const nextSchedule={
         date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
         window:b.scheduledWindow!==undefined?clean(b.scheduledWindow):clean(current.schedule?.window),
@@ -859,7 +877,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_NEXT_SERVICE_DATE'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_STATUS_TRANSITION'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
