@@ -7,7 +7,8 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('capacity is explicit and empty by default', () => {
   const server = read('../server.mjs');
   assert.ok(server.includes("capacity:{workingDays:[],windows:[]}"));
-  assert.ok(server.includes("timezone:'America/Sao_Paulo'"));
+  assert.ok(server.includes("timezone=clean(b.timezone||'America/Sao_Paulo')"));
+  assert.ok(server.includes("timezone,capacity:{workingDays:[],windows:[]}"));
   assert.ok(server.includes("const capacityWindows=new Set(['morning','afternoon','evening'])"));
 });
 
