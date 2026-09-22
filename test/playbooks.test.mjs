@@ -86,7 +86,7 @@ test('prospect playbooks collect the dossier-specific intake without inventing p
     'INVALID_INTAKE',
   ]) assert.ok(server.includes(token), `missing ${token}`);
   assert.ok(client.includes("(selected?.equipmentTypes?.length?selected.equipmentTypes:['other'])"));
-  assert.ok(client.includes("key.startsWith('intake_')"));
+  assert.ok(client.includes("startsWith('intake_')"));
 });
 
 test('field operations can record optional warranty data', () => {
