@@ -41,3 +41,13 @@
 @media (max-width: 480px) {
   .login-proof { grid-template-columns: 1fr; }
 }
+
+
+.auth-recovery{display:grid;gap:16px}
+.auth-recovery h1,.auth-progress h1{margin:0}
+.auth-recovery p,.auth-progress p{margin:0;color:#9db4ad;line-height:1.55}
+.recovery-actions{display:grid;gap:10px;margin-top:4px}
+.auth-progress{display:grid;gap:8px;padding:10px 0}
+.auth-progress::after{content:"";width:100%;height:3px;border-radius:999px;background:linear-gradient(90deg,transparent,#8ff0bd,transparent);background-size:200% 100%;animation:nl-auth-progress 1.35s linear infinite;opacity:.75;margin-top:8px}
+@keyframes nl-auth-progress{from{background-position:200% 0}to{background-position:-200% 0}}
+@media(prefers-reduced-motion:reduce){.auth-progress::after{animation:none;background:#8ff0bd55}}
