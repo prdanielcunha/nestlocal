@@ -51,9 +51,9 @@ export function experimentContextForAction(experiments=[],action={},decisionMemo
   const rows=(experiments||[]).filter(Boolean);
   if(rows.some(exp=>exp.status==='active'&&exp.actionType===actionType))return null;
   const canonical=decisionMemory?.[actionType];
-  if(canonical&&canonical.decision==='context_only'&&canonical.stale!==true&&canonical.snapshot?.actionType===actionType){
-    const context=contextFromSnapshot({snapshot:canonical.snapshot,note:canonical.note,sourceExperimentId:canonical.sourceExperimentId,source:'decision_memory'});
-    if(context)return context;
+  if(canonical){
+    if(canonical.decision!=='context_only'||canonical.stale===true||canonical.snapshot?.actionType!==actionType)return null;
+    return contextFromSnapshot({snapshot:canonical.snapshot,note:canonical.note,sourceExperimentId:canonical.sourceExperimentId,source:'decision_memory'});
   }
   for(const exp of rows){
     if(exp.status==='active'||exp.actionType!==actionType||exp.review?.decision!=='context_only'||exp.reviewStale===true)continue;
