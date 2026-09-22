@@ -340,3 +340,23 @@
 .assist-context>p{margin:0;padding:9px 11px;border-left:2px solid rgba(139,230,192,.24);color:#dce9e4;font-size:.65rem;line-height:1.5}
 .assist-context-limit,.assist-context-guardrail{color:var(--muted,#92a69e);font-size:.6rem;line-height:1.45}
 @media(max-width:520px){.assist-context-grid{grid-template-columns:1fr}.assist-context-spread{display:grid}}
+
+
+/* Canonical learning library */
+.decision-memory-library{display:grid;gap:11px;padding-top:13px;border-top:1px solid rgba(255,255,255,.06)}
+.decision-memory-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.decision-memory-head>div{display:grid;gap:4px}
+.decision-memory-head span{color:var(--muted,#92a69e);font-size:.62rem;font-weight:760;text-transform:uppercase;letter-spacing:.06em}
+.decision-memory-head strong{font-size:.82rem}
+.decision-memory-head>small{max-width:300px;color:var(--muted,#92a69e);font-size:.62rem;line-height:1.45;text-align:right}
+.decision-memory-list{display:grid;gap:8px}
+.decision-memory-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid rgba(139,230,192,.12);border-radius:13px;background:rgba(91,206,160,.022)}
+.decision-memory-row.stale{border-color:rgba(245,191,92,.16);background:rgba(245,191,92,.022)}
+.decision-memory-row>div{display:grid;gap:3px}
+.decision-memory-row span{color:var(--muted,#92a69e);font-size:.6rem;font-weight:740;text-transform:uppercase;letter-spacing:.05em}
+.decision-memory-row strong{font-size:.75rem}
+.decision-memory-row small{color:var(--muted,#92a69e);font-size:.61rem;line-height:1.4}
+.decision-memory-row>b{font-size:.61rem;font-weight:650;color:#d8e8e2;text-align:right}
+.decision-memory-note{padding-top:3px;color:#cbdad4!important}
+.decision-memory-guardrail{color:var(--muted,#92a69e);font-size:.6rem;line-height:1.45}
+@media(max-width:760px){.decision-memory-head{display:grid}.decision-memory-head>small{max-width:none;text-align:left}.decision-memory-row{grid-template-columns:1fr}.decision-memory-row>b{text-align:left}}
