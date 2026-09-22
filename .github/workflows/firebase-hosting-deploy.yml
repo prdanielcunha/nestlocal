@@ -170,17 +170,17 @@ jobs:
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
             'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
             'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
-            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'action-resume-date' 'data-decision="accepted"'
+            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'action-resume-date' 'data-decision="accepted"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/guided-experiment.js /tmp/nestlocal-guided-experiment.js \
-            'renderGuidedExperiment' 'experimentForAction' 'experimentContextForAction' 'renderExperimentContext' 'buildExperimentReviewModel' 'guidedExperimentState' 'experimentContextForAction' 'renderExperimentContext'
+            'renderGuidedExperiment' 'experimentForAction' 'decisionMemoryLibrary' 'experimentContextForAction' 'renderExperimentContext' 'buildExperimentReviewModel' 'guidedExperimentState' 'decisionMemoryLibrary' 'renderDecisionMemoryLibrary'
 
           fetch_until_contains https://nestlocal.millionsnest.com/growth.css /tmp/nestlocal-growth.css \
             '.xray-shell' '.growth-funnel'
 
           fetch_until_contains https://nestlocal.millionsnest.com/operations.css /tmp/nestlocal-operations.css \
             '.lifecycle-form' '.next-action' '.learning-metrics' '.learning-insight-status' \
-            '.guided-experiment' '.assist-experiment' '.experiment-review' '.experiment-review-spread' '.assist-context' '.assist-context-spread'
+            '.guided-experiment' '.assist-experiment' '.experiment-review' '.experiment-review-spread' '.assist-context' '.assist-context-spread' '.decision-memory-library' '.decision-memory-row'
 
           fetch_until_contains https://nestlocal.web.app/live.js /tmp/nestlocal-alias-live.js \
             'revenueXrayView' 'nextBestActions' 'outcomeLearningCard' 'explainableInsights' \
