@@ -12,7 +12,7 @@ test('secure tracking projects only customer-safe schedule payment warranty and 
   assert.ok(start>=0);
   for(const token of [
     'trackingTokenValid',
-    "scheduleVisible=['scheduled','in_progress','completed']",
+    "scheduleVisible=['scheduled','in_progress','completed','no_show']",
     'customerConfirmation',
     'balanceCents',
     'pixVisible',
