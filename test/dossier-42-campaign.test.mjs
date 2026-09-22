@@ -18,7 +18,7 @@ test('client embeds the exact 42-company dossier campaign and imports it idempot
   const end=client.indexOf("const growthStatusIds=",start);
   const block=client.slice(start,end);
   assert.ok(start>=0);
-  assert.equal((block.match(/^  \['/gm)||[]).length,42);
+  assert.equal((block.match(/,\d+(?:\.\d+)?,'[AB]','/g)||[]).length,42);
   for(const token of [
     "['Valuz Segurança Eletrônica'",
     "['Lavarie'",
