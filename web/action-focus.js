@@ -30,6 +30,9 @@ export function decorateAction(action, today) {
     case 'schedule':
       reasonKey = 'why_schedule';
       break;
+    case 'reschedule':
+      reasonKey = 'why_reschedule';
+      break;
     case 'execute':
       reasonKey = overdueDays > 0 ? 'why_execute_overdue' : 'why_execute_today';
       reasonValue = overdueDays;

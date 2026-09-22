@@ -481,13 +481,20 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
 app.get('/api/public/requests/:requestId',async(req,res)=>{
   try{
     const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');
-    const doc=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
-    const d=doc.data(),displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null;
-    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0;
-    res.json({id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt});
+    const root=`organizations/${orgId}`,[doc,settingsSnap]=await Promise.all([db.doc(`${root}/nestlocal_requests/${id}`).get(),db.doc(`${root}/nestlocal_settings/public`).get()]);
+    if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
+    const d=doc.data(),settings=settingsSnap.data()||{},displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null,paidCents=Math.max(0,Number(d.commercial?.amountPaidCents||0)),balanceCents=displayTotalCents===null?null:Math.max(0,displayTotalCents-paidCents);
+    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    res.set('Cache-Control','private,no-store');
+    res.json({
+      id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
+      schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
+      payment:paymentVisible?{status:clean(d.commercial?.paymentStatus||'pending'),totalCents:displayTotalCents,paidCents,balanceCents,pix:pixVisible?{key:clean(pix.key),label:clean(pix.label),instructions:clean(pix.instructions)}:null}:null,
+      warranty:completed&&clean(d.warranty?.until)?{until:clean(d.warranty.until),notes:clean(d.warranty?.notes)}:null,
+      nextReturn:completed&&clean(d.return?.nextServiceDate)?{date:clean(d.return.nextServiceDate),reason:clean(d.return?.reason)}:null
+    });
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
-
 app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
   try{
     const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]),decision=clean(req.body?.decision).toLowerCase();
@@ -519,10 +526,26 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
   }
 });
 
+app.post('/api/public/requests/:requestId/schedule-confirmation',async(req,res)=>{
+  try{
+    const requestId=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]),decision=clean(req.body?.decision).toLowerCase();
+    if(!requestId||!orgId||!t||!['confirmed','change_requested'].includes(decision))return sendError(res,400,'INVALID_SCHEDULE_CONFIRMATION');
+    if(!(await rateLimit(req,'decision',orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${requestId}`);let result=null;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
+      const current=snap.data()||{};if(current.status!=='scheduled'||!clean(current.schedule?.date))throw new TypeError('SCHEDULE_CONFIRMATION_NOT_READY');
+      const existing=clean(current.schedule?.customerConfirmation?.status);if(existing===decision){result={ok:true,status:decision,idempotent:true};return}
+      const at=admin.firestore.Timestamp.now();tx.update(ref,{'schedule.customerConfirmation':{status:decision,at,source:'public_tracking'},updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={ok:true,status:decision,idempotent:false};
+    });
+    res.status(result.idempotent?200:201).json(result);
+  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(code==='SCHEDULE_CONFIRMATION_NOT_READY')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.get('/api/public/reviews/:requestId',async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!requestId||!orgId||!t)return sendError(res,404,'NOT_FOUND');
-    const root=`organizations/${orgId}`,[request,settings,service]=await Promise.all([db.doc(`${root}/nestlocal_requests/${requestId}`).get(),db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${requestId}`).get().catch(()=>null)]);
+    const root=`organizations/${orgId}`,[request,settings]=await Promise.all([db.doc(`${root}/nestlocal_requests/${requestId}`).get(),db.doc(`${root}/nestlocal_settings/public`).get()]);
     if(!request.exists||!reviewTokenValid(request.data(),t))return sendError(res,404,'NOT_FOUND');
     const data=request.data()||{};if(data.status!=='completed')return sendError(res,409,'REVIEW_NOT_READY');
     const serviceDoc=await db.doc(`${root}/nestlocal_services/${safeId(data.serviceId)}`).get();
@@ -671,7 +694,7 @@ app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,
     if(businessName.length<2||!coverageCodes.length||!validTimeZone(timezone))return sendError(res,400,'ONBOARDING_DETAILS_REQUIRED');
     const root=`organizations/${req.access.orgId}`,settings=db.doc(`${root}/nestlocal_settings/public`),existing=await settings.get();if(existing.exists)return res.json({created:false});
     const baseSlug=slug(businessName||req.access.org.slug||req.access.org.name)||'negocio',batch=db.batch();
-    batch.create(settings,{businessName,slug:`${baseSlug}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes,whatsapp,currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone,capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    batch.create(settings,{businessName,slug:`${baseSlug}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes,whatsapp,currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone,capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},payments:{pix:{enabled:false,key:'',label:'',instructions:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});
     await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
@@ -679,6 +702,16 @@ app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
   const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
+});
+
+app.put('/api/organizations/:orgId/nestlocal/payment-settings',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const b=req.body||{},enabled=b.enabled===true,key=clean(b.key).slice(0,180),label=clean(b.label).slice(0,100),instructions=clean(b.instructions).slice(0,300);
+    if(enabled&&!key)return sendError(res,400,'PIX_KEY_REQUIRED');
+    await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set({payments:{pix:{enabled,key,label,instructions}},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    res.json({ok:true,enabled});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.put('/api/organizations/:orgId/nestlocal/capacity',authenticate,authorize,async(req,res)=>{

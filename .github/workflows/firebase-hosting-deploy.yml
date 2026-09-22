@@ -170,7 +170,7 @@ jobs:
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
             'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
             'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
-            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'canonicalAuthDomain' 'signInWithPopup' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"'
+            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'canonicalAuthDomain' 'signInWithPopup' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted" 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/guided-experiment.js /tmp/nestlocal-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction' 'decisionMemoryLibrary' 'experimentContextForAction' 'renderExperimentContext' 'buildExperimentReviewModel' 'guidedExperimentState' 'decisionMemoryLibrary' 'renderDecisionMemoryLibrary'
@@ -180,7 +180,7 @@ jobs:
 
           fetch_until_contains https://nestlocal.millionsnest.com/operations.css /tmp/nestlocal-operations.css \
             '.lifecycle-form' '.next-action' '.learning-metrics' '.learning-insight-status' \
-            '.guided-experiment' '.assist-experiment' '.experiment-review' '.experiment-review-spread' '.assist-context' '.assist-context-spread' '.decision-memory-library' '.decision-memory-row' '.request-stage' '.customer-card' '.agenda-item' '.readiness-card'
+            '.guided-experiment' '.assist-experiment' '.experiment-review' '.experiment-review-spread' '.assist-context' '.assist-context-spread' '.decision-memory-library' '.decision-memory-row' '.request-stage' '.customer-card' '.agenda-item' '.readiness-card' '.evidence-stage' '.maintenance-plan-card' '.tracking-portal' '.pix-box'
 
           fetch_until_contains https://nestlocal.millionsnest.com/premium.css /tmp/nestlocal-premium.css \
             '.auth-recovery' '.auth-progress' '.recovery-actions'
