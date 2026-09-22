@@ -47,6 +47,34 @@ const validImage=file=>(file.mimetype==='image/jpeg'&&file.buffer[0]===0xff&&fil
 const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','removed','revoked','archived'].includes(d?.status);
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const sendError=(res,status,code)=>res.status(status).json({error:code});
+function nestLocalEntitlement(orgData={},subscriptionData={}){
+  const appSubscription=subscriptionData?.apps?.nestlocal||null,orgApp=orgData?.apps?.nestlocal||null;
+  const subscriptionStatus=clean(appSubscription?.status).toLowerCase(),organizationAppStatus=clean(orgApp?.status).toLowerCase();
+  const planValue=clean(appSubscription?.plan||orgApp?.plan).toLowerCase(),plan=['essential','growth','pro'].includes(planValue)?planValue:'essential';
+  let reason='';
+  if(!appSubscription)reason='SUBSCRIPTION_NOT_FOUND';
+  else if(paymentIssueStatuses.has(subscriptionStatus))reason='SUBSCRIPTION_PAYMENT_REQUIRED';
+  else if(!activeSubscriptionStatuses.has(subscriptionStatus))reason='SUBSCRIPTION_INACTIVE';
+  else if(!activeSubscriptionStatuses.has(organizationAppStatus))reason='ENTITLEMENT_INACTIVE';
+  return {active:!reason,reason,subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
+}
+function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc}={}){
+  if(!userDoc?.exists)return{accessible:false,reason:'USER_NOT_FOUND'};
+  const userData=userDoc.data()||{};if(inactive(userData))return{accessible:false,reason:'USER_INACTIVE'};
+  if(!orgDoc?.exists)return{accessible:false,reason:'ORGANIZATION_NOT_FOUND'};
+  const orgData=orgDoc.data()||{};if(inactive(orgData))return{accessible:false,reason:'ORGANIZATION_INACTIVE'};
+  const systemRole=clean(userData.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole),entitlement=nestLocalEntitlement(orgData,subscriptionDoc?.data?.()||{});
+  if(administrative)return{accessible:true,reason:'',systemRole,administrative:true,organizationRole:'',member:null,entitlement:{...entitlement,active:true,reason:'',plan:'pro',limits:planLimits.pro,status:'administrative'}};
+  if(!memberDoc?.exists)return{accessible:false,reason:'MEMBERSHIP_NOT_FOUND',systemRole,administrative:false,entitlement};
+  const member=memberDoc.data()||{};if(inactive(member))return{accessible:false,reason:'MEMBERSHIP_INACTIVE',systemRole,administrative:false,member,entitlement};
+  const organizationRole=clean(member.role||member.organizationRole||'member').toLowerCase(),owner=organizationRole==='owner',memberAccess=member.appAccess?.nestlocal;
+  if(!entitlement.active)return{accessible:false,reason:entitlement.reason,systemRole,administrative:false,organizationRole,member,entitlement};
+  if(!owner&&memberAccess?.enabled!==true)return{accessible:false,reason:'MEMBER_APP_ACCESS_DISABLED',systemRole,administrative:false,organizationRole,member,entitlement};
+  const canManage=owner||member.permissions?.['nestlocal.manage']===true||memberAccess?.permissions?.includes?.('nestlocal.manage');
+  if(!canManage)return{accessible:false,reason:'PERMISSION_DENIED',systemRole,administrative:false,organizationRole,member,entitlement};
+  return{accessible:true,reason:'',systemRole,administrative:false,organizationRole,member,entitlement};
+}
+
 const upload=multer({storage:multer.memoryStorage(),limits:{files:5,fileSize:5*1024*1024},fileFilter:(_req,file,cb)=>cb(null,['image/jpeg','image/png','image/webp'].includes(file.mimetype))});
 
 async function authenticate(req,res,next){
@@ -56,32 +84,29 @@ async function authenticate(req,res,next){
 }
 
 async function authorize(req,res,next){
-  const orgId=clean(req.params.orgId);
-  if(!orgId) return sendError(res,400,'ORGANIZATION_REQUIRED');
-  const [user,org,member,subscription]=await Promise.all([
-    db.doc(`users/${req.identity.uid}`).get(),db.doc(`organizations/${orgId}`).get(),db.doc(`organizations/${orgId}/members/${req.identity.uid}`).get(),db.doc(`subscriptions/${orgId}`).get()
-  ]);
-  if(!user.exists||!org.exists||inactive(user.data())||inactive(org.data())) return sendError(res,403,'ACCESS_DENIED');
-  const systemRole=user.data()?.systemRole;
-  const m=member.data(),organizationRole=clean(m?.role||m?.organizationRole).toLowerCase(),memberAppAccess=m?.appAccess?.nestlocal;
-  const allowed=globalRoles.has(systemRole)||(member.exists&&!inactive(m)&&(organizationRole==='owner'||(memberAppAccess?.enabled===true&&(m?.permissions?.['nestlocal.manage']===true||memberAppAccess?.permissions?.includes?.('nestlocal.manage')))));
-  if(!allowed) return sendError(res,403,'ACCESS_DENIED');
-  const appSubscription=subscription.data()?.apps?.nestlocal||null;
-  const appRecord=org.data()?.apps?.nestlocal||null;
-  const status=clean(appSubscription?.status||appRecord?.status).toLowerCase();
-  const plan=['essential','growth','pro'].includes(clean(appSubscription?.plan||appRecord?.plan).toLowerCase())?clean(appSubscription?.plan||appRecord?.plan).toLowerCase():'essential';
-  const administrative=globalRoles.has(systemRole);
-  if(!administrative&&!activeSubscriptionStatuses.has(status))return sendError(res,402,paymentIssueStatuses.has(status)?'SUBSCRIPTION_PAYMENT_REQUIRED':'SUBSCRIPTION_REQUIRED');
-  req.access={orgId,org:{id:org.id,...org.data()},systemRole,member:m||null,entitlement:{status:administrative?'administrative':status,plan:administrative?'pro':plan,limits:planLimits[administrative?'pro':plan],administrative}};next();
+  const orgId=clean(req.params.orgId);if(!orgId)return sendError(res,400,'ORGANIZATION_REQUIRED');
+  try{
+    const [user,org,member,subscription]=await Promise.all([
+      db.doc(`users/${req.identity.uid}`).get(),
+      db.doc(`organizations/${orgId}`).get(),
+      db.doc(`organizations/${orgId}/members/${req.identity.uid}`).get(),
+      db.doc(`subscriptions/${orgId}`).get()
+    ]);
+    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription});
+    if(!access.accessible){
+      const status=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE','ENTITLEMENT_INACTIVE'].includes(access.reason)?402:access.reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?402:403;
+      return sendError(res,status,access.reason||'ACCESS_DENIED');
+    }
+    req.access={orgId,org:{id:org.id,...org.data()},systemRole:access.systemRole,member:access.member||null,entitlement:{status:access.administrative?'administrative':access.entitlement.subscriptionStatus,plan:access.administrative?'pro':access.entitlement.plan,limits:access.administrative?planLimits.pro:access.entitlement.limits,administrative:access.administrative}};
+    next();
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 }
 
 async function getPublicEntitlement(orgId){
   const [subscription,org]=await Promise.all([db.doc(`subscriptions/${orgId}`).get(),db.doc(`organizations/${orgId}`).get()]);
-  const appSubscription=subscription.data()?.apps?.nestlocal||null,appRecord=org.data()?.apps?.nestlocal||null;
-  const status=clean(appSubscription?.status||appRecord?.status).toLowerCase();
-  const planValue=clean(appSubscription?.plan||appRecord?.plan).toLowerCase();
-  const plan=['essential','growth','pro'].includes(planValue)?planValue:'essential';
-  return {active:activeSubscriptionStatuses.has(status),status,plan,limits:planLimits[plan]};
+  if(!org.exists||inactive(org.data()))return{active:false,status:'inactive',plan:'essential',limits:planLimits.essential};
+  const entitlement=nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{});
+  return{active:entitlement.active,status:entitlement.reason||entitlement.subscriptionStatus,plan:entitlement.plan,limits:entitlement.limits};
 }
 
 async function resolveOrganization(storeSlug){
@@ -428,7 +453,29 @@ app.post('/api/public/requests/:requestId/photos',upload.array('photos',5),async
   try{const id=safeId(req.params.requestId),t=clean(req.query.token),orgId=safeId(t.split('.')[0]);if(!id||!orgId||!t)return sendError(res,404,'NOT_FOUND');if(!(await rateLimit(req,'photos',orgId)))return sendError(res,429,'RATE_LIMITED');const ref=db.doc(`organizations/${orgId}/nestlocal_requests/${id}`),doc=await ref.get();if(!doc.exists||doc.data().trackingTokenHash!==hash(t))return sendError(res,404,'NOT_FOUND');const files=Array.isArray(req.files)?req.files:[];if(!files.length)return sendError(res,400,'PHOTOS_REQUIRED');if(!files.every(validImage))return sendError(res,415,'INVALID_PHOTO');const bucket=admin.storage().bucket();const saved=[];for(const [index,file] of files.entries()){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.mimetype];const path=`organizations/${orgId}/nestlocal/requests/${id}/${Date.now()}-${index}.${ext}`;await bucket.file(path).save(file.buffer,{resumable:false,metadata:{contentType:file.mimetype,cacheControl:'private,max-age=0',metadata:{organizationId:orgId,requestId:id}}});saved.push({path,contentType:file.mimetype,size:file.size})}await ref.update({attachments:admin.firestore.FieldValue.arrayUnion(...saved),updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.status(201).json({uploaded:saved.length})}catch(e){console.error(e);sendError(res,e?.code==='LIMIT_FILE_SIZE'?413:500,e?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'UPLOAD_FAILED')}});
 
 app.get('/api/session',authenticate,async(req,res)=>{
-  try{const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists)return sendError(res,403,'USER_NOT_FOUND');const data=user.data();let ids=[data.organizationId,data.primaryOrganizationId,data.activeOrganizationId,...(Array.isArray(data.organizations)?data.organizations:[])].filter(x=>typeof x==='string');const legacy=await db.collection('organization_members').where('uid','==',req.identity.uid).limit(50).get();ids.push(...legacy.docs.filter(x=>!inactive(x.data())).map(x=>x.data().organizationId).filter(Boolean));const administrative=globalRoles.has(data.systemRole);if(administrative){const all=await db.collection('organizations').limit(50).get();ids.push(...all.docs.map(x=>x.id))}ids=[...new Set(ids)];const docs=await Promise.all(ids.map(async id=>{const [org,subscription]=await Promise.all([db.doc(`organizations/${id}`).get(),db.doc(`subscriptions/${id}`).get()]);if(!org.exists||inactive(org.data()))return null;const appSubscription=subscription.data()?.apps?.nestlocal||null,appRecord=org.data()?.apps?.nestlocal||null,status=administrative?'administrative':clean(appSubscription?.status||appRecord?.status).toLowerCase(),plan=administrative?'pro':clean(appSubscription?.plan||appRecord?.plan||'essential').toLowerCase();return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:administrative||activeSubscriptionStatuses.has(status),status,plan,limits:planLimits[plan]||planLimits.essential}}}));res.json({user:{uid:req.identity.uid,displayName:data.displayName||req.identity.name||'',systemRole:data.systemRole||'user'},organizations:docs.filter(Boolean)})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{
+    const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists)return sendError(res,403,'USER_NOT_FOUND');
+    const data=user.data()||{};if(inactive(data))return sendError(res,403,'USER_INACTIVE');
+    const systemRole=clean(data.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole);
+    let ids=[data.organizationId,data.primaryOrganizationId,data.activeOrganizationId,...(Array.isArray(data.organizations)?data.organizations:[])].filter(x=>typeof x==='string'&&x);
+    const legacy=await db.collection('organization_members').where('uid','==',req.identity.uid).limit(50).get();
+    ids.push(...legacy.docs.filter(x=>!inactive(x.data())).map(x=>x.data().organizationId).filter(Boolean));
+    if(administrative){const all=await db.collection('organizations').limit(50).get();ids.push(...all.docs.map(x=>x.id))}
+    ids=[...new Set(ids)];
+    const docs=await Promise.all(ids.map(async id=>{
+      const [org,member,subscription]=await Promise.all([
+        db.doc(`organizations/${id}`).get(),
+        db.doc(`organizations/${id}/members/${req.identity.uid}`).get(),
+        db.doc(`subscriptions/${id}`).get()
+      ]);
+      if(!org.exists||inactive(org.data()))return null;
+      const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription}),ent=access.entitlement||nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{});
+      return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:access.accessible,status:access.administrative?'administrative':ent.subscriptionStatus||'',organizationAppStatus:ent.organizationAppStatus||'',plan:access.administrative?'pro':ent.plan,limits:access.administrative?planLimits.pro:ent.limits,reason:access.reason||'',administrative:access.administrative===true,organizationRole:access.organizationRole||''}};
+    }));
+    const organizations=docs.filter(Boolean);
+    res.json({user:{uid:req.identity.uid,displayName:data.displayName||req.identity.name||'',systemRole:systemRole||'user'},organizations,eligibleOrganizationCount:organizations.filter(x=>x.nestlocal?.access).length});
+  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
 
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
@@ -455,7 +502,7 @@ app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,a
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
-  try{const enabled=Array.isArray(req.access.org.enabledApps)&&req.access.org.enabledApps.includes('nestlocal');if(!globalRoles.has(req.access.systemRole)&&!enabled)return sendError(res,403,'APP_NOT_ENABLED');const template=clean(req.body?.template||'climate').toLowerCase();if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');const root=`organizations/${req.access.orgId}`;const settings=db.doc(`${root}/nestlocal_settings/public`);const existing=await settings.get();if(existing.exists)return res.json({created:false});const batch=db.batch();batch.create(settings,{businessName:req.access.org.name,slug:`${slug(req.access.org.slug||req.access.org.name)}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes:['londrina','cambe'],whatsapp:'',currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone:'America/Sao_Paulo',capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{const template=clean(req.body?.template||'climate').toLowerCase();if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');const root=`organizations/${req.access.orgId}`;const settings=db.doc(`${root}/nestlocal_settings/public`);const existing=await settings.get();if(existing.exists)return res.json({created:false});const batch=db.batch();batch.create(settings,{businessName:req.access.org.name,slug:`${slug(req.access.org.slug||req.access.org.name)}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes:['londrina','cambe'],whatsapp:'',currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone:'America/Sao_Paulo',capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
   const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
