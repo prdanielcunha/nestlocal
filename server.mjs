@@ -632,6 +632,25 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-plan',authenticate,authorize,async(req,res)=>{
+  try{
+    const customerId=safeId(req.params.customerId),b=req.body||{},active=b.active===true,name=clean(b.name).slice(0,120),intervalDays=Number(b.intervalDays||0),nextVisitDate=clean(b.nextVisitDate).slice(0,10),contractStart=clean(b.contractStart).slice(0,10),contractEnd=clean(b.contractEnd).slice(0,10),notes=clean(b.notes).slice(0,500);
+    if(!customerId||!Number.isInteger(intervalDays)||intervalDays<0||intervalDays>730)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    for(const value of [nextVisitDate,contractStart,contractEnd])if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    if(contractStart&&contractEnd&&contractEnd<contractStart)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    if(active&&!name)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);let result=null;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+      const current=snap.data()||{},plan={active,name,intervalDays,nextVisitDate,contractStart,contractEnd,notes,updatedBy:req.identity.uid,updatedAt:admin.firestore.Timestamp.now()},update={maintenancePlan:plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      if(active&&nextVisitDate){update.nextServiceDate=nextVisitDate;update.nextServiceReason=name;update.nextServiceSource='maintenance_plan'}
+      else if(current.nextServiceSource==='maintenance_plan'){update.nextServiceDate=admin.firestore.FieldValue.delete();update.nextServiceReason=admin.firestore.FieldValue.delete();update.nextServiceSource=admin.firestore.FieldValue.delete()}
+      tx.update(ref,update);result={ok:true,maintenancePlan:plan};
+    });
+    res.json(result);
+  }catch(e){console.error(e);if(e?.message==='CUSTOMER_NOT_FOUND')return sendError(res,404,'CUSTOMER_NOT_FOUND');sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply',authenticate,authorize,async(req,res)=>{
   try{
     if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
