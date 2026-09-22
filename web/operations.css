@@ -455,3 +455,22 @@
 .customer-main>.tag{margin-left:auto}
 .agenda-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
 @media(max-width:620px){.maintenance-plan-form{grid-template-columns:1fr}.maintenance-plan-form .wide{grid-column:auto}.agenda-actions{width:100%}.agenda-actions .button{flex:1}}
+
+
+/* Customer self-service portal + Pix */
+.payment-settings{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.payment-settings .section-title,.payment-settings .wide{grid-column:1/-1}
+.payment-settings .plan-toggle{display:flex;align-items:center;gap:8px}
+.tracking-portal{display:grid;gap:14px}
+.portal-block{display:grid;gap:10px;padding:15px;border:1px solid rgba(255,255,255,.075);border-radius:16px;background:rgba(255,255,255,.018)}
+.portal-block h2,.portal-block h3,.portal-block p{margin:0}
+.portal-actions{display:flex;gap:8px;flex-wrap:wrap}
+.portal-money{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.portal-money>div{display:grid;gap:3px;padding:11px;border:1px solid rgba(255,255,255,.065);border-radius:12px}
+.portal-money small{color:var(--muted,#92a69e);font-size:.68rem}
+.portal-money strong{font-size:.95rem}
+.portal-money .highlight{border-color:rgba(139,230,192,.22);background:rgba(91,206,160,.045)}
+.pix-box{display:grid;gap:7px;padding:13px;border:1px solid rgba(139,230,192,.18);border-radius:13px;background:rgba(91,206,160,.035)}
+.pix-box code{overflow-wrap:anywhere;font-size:.82rem}
+.pix-box p{color:var(--muted,#92a69e);font-size:.74rem;line-height:1.45}
+@media(max-width:620px){.payment-settings{grid-template-columns:1fr}.payment-settings .section-title,.payment-settings .wide{grid-column:auto}.portal-money{grid-template-columns:1fr}.portal-actions .button{flex:1}}
