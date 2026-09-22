@@ -7,8 +7,10 @@ const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 test('SaaS access is server-authored and plan scoped', () => {
   const server = read('../server.mjs');
   for (const token of [
-    "subscription.data()?.apps?.nestlocal",
+    "function nestLocalEntitlement",
+    "subscriptionData?.apps?.nestlocal",
     "activeSubscriptionStatuses",
+    "orgData?.apps?.nestlocal",
     "SUBSCRIPTION_PAYMENT_REQUIRED",
     "SUBSCRIPTION_REQUIRED",
     "PLAN_REQUEST_LIMIT",
