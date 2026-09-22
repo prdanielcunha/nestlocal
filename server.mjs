@@ -433,7 +433,7 @@ app.get('/api/session',authenticate,async(req,res)=>{
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
     const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
-    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics,experiments]=await Promise.all([
+    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
       db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
       db.collection(`${root}/nestlocal_customers`).limit(100).get(),
@@ -443,10 +443,11 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_message_outbox`).orderBy('createdAt','desc').limit(30).get(),
       db.doc(`${root}/nestlocal_metrics/revenue`).get(),
       db.collection(`${root}/nestlocal_action_metrics`).where('date','>=',actionMetricStart).orderBy('date').limit(31).get(),
-      db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get()
+      db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get(),
+      db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()}));
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,services:services.docs.map(x=>({id:x.id,...x.data()})),requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -515,9 +516,10 @@ app.post('/api/organizations/:orgId/nestlocal/experiments/:experimentId/review',
     await db.runTransaction(async tx=>{
       const experiment=await tx.get(experimentRef);if(!experiment.exists)throw new TypeError('EXPERIMENT_NOT_FOUND');
       const data={id:experiment.id,...experiment.data()};if(data.status==='active')throw new TypeError('EXPERIMENT_REVIEW_NOT_READY');
-      const snapshot=experimentReviewSnapshot(data),review={version:1,decision,note,snapshot,by:req.identity.uid,at};
+      const snapshot=experimentReviewSnapshot(data),review={version:1,decision,note,snapshot,by:req.identity.uid,at},memoryRef=db.doc(`${root}/nestlocal_decision_memory/${snapshot.actionType}`),memory={version:1,actionType:snapshot.actionType,decision,note,snapshot,sourceExperimentId:experimentId,reviewedBy:req.identity.uid,reviewedAt:at,stale:false,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       tx.set(experimentRef,{review,reviewStale:false,reviewedAt:at,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
-      response={id:experimentId,status:data.status,review:{decision,note,snapshot,stale:false}};
+      tx.set(memoryRef,memory,{merge:false});
+      response={id:experimentId,status:data.status,review:{decision,note,snapshot,stale:false},decisionMemory:{actionType:snapshot.actionType,sourceExperimentId:experimentId,stale:false}};
     });
     res.json(response);
   }catch(e){console.error(e);if(e?.message==='EXPERIMENT_NOT_FOUND')return sendError(res,404,'EXPERIMENT_NOT_FOUND');if(e?.message==='EXPERIMENT_REVIEW_NOT_READY')return sendError(res,409,'EXPERIMENT_REVIEW_NOT_READY');sendError(res,500,'INTERNAL_ERROR')}
@@ -555,9 +557,10 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
       let experimentSnap=null,sampleSnap=null,experimentCounted=false,experimentReason='',experimentCompleted=false,experimentVariant='';
       if(experimentRef&&sampleRef)[experimentSnap,sampleSnap]=await Promise.all([tx.get(experimentRef),tx.get(sampleRef)]);
       if(existingExperimentId&&experimentSnap?.exists&&existingData?.experimentRecorded===true){
-        const expData={id:experimentSnap.id,...experimentSnap.data()},updated=updateExperimentProgress(expData,{variant:existingData.experimentVariant||channel,outcome,previousOutcome,counted:true}),reviewStale=expData.reviewStale===true||(previousOutcome!==outcome&&Boolean(expData.review?.decision));
+        const expData={id:experimentSnap.id,...experimentSnap.data()},updated=updateExperimentProgress(expData,{variant:existingData.experimentVariant||channel,outcome,previousOutcome,counted:true}),reviewChanged=previousOutcome!==outcome&&Boolean(expData.review?.decision),reviewStale=expData.reviewStale===true||reviewChanged,memoryRef=reviewChanged&&expData.actionType?db.doc(`${root}/nestlocal_decision_memory/${expData.actionType}`):null,memorySnap=memoryRef?await tx.get(memoryRef):null;
         experimentVariant=existingData.experimentVariant||channel;experimentCounted=true;
         tx.set(experimentRef,{progress:updated.progress,reviewStale,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        if(reviewChanged&&memoryRef&&memorySnap?.exists&&clean(memorySnap.data()?.sourceExperimentId)===expData.id)tx.set(memoryRef,{stale:true,staleReason:'source_outcome_changed',staleAt:admin.firestore.Timestamp.now(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         if(sampleSnap?.exists)tx.set(sampleRef,{outcome,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }else if(!existing.exists&&experimentId){
         if(!experimentSnap?.exists)experimentReason='EXPERIMENT_NOT_AVAILABLE';

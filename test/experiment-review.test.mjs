@@ -93,7 +93,8 @@ test('outcome refinement makes a previously acknowledged review stale without du
   const start=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/action-events'");
   const end=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/messages/prepare'",start);
   const block=server.slice(start,end);
-  assert.ok(block.includes("reviewStale=expData.reviewStale===true||(previousOutcome!==outcome&&Boolean(expData.review?.decision))"));
+  assert.ok(block.includes("reviewChanged=previousOutcome!==outcome&&Boolean(expData.review?.decision)"));
+  assert.ok(block.includes("reviewStale=expData.reviewStale===true||reviewChanged"));
   assert.ok(block.includes('updateExperimentProgress(expData'));
   assert.ok(block.includes('counted:true'));
 });
