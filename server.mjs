@@ -38,7 +38,7 @@ const servicePlaybooks={
   ]}
 };
 const clean=v=>typeof v==='string'?v.trim():'';
-const slug=v=>clean(v).toLowerCase().replace(/[^a-z0-9-]/g,'').slice(0,60);
+const slug=v=>clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
 const phone=v=>clean(v).replace(/\D/g,'').slice(0,15);
 const hash=v=>crypto.createHash('sha256').update(v).digest('hex');
 const token=()=>crypto.randomBytes(24).toString('base64url');
@@ -47,6 +47,28 @@ const validImage=file=>(file.mimetype==='image/jpeg'&&file.buffer[0]===0xff&&fil
 const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','removed','revoked','archived'].includes(d?.status);
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const sendError=(res,status,code)=>res.status(status).json({error:code});
+const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
+function catalogReadiness(settings,services=[]){
+  const issues=[];
+  if(!settings){issues.push('SETUP_REQUIRED');return{ready:false,issues}}
+  if(clean(settings.businessName).length<2)issues.push('BUSINESS_NAME_REQUIRED');
+  if(slug(settings.slug).length<3)issues.push('SLUG_REQUIRED');
+  const coverage=Array.isArray(settings.coverageCodes)?settings.coverageCodes.map(slug).filter(Boolean):[];
+  if(!coverage.length)issues.push('COVERAGE_REQUIRED');
+  if(!validTimeZone(clean(settings.timezone||'America/Sao_Paulo')))issues.push('TIMEZONE_INVALID');
+  const list=Array.isArray(services)?services:[];
+  if(!list.length)issues.push('SERVICE_REQUIRED');
+  for(const service of list){
+    if(!service||!safeId(service.id)||!clean(service.name)||!['fixed','review'].includes(service.mode)){issues.push('SERVICE_INVALID');break}
+    if(service.mode==='fixed'){
+      try{
+        quote({catalog:{organizationId:'readiness',version:'validation',status:'published',currency:'BRL',validForMinutes:Number(settings.validForMinutes||30),coverageCodes:coverage.length?coverage:['validation'],services:[service]},request:{serviceId:service.id,quantity:1,coverageCode:coverage[0]||'validation',equipmentType:service.requiresEquipmentType===false?undefined:service.equipmentTypes?.[0],safeAccess:service.requiresSafeAccess===false?undefined:true},now:new Date()});
+      }catch{issues.push('SERVICE_INVALID');break}
+    }
+  }
+  return{ready:issues.length===0,issues:[...new Set(issues)]};
+}
+
 function nestLocalEntitlement(orgData={},subscriptionData={}){
   const appSubscription=subscriptionData?.apps?.nestlocal||null,orgApp=orgData?.apps?.nestlocal||null;
   const subscriptionStatus=clean(appSubscription?.status).toLowerCase(),organizationAppStatus=clean(orgApp?.status).toLowerCase();
