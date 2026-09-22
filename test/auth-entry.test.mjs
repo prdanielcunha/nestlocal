@@ -21,8 +21,8 @@ test('direct Google login uses canonical Firebase helper domain and popup-first 
 test('authenticated session failures do not masquerade as no-organization state',()=>{
   const client=read('../web/live.js');
   assert.ok(client.includes("else if(S.error&&!S.session)root.innerHTML=sessionFailure()"));
-  assert.ok(client.includes("id="retry-session""));
-  assert.ok(client.includes("id="switch-account""));
+  assert.ok(client.includes('id="retry-session"'));
+  assert.ok(client.includes('id="switch-account"'));
   assert.ok(client.includes("userNotFoundHelp"));
 });
 
