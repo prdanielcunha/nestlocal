@@ -138,3 +138,29 @@ test('Radar UI exposes source delta, attack queue and automatic stale refresh', 
     "radarPainHypothesis",
   ]) assert.ok(client.includes(token), `missing ${token}`);
 });
+
+
+test('attack queue logs contact attempts and publishes learning feedback', () => {
+  const server = read('../server.mjs');
+  for (const token of [
+    "/growth/leads/:leadId/contact",
+    "contact_attempt",
+    "contactCount",
+    "publishGrowthLearningFeedback",
+    "NESTLOCAL_RADAR_FEEDBACK_SHEET_ID",
+    "refreshGrowthAttackBaselines",
+    "previousAttackScore",
+  ]) assert.ok(server.includes(token), `missing ${token}`);
+});
+
+test('attack queue UI explains priority and supports one-click WhatsApp logging', () => {
+  const client = read('../web/live.js');
+  for (const token of [
+    "radarWhyNow",
+    "radarWhatsappLog",
+    "data-growth-contact",
+    "growthPublishLearning",
+    "radarLearningFeedback",
+    "attackReason_follow_up_due",
+  ]) assert.ok(client.includes(token), `missing ${token}`);
+});
