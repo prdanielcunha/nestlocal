@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { growthAttackScore, parseRadarRows, radarIdentityKeys, segmentLearningScores } from '../src/domain/growth-radar.mjs';
+import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, radarIdentityKeys, segmentLearningScores } from '../src/domain/growth-radar.mjs';
 
 const header=['Empresa','Cidade','Segmento','Site / Instagram','Telefone / contato','Canal inicial','Orçamento faz parte da venda?','WhatsApp é canal forte?','Precisa agendar serviço/equipe?','Há recorrência?','Sinais públicos de demanda?','Pequena equipe?','Dono envolvido?','Sem sistema forte aparente?','Lead Score','Classe','Dor principal','Estágio','Próxima ação','Data próximo contato','Observações','','Legenda','','','','CNPJ','Google Place ID','Fonte verificada','Data verificação'];
 
@@ -44,4 +44,27 @@ test('segment learning stays neutral without enough outcome evidence',()=>{
   const scores=segmentLearningScores(leads,l=>rank[l.status]??0);
   assert.equal(scores.length,2);
   assert.ok(scores.every(x=>x.learningScore>=0&&x.learningScore<=100));
+});
+
+
+test('personalized outreach stays consultative instead of asserting an unverified pain',()=>{
+  const lead={businessName:'Lavarie',acquisition:{angle:'quote_followup'},radar:{recommendedAngle:'quote_followup',painHypothesis:'Orçamentos sem retorno'}};
+  const message=growthOutreachMessage(lead,'pt');
+  assert.ok(message.includes('Lavarie'));
+  assert.ok(message.includes('?'));
+  assert.ok(message.includes('vocês conseguem'));
+  assert.ok(!message.includes('vocês têm'));
+});
+
+test('outreach supports pt, en and es',()=>{
+  const lead={businessName:'ACME',acquisition:{angle:'customer_reactivation'}};
+  assert.match(growthOutreachMessage(lead,'pt'),/clientes/);
+  assert.match(growthOutreachMessage(lead,'en'),/customers/);
+  assert.match(growthOutreachMessage(lead,'es'),/clientes/);
+});
+
+test('attack trend explains movement against the stored baseline',()=>{
+  assert.deepEqual(growthAttackTrend({radar:{attackBaselineScore:70}},76),{delta:6,direction:'up',baseline:70});
+  assert.deepEqual(growthAttackTrend({radar:{attackBaselineScore:80}},76),{delta:-4,direction:'down',baseline:80});
+  assert.equal(growthAttackTrend({radar:{}},76).direction,'stable');
 });
