@@ -109,3 +109,32 @@ test('Radar can paste the existing Google Sheets lead table', () => {
     'inferGrowthAngle',
   ]) assert.ok(client.includes(token), `missing ${token}`);
 });
+
+
+test('connected Prospect Radar sync preserves commercial state and exposes attack intelligence', () => {
+  const server = read('../server.mjs');
+  for (const token of [
+    "parseRadarRows",
+    "syncProspectRadar",
+    "nestlocal_growth_sources/prospect_radar",
+    "/api/admin/nestlocal/growth/radar/sync",
+    "sourcePresent:false",
+    "growthAttackScore",
+    "segmentLearningScores",
+    "painQualifiedAt",
+    "RADAR_SOURCE_FORBIDDEN",
+  ]) assert.ok(server.includes(token), `missing ${token}`);
+});
+
+test('Radar UI exposes source delta, attack queue and automatic stale refresh', () => {
+  const client = read('../web/live.js');
+  for (const token of [
+    "growthRadarSourceView",
+    "growthAttackQueueView",
+    "growthSegmentLearningView",
+    "syncGrowthRadar",
+    "source?.stale",
+    "growthRadarSync",
+    "radarPainHypothesis",
+  ]) assert.ok(client.includes(token), `missing ${token}`);
+});
