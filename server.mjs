@@ -524,7 +524,7 @@ app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
     ]);
     const raw=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
     const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),painQualifiedAt:timestampIso(d.painQualifiedAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],radar:d.radar?{...d.radar,firstSeenAt:timestampIso(d.radar.firstSeenAt),lastSeenAt:timestampIso(d.radar.lastSeenAt),lastMissingAt:timestampIso(d.radar.lastMissingAt)}:undefined,consent:undefined}));
-    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(raw)});
+    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(leads)});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
