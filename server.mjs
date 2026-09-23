@@ -5,7 +5,7 @@ import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
-import { growthAttackScore, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
+import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -254,6 +254,8 @@ async function existingGrowthFingerprints(fingerprints=[]){
 }
 const radarSheetId=clean(process.env.NESTLOCAL_RADAR_SHEET_ID)||'1QX4yW4xmvcdrpg7k5oa0wtQup7yaECTxQuuO-EaAPJ0';
 const radarSheetRange=clean(process.env.NESTLOCAL_RADAR_SHEET_RANGE)||'Leads!A1:AD1000';
+const radarFeedbackSheetId=clean(process.env.NESTLOCAL_RADAR_FEEDBACK_SHEET_ID)||'1TRJhcUQtkO4YWz3DBu2I5krEf6Dzqylr3q1ltfZtlm4';
+const radarFeedbackSheetRange=clean(process.env.NESTLOCAL_RADAR_FEEDBACK_SHEET_RANGE)||'Learning!A1:K200';
 const radarSourceRef=()=>db.doc('nestlocal_growth_sources/prospect_radar');
 const radarSourceId='prospect_radar';
 const radarStaleAfterMs=6*60*60*1000;
@@ -274,15 +276,24 @@ function radarSourceState(data={}){
     unchangedCount:Number(data.unchangedCount)||0,
     removedCount:Number(data.removedCount)||0,
     lastError:clean(data.lastError),
-    revision:clean(data.revision)
+    revision:clean(data.revision),
+    feedbackSheetId:radarFeedbackSheetId,
+    feedbackSheetUrl:`https://docs.google.com/spreadsheets/d/${radarFeedbackSheetId}/edit`,
+    feedbackLastPublishedAt:radarTimestampIso(data.feedbackLastPublishedAt),
+    feedbackLastError:clean(data.feedbackLastError)
   };
 }
 
-async function fetchRadarSheetValues(){
+async function googleRuntimeAccessToken(){
   const credential=admin.credential.applicationDefault();
   const tokenResult=await credential.getAccessToken();
   const accessToken=clean(tokenResult?.access_token);
   if(!accessToken)throw new TypeError('RADAR_SOURCE_AUTH_FAILED');
+  return accessToken;
+}
+
+async function fetchRadarSheetValues(){
+  const accessToken=await googleRuntimeAccessToken();
   const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarSheetId)}/values/${encodeURIComponent(radarSheetRange)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
   const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(6000)});
   if(!response.ok){
@@ -313,6 +324,63 @@ async function commitRadarOperations(operations=[]){
   }
 }
 
+function normalizeGrowthLeadForScoring(lead={}){
+  return {...lead,nextContactAt:timestampIso(lead.nextContactAt)||lead.nextContactAt,painQualifiedAt:timestampIso(lead.painQualifiedAt)||lead.painQualifiedAt};
+}
+
+function growthScoredLeads(leads=[]){
+  const segmentInsights=segmentLearningScores(leads,growthLeadStage);
+  const segmentScores=new Map(segmentInsights.map(item=>[growthKey(item.label),item.learningScore]));
+  const scored=leads.map(lead=>{
+    const normalized=normalizeGrowthLeadForScoring(lead);
+    const effectiveFitScore=Math.max(Number(normalized.fitScore||0),Number(normalized.referenceFitScore||0));
+    const attack=growthAttackScore({...normalized,fitScore:effectiveFitScore},{segmentScore:segmentScores.get(growthKey(normalized.segment))??50});
+    return {...normalized,attack,trend:growthAttackTrend(normalized,attack.score)};
+  });
+  return {scored,segmentInsights};
+}
+
+async function refreshGrowthAttackBaselines(){
+  const snap=await db.collection('nestlocal_growth_leads').limit(1000).get();
+  const raw=snap.docs.map(doc=>({id:doc.id,ref:doc.ref,...doc.data()}));
+  const {scored}=growthScoredLeads(raw);
+  const operations=scored.map(lead=>{
+    const currentRadar=lead.radar||{},oldBaseline=Number(currentRadar.attackBaselineScore);
+    const previous=Number.isFinite(oldBaseline)?oldBaseline:lead.attack.score;
+    return {type:'set',ref:lead.ref,data:{radar:{...currentRadar,previousAttackScore:previous,attackBaselineScore:lead.attack.score,attackBaselineAt:admin.firestore.FieldValue.serverTimestamp()}}};
+  });
+  if(operations.length)await commitRadarOperations(operations);
+}
+
+function growthLearningFeedbackValues(leads=[]){
+  const updatedAt=new Date().toISOString(),segments=segmentLearningScores(leads,growthLeadStage),metrics=growthFunnelMetrics(leads),rows=[
+    ['Atualizado em','Tipo','Chave','Leads','Respondidos','Demos','Clientes','Taxa resposta %','Taxa demo %','Taxa cliente %','Learning Score'],
+    [updatedAt,'global','funil',metrics.funnel?.new||0,metrics.funnel?.replied||0,metrics.funnel?.demo||0,metrics.funnel?.customer||0,metrics.conversions?.replyRate||0,metrics.conversions?.demoRate||0,metrics.conversions?.leadToCustomer||0,'']
+  ];
+  for(const item of segments)rows.push([updatedAt,'segmento',item.label,item.leads,item.replied,item.demos,item.customers,item.replyRate,item.demoRate,item.customerRate,item.learningScore]);
+  for(const item of (metrics.byAngle||[]).slice(0,20))rows.push([updatedAt,'angulo',item.key,item.leads,'','',item.customers,'','',item.conversionRate,'']);
+  return rows;
+}
+
+async function publishGrowthLearningFeedback(){
+  const snap=await db.collection('nestlocal_growth_leads').limit(1000).get(),leads=snap.docs.map(doc=>({id:doc.id,...doc.data()})),values=growthLearningFeedbackValues(leads);
+  const accessToken=await googleRuntimeAccessToken(),encodedRange=encodeURIComponent(radarFeedbackSheetRange);
+  const clear=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodedRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(6000)});
+  if(!clear.ok)throw new TypeError('RADAR_FEEDBACK_WRITE_FAILED');
+  const update=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodeURIComponent('Learning!A1')}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({range:'Learning!A1',majorDimension:'ROWS',values}),signal:AbortSignal.timeout(6000)});
+  if(!update.ok)throw new TypeError('RADAR_FEEDBACK_WRITE_FAILED');
+  await radarSourceRef().set({feedbackLastPublishedAt:admin.firestore.FieldValue.serverTimestamp(),feedbackLastError:'',feedbackRows:values.length-1},{merge:true});
+  return {rows:values.length-1};
+}
+
+async function safelyPublishGrowthLearningFeedback(){
+  try{return await publishGrowthLearningFeedback()}catch(error){
+    console.error('growth learning feedback publish failed',error);
+    await radarSourceRef().set({feedbackLastError:clean(error?.message)||'RADAR_FEEDBACK_WRITE_FAILED'},{merge:true}).catch(()=>{});
+    return null;
+  }
+}
+
 async function syncProspectRadar(actorUid){
   const sourceRef=radarSourceRef(),attemptedAt=admin.firestore.FieldValue.serverTimestamp();
   await sourceRef.set({sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,lastAttemptAt:attemptedAt},{merge:true});
@@ -334,6 +402,7 @@ async function syncProspectRadar(actorUid){
       for(const key of item.identityKeys){if(byIdentity.has(key)){current=byIdentity.get(key);break}}
       if(!current)current=byLegacy.get(growthFingerprint({businessName:item.businessName,city:item.city}))||null;
       const radar={
+        ...(current?.radar||{}),
         sourceId:radarSourceId,sourceSheetId:radarSheetId,sourceRange:radarSheetRange,sourceRow:item.sourceRow,sourcePresent:true,
         revisionHash:item.revisionHash,identityKeys:item.identityKeys,website:item.website,phone:item.phone,channelLabel:item.channelLabel,
         recommendedChannel:item.channel,recommendedAngle:item.angle,leadScore:item.leadScore,className:item.className,painHypothesis:item.painHypothesis,
@@ -372,6 +441,8 @@ async function syncProspectRadar(actorUid){
       removedCount++;
     }
     await commitRadarOperations(operations);
+    await refreshGrowthAttackBaselines();
+    await safelyPublishGrowthLearningFeedback();
     const revision=hash(incoming.map(x=>x.revisionHash).sort().join('|')).slice(0,40);
     const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
     await sourceRef.set(summary,{merge:true});
@@ -383,16 +454,19 @@ async function syncProspectRadar(actorUid){
   }
 }
 
-function growthRadarInsights(leads=[]){
-  const segmentInsights=segmentLearningScores(leads,growthLeadStage);
-  const segmentScores=new Map(segmentInsights.map(item=>[growthKey(item.label),item.learningScore]));
-  const attackQueue=leads
+function growthRadarInsights(leads=[],lang='pt'){
+  const {scored,segmentInsights}=growthScoredLeads(leads);
+  const attackQueue=scored
     .filter(lead=>!['customer','no_fit'].includes(lead.status))
     .filter(lead=>lead.radar?.sourcePresent!==false||growthLeadStage(lead)>0)
-    .map(lead=>{const effectiveFitScore=Math.max(Number(lead.fitScore||0),Number(lead.referenceFitScore||0));return {...lead,attack:growthAttackScore({...lead,fitScore:effectiveFitScore},{segmentScore:segmentScores.get(growthKey(lead.segment))??50})}})
-    .sort((a,b)=>b.attack.score-a.attack.score||Number(b.fitScore||0)-Number(a.fitScore||0))
+    .sort((a,b)=>b.attack.score-a.attack.score||Math.max(Number(b.fitScore||0),Number(b.referenceFitScore||0))-Math.max(Number(a.fitScore||0),Number(a.referenceFitScore||0)))
     .slice(0,7)
-    .map(lead=>({id:lead.id,businessName:lead.businessName,city:lead.city,segment:lead.segment,phone:lead.phone,status:lead.status,nextAction:lead.nextAction,nextContactAt:timestampIso(lead.nextContactAt),fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore,painScore:lead.painScore,radar:lead.radar,attack:lead.attack}));
+    .map(lead=>({
+      id:lead.id,businessName:lead.businessName,city:lead.city,segment:lead.segment,phone:lead.phone,status:lead.status,nextAction:lead.nextAction,
+      nextContactAt:lead.nextContactAt,fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore,painScore:lead.painScore,
+      lastContactAt:timestampIso(lead.lastContactAt)||lead.lastContactAt,contactCount:Number(lead.contactCount)||0,
+      radar:lead.radar,attack:lead.attack,trend:lead.trend,outreachMessage:growthOutreachMessage(lead,lang)
+    }));
   return {attackQueue,segmentInsights};
 }
 function growthLeadStage(lead={}){
@@ -523,8 +597,9 @@ app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
       radarSourceRef().get()
     ]);
     const raw=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
-    const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),painQualifiedAt:timestampIso(d.painQualifiedAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],radar:d.radar?{...d.radar,firstSeenAt:timestampIso(d.radar.firstSeenAt),lastSeenAt:timestampIso(d.radar.lastSeenAt),lastMissingAt:timestampIso(d.radar.lastMissingAt)}:undefined,consent:undefined}));
-    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(leads)});
+    const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),painQualifiedAt:timestampIso(d.painQualifiedAt),lastContactAt:timestampIso(d.lastContactAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],radar:d.radar?{...d.radar,firstSeenAt:timestampIso(d.radar.firstSeenAt),lastSeenAt:timestampIso(d.radar.lastSeenAt),lastMissingAt:timestampIso(d.radar.lastMissingAt),attackBaselineAt:timestampIso(d.radar.attackBaselineAt)}:undefined,consent:undefined}));
+    const lang=['pt','en','es'].includes(clean(_req.query?.lang))?clean(_req.query.lang):'pt';
+    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(leads,lang)});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -538,6 +613,13 @@ app.post('/api/admin/nestlocal/growth/radar/sync',async(req,res)=>{
     const status=code==='RADAR_SOURCE_FORBIDDEN'?403:code==='RADAR_SOURCE_NOT_FOUND'?404:code==='RADAR_SOURCE_EMPTY'?422:503;
     sendError(res,status,code);
   }
+});
+
+app.post('/api/admin/nestlocal/growth/radar/publish-learning',async(_req,res)=>{
+  try{
+    const result=await publishGrowthLearningFeedback();
+    res.json({ok:true,...result});
+  }catch(e){console.error(e);sendError(res,503,clean(e?.message)||'RADAR_FEEDBACK_WRITE_FAILED')}
 });
 
 app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
@@ -583,11 +665,45 @@ app.post('/api/admin/nestlocal/growth/leads/batch',async(req,res)=>{
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+app.post('/api/admin/nestlocal/growth/leads/:leadId/contact',async(req,res)=>{
+  try{
+    const id=safeId(req.params.leadId);if(!id)return sendError(res,400,'INVALID_LEAD');
+    const b=req.body||{},channel=clean(b.channel||'whatsapp').toLowerCase(),allowed=new Set(['whatsapp','phone','email','instagram','other']);
+    if(!allowed.has(channel))return sendError(res,400,'INVALID_CHANNEL');
+    const message=clean(b.message).slice(0,1600),followUpDays=clamp(b.followUpDays===undefined?2:b.followUpDays,0,30),ref=db.doc(`nestlocal_growth_leads/${id}`),activityRef=db.collection(`nestlocal_growth_leads/${id}/activities`).doc();
+    let status='contacted',contactCount=0;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('LEAD_NOT_FOUND');
+      const current=snap.data(),currentStage=growthLeadStage(current),now=admin.firestore.Timestamp.now();
+      status=currentStage>=growthStageRank.contacted?clean(current.status)||'contacted':'contacted';
+      contactCount=(Number(current.contactCount)||0)+1;
+      const update={
+        lastContactAt:now,lastContactChannel:channel,lastContactMessage:message,contactCount,
+        nextContactAt:admin.firestore.Timestamp.fromMillis(Date.now()+followUpDays*86400000),
+        nextAction:followUpDays>0?`Follow-up do contato em ${followUpDays} dia(s)`:'Revisar retorno do contato',
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+      if(currentStage<growthStageRank.contacted){
+        update.status='contacted';update.highestStage=growthStageRank.contacted;
+        update.stageHistory=admin.firestore.FieldValue.arrayUnion({status:'contacted',at:now,by:req.growthAdmin.uid});
+      }
+      tx.set(ref,update,{merge:true});
+      tx.create(activityRef,{type:'contact_attempt',channel,message,followUpDays,at:now,by:req.growthAdmin.uid,source:'growth_attack_queue'});
+    });
+    await safelyPublishGrowthLearningFeedback();
+    res.status(201).json({ok:true,status,contactCount,nextFollowUpDays:followUpDays,activityId:activityRef.id});
+  }catch(e){
+    console.error(e);
+    if(e?.message==='LEAD_NOT_FOUND')return sendError(res,404,'LEAD_NOT_FOUND');
+    sendError(res,500,'INTERNAL_ERROR')
+  }
+});
+
 app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
   try{
     const id=safeId(req.params.leadId);if(!id)return sendError(res,400,'INVALID_LEAD');
     const b=req.body||{},ref=db.doc(`nestlocal_growth_leads/${id}`);
-    let result={painScore:undefined};
+    let result={painScore:undefined,statusChanged:false};
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('LEAD_NOT_FOUND');
       const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
@@ -595,6 +711,7 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
         const status=clean(b.status);if(!growthStatuses.has(status))throw new TypeError('INVALID_STATUS');
         update.status=status;
         if(status!==current.status){
+          result.statusChanged=true;
           update.stageHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.growthAdmin.uid});
           const currentHighest=growthLeadStage(current),rank=growthStageRank[status];
           update.highestStage=rank===undefined?currentHighest:Math.max(currentHighest,rank);
@@ -610,6 +727,7 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
       }
       tx.set(ref,update,{merge:true});
     });
+    if(result.statusChanged)await safelyPublishGrowthLearningFeedback();
     res.json({ok:true,painScore:result.painScore});
   }catch(e){
     console.error(e);

@@ -218,3 +218,42 @@ Pesos iniciais:
 Antes da qualificação, a dor recebe apenas um proxy conservador se o Radar trouxer uma hipótese explícita. Depois que alguém salva a qualificação de dor, `painQualifiedAt` passa a distinguir Pain Score real de hipótese.
 
 O aprendizado por segmento começa neutro e só muda com resultados reais observados no funil. Isso evita que amostras pequenas sejam tratadas como causalidade.
+
+
+## Fila operacional e feedback de aprendizado
+
+A fila **Quem atacar agora** é operacional, não apenas analítica.
+
+Cada item pode trazer:
+
+- mensagem inicial personalizada pelo ângulo recomendado, sem afirmar como fato uma dor ainda não confirmada;
+- explicação dos sinais que colocaram a empresa na fila;
+- tendência de prioridade em relação à baseline da última sincronização;
+- abertura do WhatsApp com a mensagem pré-preenchida;
+- registro de tentativa de contato no Firestore em um clique;
+- contagem e horário do último contato;
+- follow-up automático de dois dias após a tentativa registrada.
+
+Abrir o WhatsApp registra somente uma **tentativa de contato**. Não registra resposta, demo ou cliente. Esses estágios continuam dependendo de atualização comercial explícita e alimentam o funil real.
+
+### Tendência de prioridade
+
+Na sincronização do Radar, o NestLocal salva uma baseline do Attack Score. Entre sincronizações, mudanças de estado comercial podem fazer o prospect subir ou cair. A interface mostra essa direção sem confundir score atual com probabilidade de compra.
+
+### Feedback para a próxima rodada do Radar
+
+O Radar de Prospects original permanece somente leitura para o runtime.
+
+O aprendizado real é publicado em uma segunda planilha:
+
+**NestLocal — Growth Learning Feedback**
+
+Essa planilha recebe agregados do funil, desempenho por segmento e desempenho por ângulo. Ela é separada da fonte de prospects para que o app possa publicar aprendizado sem ter permissão para alterar a lista canônica de empresas.
+
+O backend usa:
+
+- `NESTLOCAL_RADAR_FEEDBACK_SHEET_ID` como override opcional;
+- `NESTLOCAL_RADAR_FEEDBACK_SHEET_RANGE` como override opcional;
+- Application Default Credentials da mesma conta de serviço do runtime.
+
+Falhas na publicação do feedback não bloqueiam contato, qualificação ou sincronização do Radar; o erro é registrado e mostrado na interface administrativa.

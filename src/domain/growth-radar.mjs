@@ -189,3 +189,48 @@ export function segmentLearningScores(leads=[],stageOf=()=>0){
     return {...g,replyRate:g.leads?Math.round(g.replied/g.leads*1000)/10:0,demoRate:g.leads?Math.round(g.demos/g.leads*1000)/10:0,customerRate:g.leads?Math.round(g.customers/g.leads*1000)/10:0,learningScore:score};
   }).sort((a,b)=>b.learningScore-a.learningScore||b.leads-a.leads);
 }
+
+
+const OUTREACH_COPY={
+  pt:{
+    quote_followup:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Posso te fazer uma pergunta rápida? Quando entra um orçamento pelo WhatsApp e o cliente não responde, vocês conseguem ver facilmente quem precisa de retorno? O NestLocal organiza orçamento, agenda e retorno sem tirar o WhatsApp do processo. Se fizer sentido, te mostro em poucos minutos.`,
+    customer_reactivation:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Hoje vocês conseguem enxergar facilmente quais clientes já estão no momento de voltar para um novo serviço ou manutenção? O NestLocal organiza esses retornos junto com orçamento e agenda, sem virar um ERP pesado. Se fizer sentido, te mostro em poucos minutos.`,
+    empty_schedule:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Quando aparece um horário vazio na agenda, vocês conseguem identificar rápido quais orçamentos ou clientes podem preencher essa janela? O NestLocal liga agenda, orçamento e retorno para ajudar nisso. Se fizer sentido, te mostro em poucos minutos.`,
+    whatsapp_chaos:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Quando pedidos, orçamentos e retornos chegam pelo WhatsApp, vocês conseguem manter tudo organizado sem perder acompanhamento? O NestLocal foi feito para organizar esse fluxo mantendo o WhatsApp no centro. Se fizer sentido, te mostro em poucos minutos.`,
+    revenue_visibility:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Hoje vocês conseguem ver rapidamente o que entrou, foi orçado, aprovado e ainda precisa de retorno? O NestLocal organiza essa visão de receita junto da operação. Se fizer sentido, te mostro em poucos minutos.`,
+    other:name=>`Oi! Tudo bem? Estou conhecendo melhor operações como a ${name}. Queria entender como vocês organizam hoje orçamento, agenda e retorno de clientes sem perder oportunidades no WhatsApp. O NestLocal foi feito justamente para conectar esse fluxo. Se fizer sentido, te mostro em poucos minutos.`
+  },
+  en:{
+    quote_followup:name=>`Hi! I'm learning more about businesses like ${name}. Quick question: when a quote comes through WhatsApp and the customer stops replying, can you easily see who needs a follow-up? NestLocal connects quotes, scheduling and follow-up without taking WhatsApp out of the process. If useful, I can show you in a few minutes.`,
+    customer_reactivation:name=>`Hi! I'm learning more about businesses like ${name}. Can you easily see which customers are due to come back for another service or maintenance visit? NestLocal connects those return opportunities with quotes and scheduling without becoming a heavy ERP. If useful, I can show you in a few minutes.`,
+    empty_schedule:name=>`Hi! I'm learning more about businesses like ${name}. When an empty slot appears in the schedule, can you quickly see which quote or returning customer could fill it? NestLocal connects scheduling, quotes and follow-up to make that easier. If useful, I can show you in a few minutes.`,
+    whatsapp_chaos:name=>`Hi! I'm learning more about businesses like ${name}. When requests, quotes and follow-ups arrive through WhatsApp, can you keep everything organized without losing track? NestLocal was built to organize that flow while keeping WhatsApp at the center. If useful, I can show you in a few minutes.`,
+    revenue_visibility:name=>`Hi! I'm learning more about businesses like ${name}. Can you quickly see what came in, what was quoted, approved and still needs follow-up? NestLocal connects that revenue view with the day-to-day operation. If useful, I can show you in a few minutes.`,
+    other:name=>`Hi! I'm learning more about businesses like ${name}. I'd like to understand how you currently organize quotes, scheduling and customer follow-up without losing opportunities in WhatsApp. NestLocal was built to connect that flow. If useful, I can show you in a few minutes.`
+  },
+  es:{
+    quote_followup:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. Una pregunta rápida: cuando llega un presupuesto por WhatsApp y el cliente deja de responder, ¿pueden ver fácilmente quién necesita seguimiento? NestLocal conecta presupuestos, agenda y seguimiento sin sacar WhatsApp del proceso. Si tiene sentido, te lo muestro en pocos minutos.`,
+    customer_reactivation:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. ¿Pueden ver fácilmente qué clientes ya deberían volver para un nuevo servicio o mantenimiento? NestLocal conecta esos retornos con presupuestos y agenda sin convertirse en un ERP pesado. Si tiene sentido, te lo muestro en pocos minutos.`,
+    empty_schedule:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. Cuando aparece un horario vacío, ¿pueden identificar rápido qué presupuesto o cliente podría ocuparlo? NestLocal conecta agenda, presupuestos y seguimiento para facilitarlo. Si tiene sentido, te lo muestro en pocos minutos.`,
+    whatsapp_chaos:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. Cuando pedidos, presupuestos y seguimientos llegan por WhatsApp, ¿pueden mantener todo organizado sin perder oportunidades? NestLocal organiza ese flujo manteniendo WhatsApp en el centro. Si tiene sentido, te lo muestro en pocos minutos.`,
+    revenue_visibility:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. ¿Pueden ver rápidamente lo que entró, fue presupuestado, aprobado y todavía necesita seguimiento? NestLocal conecta esa visión de ingresos con la operación diaria. Si tiene sentido, te lo muestro en pocos minutos.`,
+    other:name=>`¡Hola! Estoy conociendo mejor operaciones como ${name}. Quería entender cómo organizan hoy presupuestos, agenda y seguimiento de clientes sin perder oportunidades en WhatsApp. NestLocal fue creado para conectar ese flujo. Si tiene sentido, te lo muestro en pocos minutos.`
+  }
+};
+
+export function growthOutreachMessage(lead={},lang='pt'){
+  const locale=['pt','en','es'].includes(lang)?lang:'pt';
+  const name=String(lead.businessName||'sua empresa').trim().slice(0,120)||'sua empresa';
+  const angle=String(lead.radar?.recommendedAngle||lead.acquisition?.angle||'other');
+  const pack=OUTREACH_COPY[locale];
+  return (pack[angle]||pack.other)(name);
+}
+
+export function growthAttackTrend(lead={},currentScore=0){
+  const current=bounded(currentScore);
+  const baseline=Number(lead.radar?.attackBaselineScore);
+  const previous=Number(lead.radar?.previousAttackScore);
+  const from=Number.isFinite(baseline)?baseline:Number.isFinite(previous)?previous:current;
+  const delta=Math.round((current-from)*10)/10;
+  return {delta,direction:delta>=2?'up':delta<=-2?'down':'stable',baseline:Math.round(from*10)/10};
+}
