@@ -155,3 +155,66 @@ A API:
 A deduplicação inicial usa uma impressão digital de **nome normalizado da empresa + cidade**. Telefone não participa da identidade porque um mesmo negócio pode trocar ou divulgar números diferentes.
 
 Essa identidade é uma heurística de aquisição, não um identificador legal. Quando o enriquecimento oficial com CNPJ/Place ID for habilitado, esses identificadores devem ter precedência para reconciliar entidades.
+
+
+## Radar conectado ao Google Sheets
+
+A fonte canônica de prospecção pode ser o documento **NestLocal — Radar de Prospects**. O NestLocal lê somente a aba `Leads` e mantém duas camadas separadas:
+
+- **inteligência do Radar** em `lead.radar`: evidências públicas, site, telefone publicado, CNPJ/Place ID quando disponíveis, score, classe, hipótese de dor, abordagem sugerida, fonte e data de verificação;
+- **estado comercial** no lead: estágio, histórico, Pain Score confirmado, contato, follow-up, diagnóstico, demo, trial e cliente.
+
+Uma sincronização nunca deve apagar ou sobrescrever o histórico comercial. Um prospect removido do Sheet recebe `radar.sourcePresent=false`; o lead permanece no banco.
+
+### Segurança da fonte
+
+A sincronização:
+
+- continua restrita aos mesmos papéis administrativos globais;
+- usa Application Default Credentials no backend;
+- acessa o Sheet diretamente pela Google Sheets API;
+- requer apenas acesso **reader** para a conta de serviço do runtime;
+- não torna a planilha pública;
+- usa `NESTLOCAL_RADAR_SHEET_ID` e `NESTLOCAL_RADAR_SHEET_RANGE` como overrides opcionais, mantendo o Radar oficial como padrão.
+
+### Reconciliação e identidade
+
+A reconciliação prefere, quando presentes:
+
+1. Google Place ID;
+2. CNPJ;
+3. telefone normalizado;
+4. domínio do site;
+5. nome normalizado + cidade.
+
+A impressão digital legada de nome + cidade é preservada para reconciliar leads antigos sem duplicá-los.
+
+### Radar Delta
+
+Cada sync registra:
+
+- quantidade encontrada na fonte;
+- novos prospects;
+- prospects atualizados;
+- prospects sem mudança;
+- prospects que deixaram de aparecer na fonte;
+- revisão e horário da última sincronização.
+
+### Attack Score
+
+O **Attack Score** serve apenas para ordenar atenção. Ele não afirma intenção de compra e não transforma hipótese pública em dor confirmada.
+
+Pesos iniciais:
+
+| Componente | Peso |
+| --- | ---: |
+| Fit Score | 35% |
+| Pain Score confirmado ou proxy explícito de hipótese | 25% |
+| Momento/follow-up | 15% |
+| Qualidade dos dados | 10% |
+| Recência da verificação | 5% |
+| Aprendizado real do segmento | 10% |
+
+Antes da qualificação, a dor recebe apenas um proxy conservador se o Radar trouxer uma hipótese explícita. Depois que alguém salva a qualificação de dor, `painQualifiedAt` passa a distinguir Pain Score real de hipótese.
+
+O aprendizado por segmento começa neutro e só muda com resultados reais observados no funil. Isso evita que amostras pequenas sejam tratadas como causalidade.

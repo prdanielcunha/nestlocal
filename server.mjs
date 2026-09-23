@@ -5,6 +5,7 @@ import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
+import { growthAttackScore, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -251,6 +252,149 @@ async function existingGrowthFingerprints(fingerprints=[]){
   }
   return found;
 }
+const radarSheetId=clean(process.env.NESTLOCAL_RADAR_SHEET_ID)||'1QX4yW4xmvcdrpg7k5oa0wtQup7yaECTxQuuO-EaAPJ0';
+const radarSheetRange=clean(process.env.NESTLOCAL_RADAR_SHEET_RANGE)||'Leads!A1:AD1000';
+const radarSourceRef=()=>db.doc('nestlocal_growth_sources/prospect_radar');
+const radarSourceId='prospect_radar';
+const radarStaleAfterMs=6*60*60*1000;
+
+function radarTimestampIso(value){return value?.toDate?.().toISOString?.()||null}
+function radarSourceState(data={}){
+  const lastSyncedAt=radarTimestampIso(data.lastSyncedAt),lastAttemptAt=radarTimestampIso(data.lastAttemptAt),lastSuccessMs=Date.parse(lastSyncedAt||'');
+  return {
+    id:radarSourceId,
+    sheetId:radarSheetId,
+    range:radarSheetRange,
+    lastSyncedAt,
+    lastAttemptAt,
+    stale:!Number.isFinite(lastSuccessMs)||(Date.now()-lastSuccessMs)>radarStaleAfterMs,
+    totalSource:Number(data.totalSource)||0,
+    createdCount:Number(data.createdCount)||0,
+    updatedCount:Number(data.updatedCount)||0,
+    unchangedCount:Number(data.unchangedCount)||0,
+    removedCount:Number(data.removedCount)||0,
+    lastError:clean(data.lastError),
+    revision:clean(data.revision)
+  };
+}
+
+async function fetchRadarSheetValues(){
+  const credential=admin.credential.applicationDefault();
+  const tokenResult=await credential.getAccessToken();
+  const accessToken=clean(tokenResult?.access_token);
+  if(!accessToken)throw new TypeError('RADAR_SOURCE_AUTH_FAILED');
+  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarSheetId)}/values/${encodeURIComponent(radarSheetRange)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
+  const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(6000)});
+  if(!response.ok){
+    const payload=await response.json().catch(()=>({}));
+    const reason=clean(payload?.error?.status);
+    if(response.status===403)throw new TypeError(reason==='PERMISSION_DENIED'?'RADAR_SOURCE_FORBIDDEN':'RADAR_SOURCE_API_FORBIDDEN');
+    if(response.status===404)throw new TypeError('RADAR_SOURCE_NOT_FOUND');
+    throw new TypeError('RADAR_SOURCE_UNAVAILABLE');
+  }
+  const payload=await response.json();
+  return Array.isArray(payload.values)?payload.values:[];
+}
+
+function radarExistingIdentityKeys(lead={}){
+  const nested=Array.isArray(lead.radar?.identityKeys)?lead.radar.identityKeys.filter(Boolean):[];
+  const legacy=growthFingerprint({businessName:lead.businessName,city:lead.city});
+  return {identityKeys:nested,legacy};
+}
+
+async function commitRadarOperations(operations=[]){
+  for(let i=0;i<operations.length;i+=400){
+    const batch=db.batch();
+    for(const op of operations.slice(i,i+400)){
+      if(op.type==='create')batch.create(op.ref,op.data);
+      else batch.set(op.ref,op.data,{merge:true});
+    }
+    await batch.commit();
+  }
+}
+
+async function syncProspectRadar(actorUid){
+  const sourceRef=radarSourceRef(),attemptedAt=admin.firestore.FieldValue.serverTimestamp();
+  await sourceRef.set({sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,lastAttemptAt:attemptedAt},{merge:true});
+  try{
+    const values=await fetchRadarSheetValues(),incoming=parseRadarRows(values);
+    if(!incoming.length)throw new TypeError('RADAR_SOURCE_EMPTY');
+    const existingSnap=await db.collection('nestlocal_growth_leads').limit(1000).get();
+    const existing=existingSnap.docs.map(doc=>({id:doc.id,ref:doc.ref,...doc.data()}));
+    const byIdentity=new Map(),byLegacy=new Map();
+    for(const lead of existing){
+      const identity=radarExistingIdentityKeys(lead);
+      for(const key of identity.identityKeys)if(!byIdentity.has(key))byIdentity.set(key,lead);
+      if(identity.legacy&&!byLegacy.has(identity.legacy))byLegacy.set(identity.legacy,lead);
+    }
+    const seenIds=new Set(),operations=[];
+    let createdCount=0,updatedCount=0,unchangedCount=0;
+    for(const item of incoming){
+      let current=null;
+      for(const key of item.identityKeys){if(byIdentity.has(key)){current=byIdentity.get(key);break}}
+      if(!current)current=byLegacy.get(growthFingerprint({businessName:item.businessName,city:item.city}))||null;
+      const radar={
+        sourceId:radarSourceId,sourceSheetId:radarSheetId,sourceRange:radarSheetRange,sourceRow:item.sourceRow,sourcePresent:true,
+        revisionHash:item.revisionHash,identityKeys:item.identityKeys,website:item.website,phone:item.phone,channelLabel:item.channelLabel,
+        recommendedChannel:item.channel,recommendedAngle:item.angle,leadScore:item.leadScore,className:item.className,painHypothesis:item.painHypothesis,
+        suggestedAction:item.suggestedAction,sourceStatus:item.sourceStatus,notes:item.notes,cnpj:item.cnpj,googlePlaceId:item.googlePlaceId,
+        verifiedSource:item.verifiedSource,verificationDate:item.verificationDate,nextContactDate:item.nextContactDate,lastSeenAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+      if(current){
+        seenIds.add(current.id);
+        const changed=clean(current.radar?.revisionHash)!==item.revisionHash||current.radar?.sourcePresent!==true;
+        const update={radar,fitSignals:item.fitSignals,fitScore:growthFitScore(item.fitSignals),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+        if(!clean(current.businessName))update.businessName=item.businessName;
+        if(!clean(current.city))update.city=item.city;
+        if(!clean(current.segment))update.segment=item.segment;
+        if(!clean(current.phone)&&item.phone)update.phone=item.phone;
+        operations.push({type:'set',ref:current.ref,data:update});
+        if(changed)updatedCount++; else unchangedCount++;
+      }else{
+        const ref=db.collection('nestlocal_growth_leads').doc(),legacyFingerprint=growthFingerprint({businessName:item.businessName,city:item.city});
+        const nextContactMs=item.nextContactDate?Date.parse(`${item.nextContactDate}T12:00:00-03:00`):NaN;
+        const data={
+          source:'sheet_radar',fingerprint:legacyFingerprint,status:'new',highestStage:0,
+          stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:actorUid}],acquisition:growthAcquisition({channel:item.channel,angle:item.angle,campaign:'prospect_radar'}),
+          businessName:item.businessName,contactName:'',phone:item.phone,city:item.city,segment:item.segment,fitSignals:item.fitSignals,fitScore:growthFitScore(item.fitSignals),
+          painSignals:{},painScore:0,nextAction:item.suggestedAction||'Qualificar processo de orçamento, agenda e retorno',
+          nextContactAt:Number.isFinite(nextContactMs)?admin.firestore.Timestamp.fromMillis(nextContactMs):admin.firestore.Timestamp.now(),
+          notes:'',radar:{...radar,firstSeenAt:admin.firestore.FieldValue.serverTimestamp()},
+          createdBy:actorUid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()
+        };
+        operations.push({type:'create',ref,data});seenIds.add(ref.id);createdCount++;
+      }
+    }
+    let removedCount=0;
+    for(const lead of existing){
+      if(lead.radar?.sourceId!==radarSourceId||seenIds.has(lead.id)||lead.radar?.sourcePresent===false)continue;
+      operations.push({type:'set',ref:lead.ref,data:{radar:{...lead.radar,sourcePresent:false,lastMissingAt:admin.firestore.FieldValue.serverTimestamp()},updatedAt:admin.firestore.FieldValue.serverTimestamp()}});
+      removedCount++;
+    }
+    await commitRadarOperations(operations);
+    const revision=hash(incoming.map(x=>x.revisionHash).sort().join('|')).slice(0,40);
+    const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
+    await sourceRef.set(summary,{merge:true});
+    return {...summary,lastSyncedAt:new Date().toISOString(),lastAttemptAt:new Date().toISOString()};
+  }catch(error){
+    const code=['RADAR_SOURCE_AUTH_FAILED','RADAR_SOURCE_FORBIDDEN','RADAR_SOURCE_API_FORBIDDEN','RADAR_SOURCE_NOT_FOUND','RADAR_SOURCE_UNAVAILABLE','RADAR_SOURCE_EMPTY'].includes(error?.message)?error.message:'RADAR_SYNC_FAILED';
+    await sourceRef.set({lastError:code,lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(()=>{});
+    const wrapped=new TypeError(code);wrapped.cause=error;throw wrapped;
+  }
+}
+
+function growthRadarInsights(leads=[]){
+  const segmentInsights=segmentLearningScores(leads,growthLeadStage);
+  const segmentScores=new Map(segmentInsights.map(item=>[growthKey(item.label),item.learningScore]));
+  const attackQueue=leads
+    .filter(lead=>!['customer','no_fit'].includes(lead.status))
+    .filter(lead=>lead.radar?.sourcePresent!==false||growthLeadStage(lead)>0)
+    .map(lead=>{const effectiveFitScore=Math.max(Number(lead.fitScore||0),Number(lead.referenceFitScore||0));return {...lead,attack:growthAttackScore({...lead,fitScore:effectiveFitScore},{segmentScore:segmentScores.get(growthKey(lead.segment))??50})}})
+    .sort((a,b)=>b.attack.score-a.attack.score||Number(b.fitScore||0)-Number(a.fitScore||0))
+    .slice(0,7)
+    .map(lead=>({id:lead.id,businessName:lead.businessName,city:lead.city,segment:lead.segment,phone:lead.phone,status:lead.status,nextAction:lead.nextAction,nextContactAt:timestampIso(lead.nextContactAt),fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore,painScore:lead.painScore,radar:lead.radar,attack:lead.attack}));
+  return {attackQueue,segmentInsights};
+}
 function growthLeadStage(lead={}){
   const stored=Number(lead.highestStage);
   if(Number.isFinite(stored)&&stored>=0)return stored;
@@ -374,11 +518,26 @@ app.use('/api/admin/nestlocal/growth',authenticate,requireGrowthAdmin);
 
 app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
   try{
-    const snap=await db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(100).get();
+    const [snap,sourceSnap]=await Promise.all([
+      db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(300).get(),
+      radarSourceRef().get()
+    ]);
     const raw=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
-    const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],consent:undefined}));
-    res.json({leads,metrics:growthFunnelMetrics(raw)});
+    const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),painQualifiedAt:timestampIso(d.painQualifiedAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],radar:d.radar?{...d.radar,firstSeenAt:timestampIso(d.radar.firstSeenAt),lastSeenAt:timestampIso(d.radar.lastSeenAt),lastMissingAt:timestampIso(d.radar.lastMissingAt)}:undefined,consent:undefined}));
+    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(raw)});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/admin/nestlocal/growth/radar/sync',async(req,res)=>{
+  try{
+    const summary=await syncProspectRadar(req.growthAdmin.uid);
+    res.json({ok:true,source:radarSourceState({...summary,lastSyncedAt:admin.firestore.Timestamp.now(),lastAttemptAt:admin.firestore.Timestamp.now()})});
+  }catch(e){
+    console.error(e);
+    const code=clean(e?.message)||'RADAR_SYNC_FAILED';
+    const status=code==='RADAR_SOURCE_FORBIDDEN'?403:code==='RADAR_SOURCE_NOT_FOUND'?404:code==='RADAR_SOURCE_EMPTY'?422:503;
+    sendError(res,status,code);
+  }
 });
 
 app.post('/api/admin/nestlocal/growth/leads',async(req,res)=>{
@@ -447,7 +606,7 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
       if(b.nextContactAt!==undefined){const ms=Date.parse(clean(b.nextContactAt));if(!Number.isFinite(ms))throw new TypeError('INVALID_DATE');update.nextContactAt=admin.firestore.Timestamp.fromMillis(ms)}
       if(b.acquisition&&typeof b.acquisition==='object')update.acquisition=growthAcquisition(b.acquisition,current.acquisition||{});
       if(b.painSignals&&typeof b.painSignals==='object'){
-        const p=b.painSignals;update.painSignals={quoteLoss:signal(p.quoteLoss),noFollowUp:signal(p.noFollowUp),noReactivation:signal(p.noReactivation),agendaChaos:signal(p.agendaChaos),volume:signal(p.volume),ownerFeelsPain:signal(p.ownerFeelsPain),urgency:signal(p.urgency)};update.painScore=growthPainScore(update.painSignals);result.painScore=update.painScore;
+        const p=b.painSignals;update.painSignals={quoteLoss:signal(p.quoteLoss),noFollowUp:signal(p.noFollowUp),noReactivation:signal(p.noReactivation),agendaChaos:signal(p.agendaChaos),volume:signal(p.volume),ownerFeelsPain:signal(p.ownerFeelsPain),urgency:signal(p.urgency)};update.painScore=growthPainScore(update.painSignals);update.painQualifiedAt=admin.firestore.FieldValue.serverTimestamp();result.painScore=update.painScore;
       }
       tx.set(ref,update,{merge:true});
     });
