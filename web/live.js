@@ -218,7 +218,19 @@ const isRevenueXray=()=>['raio-x','diagnostico'].includes(pathParts()[0]);
 const isReview=()=>pathParts()[0]==='review'&&Boolean(pathParts()[1]);
 const lang=()=>`<select data-lang class="lang"><option ${S.lang==='pt'?'selected':''} value="pt">PT</option><option ${S.lang==='en'?'selected':''} value="en">EN</option><option ${S.lang==='es'?'selected':''} value="es">ES</option></select>`;
 const toast=m=>{const e=document.createElement('div');e.className='toast';e.textContent=m;document.body.append(e);setTimeout(()=>e.remove(),2400)};
-async function api(path,opt={}){const id=S.user?await S.user.getIdToken():'',form=opt.body instanceof FormData;const r=await fetch(path,{...opt,headers:{...(form?{}:{'Content-Type':'application/json'}),...(id?{Authorization:`Bearer ${id}`}:{})}});const b=await r.json().catch(()=>({}));if(!r.ok)throw Error(b.error||`HTTP_${r.status}`);return b}
+function withTimeout(promise,ms,code='TIMEOUT'){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms)})]).finally(()=>clearTimeout(timer))}
+async function api(path,opt={}){
+  const {timeoutMs=30000,...request}=opt,id=S.user?await withTimeout(S.user.getIdToken(),10000,'AUTH_TOKEN_TIMEOUT'):'',form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  try{
+    const r=await fetch(path,{...request,signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...(id?{Authorization:`Bearer ${id}`}:{})}});
+    const b=await r.json().catch(()=>({}));
+    if(!r.ok)throw Error(b.error||`HTTP_${r.status}`);
+    return b;
+  }catch(e){
+    if(e?.name==='AbortError')throw Error('NETWORK_TIMEOUT');
+    throw e;
+  }finally{clearTimeout(timer)}
+}
 async function openPhoto(path){const id=await S.user.getIdToken(),r=await fetch(path,{headers:{Authorization:`Bearer ${id}`}});if(!r.ok)throw Error(`HTTP_${r.status}`);const u=URL.createObjectURL(await r.blob());window.open(u,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(u),60000)}
 const brand=()=>`<div class="brand"><span class="brandmark">N</span>NestLocal</div>`;
 function login(){return `<main class="login-shell premium-login"><section class="login-card">${brand()}<span class="eyebrow">AI Revenue & Service OS</span><h1>${t('welcome')}</h1><p>${t('loginHelp')}</p><div class="login-proof"><span>Orçamentos em minutos</span><span>Pedidos organizados</span><span>7 dias grátis</span></div><button class="button primary login-button" id="login">${t('login')}</button><a class="button login-button" href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_growth_monthly">${t('loginPricing')}</a><a class="xray-login-link" href="/raio-x">${t('xrayCta')}</a><small class="login-trust">Login seguro pelo Google · cobrança gerenciada no MillionsNest</small>${lang()}</section></main>`}
@@ -637,7 +649,7 @@ async function loadGrowth(){
     try{await syncGrowthRadar()}catch(e){toast(e.message)}
   }
 }
-async function loadSession(){S.loading=true;S.error='';render();try{S.session=await api('/api/session');const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at')}catch(e){S.session=null;S.data=null;S.error=e.message}S.loading=false;render()}
+async function loadSession(){S.loading=true;S.error='';render();try{S.session=await api('/api/session',{timeoutMs:15000});const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at')}catch(e){S.session=null;S.data=null;S.error=e.message}S.loading=false;render()}
 async function loadPublic(){try{S.store=await api(`/api/public/stores/${encodeURIComponent(publicSlug())}`);if(!S.publicServiceId)S.publicServiceId=S.store.services?.[0]?.id||null}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
@@ -736,4 +748,18 @@ function bind(){
 }
 async function consumeHandoff(){const params=new URLSearchParams(location.search),encoded=params.get('ecosystem_ctx');if(!encoded)return;try{await setPersistence(auth,browserLocalPersistence);const context=JSON.parse(atob(encoded));if(context?.appId!=='nestlocal'||context?.protocolVersion!=='1.0.0'||typeof context?.customToken!=='string'||typeof context?.orgId!=='string'||Number(context?.expiresAt)<=Date.now())throw Error('INVALID_HANDOFF');const credential=await signInWithCustomToken(auth,context.customToken);if(credential.user.uid!==context.userId)throw Error('INVALID_HANDOFF');S.orgId=context.orgId;localStorage.setItem('nl_org',S.orgId);params.delete('ecosystem_ctx');history.replaceState({},'',`${location.pathname}${params.size?`?${params}`:''}${location.hash}`)}catch(e){S.error='INVALID_HANDOFF';toast('Não foi possível concluir a entrada segura. Entre novamente.')}}
 const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth'].includes(requestedView))S.page=requestedView;
-if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else consumeHandoff().finally(async()=>{try{await setPersistence(auth,browserLocalPersistence);await getRedirectResult(auth)}catch(e){S.error=e.message;toast(t('authFailed'))}let resolved=false;onAuthStateChanged(auth,u=>{resolved=true;S.user=u;if(u)loadSession();else{S.session=null;S.data=null;S.loading=false;if(!S.error)S.error='';render()}});setTimeout(()=>{if(!resolved){S.loading=false;S.user=null;render();toast(t('authFailed'))}},12000)});
+async function startAuthBootstrap(){
+  let resolved=false;
+  try{await withTimeout(setPersistence(auth,browserLocalPersistence),8000,'AUTH_PERSISTENCE_TIMEOUT')}catch(e){S.error=e.message}
+  try{await withTimeout(consumeHandoff(),12000,'AUTH_HANDOFF_TIMEOUT')}catch(e){if(!S.error)S.error=e.message}
+  onAuthStateChanged(auth,u=>{
+    resolved=true;S.user=u;
+    if(u){S.error='';loadSession()}
+    else{S.session=null;S.data=null;S.loading=false;if(!S.error)S.error='';render()}
+  });
+  setTimeout(()=>{if(!resolved){S.loading=false;S.user=null;if(!S.error)S.error='AUTH_STATE_TIMEOUT';render();toast(t('authFailed'))}},12000);
+  withTimeout(getRedirectResult(auth),8000,'AUTH_REDIRECT_TIMEOUT').catch(e=>{
+    if(!resolved&&!S.user){S.error=e.message;S.loading=false;render();toast(t('authFailed'))}
+  });
+}
+if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
