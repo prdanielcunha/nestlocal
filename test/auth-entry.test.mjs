@@ -9,7 +9,9 @@ test('direct Google login uses canonical Firebase helper domain and popup-first 
   for(const token of [
     "const canonicalAuthDomain='millionsnest.firebaseapp.com'",
     'browserLocalPersistence',
-    'setPersistence(auth,browserLocalPersistence)',
+    'browserSessionPersistence',
+    'inMemoryPersistence',
+    'ensureAuthPersistence()',
     'signInWithPopup(auth,googleProvider())',
     'signInWithRedirect(auth,googleProvider())',
     "auth/popup-blocked",
@@ -67,15 +69,41 @@ test('auth bootstrap observes Firebase state before resolving redirect result',(
   assert.ok(block.indexOf('onAuthStateChanged(auth')>=0,'missing auth observer');
   assert.ok(block.indexOf('getRedirectResult(auth)')>=0,'missing redirect recovery');
   assert.ok(block.indexOf('onAuthStateChanged(auth')<block.indexOf('getRedirectResult(auth)'),'redirect recovery must not block the auth observer');
-  for(const token of ['AUTH_PERSISTENCE_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_STATE_TIMEOUT','AUTH_REDIRECT_TIMEOUT']) assert.ok(block.includes(token),'missing '+token);
+  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_STATE_TIMEOUT','AUTH_REDIRECT_TIMEOUT']) assert.ok(block.includes(token),'missing '+token);
 });
 
 test('session bootstrap bounds token, request and network waits',()=>{
   const client=read('../web/live.js');
   for(const token of [
-    "withTimeout(S.user.getIdToken(),10000,'AUTH_TOKEN_TIMEOUT')",
-    "api('/api/session',{timeoutMs:15000})",
+    "withTimeout(S.user.getIdToken(),6000,'AUTH_TOKEN_TIMEOUT')",
+    "api('/api/session',{timeoutMs:10000})",
+    "timeoutMs:12000",
     "throw Error('NETWORK_TIMEOUT')",
     'controller.abort()',
   ]) assert.ok(client.includes(token),'missing '+token);
+});
+
+
+test('iOS auth persistence falls back from local to session to memory',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function ensureAuthPersistence()');
+  const end=client.indexOf('async function api(',start);
+  const block=client.slice(start,end);
+  assert.ok(start>=0,'missing persistence recovery');
+  for(const token of ['browserLocalPersistence','browserSessionPersistence','inMemoryPersistence','3000']) assert.ok(block.includes(token),'missing '+token);
+});
+
+test('auth bootstrap has a hard watchdog and observes auth before any handoff wait',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function startAuthBootstrap()');
+  const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
+  const block=client.slice(start,end);
+  assert.ok(block.indexOf('onAuthStateChanged(auth') < block.indexOf('consumeHandoff()'));
+  assert.ok(block.includes("S.error='AUTH_BOOT_TIMEOUT'"));
+  assert.ok(block.includes('},18000)'));
+});
+
+test('root document cache-busts the production auth bundle',()=>{
+  const html=read('../web/index.html');
+  assert.ok(html.includes('/live.js?v=20260928-auth-recovery-2'));
 });
