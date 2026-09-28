@@ -1,5 +1,5 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
-import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,GoogleAuthProvider,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signInWithPopup,signInWithRedirect,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
+import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
@@ -24,7 +24,6 @@ function redirectToMillionsNest(){
   if(location.href.startsWith(millionsNestHubOrigin))return;
   location.replace(millionsNestLaunchUrl());
 }
-const googleProvider=()=>{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});return provider};
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
 const S={page:'today',lang:localStorage.getItem('nl_lang')||'pt',user:null,session:null,orgId:localStorage.getItem('nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null};
