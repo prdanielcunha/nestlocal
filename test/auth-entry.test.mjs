@@ -105,5 +105,35 @@ test('auth bootstrap has a hard watchdog and observes auth before any handoff wa
 
 test('root document cache-busts the production auth bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-auth-recovery-2'));
+  assert.ok(html.includes('/live.js?v=20260928-auth-recovery-3'));
+});
+
+
+test('app shell has an independent recovery guard outside the Firebase module',()=>{
+  const html=read('../web/index.html');
+  for(const token of ['__nestLocalBootGuard','setTimeout(recovery, 20000)','boot-retry','_recovery','20260928-auth-recovery-3']) assert.ok(html.includes(token),'missing '+token);
+});
+
+test('resolved application state clears the independent boot guard',()=>{
+  const client=read('../web/live.js');
+  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-auth-recovery-3'"]) assert.ok(client.includes(token),'missing '+token);
+});
+
+test('Firebase Hosting root app shell is explicitly no-store',()=>{
+  const config=JSON.parse(read('../firebase.json'));
+  for(const hosting of config.hosting){
+    const root=hosting.headers.find(entry=>entry.source==='/');
+    assert.ok(root,'missing root cache headers for '+hosting.target);
+    assert.ok(root.headers.some(header=>header.key==='Cache-Control'&&header.value.includes('no-store')));
+  }
+});
+
+test('production workflow deploys Hosting before noncritical domain maintenance',()=>{
+  const workflow=read('../.github/workflows/firebase-hosting-deploy.yml');
+  const deploy=workflow.indexOf('Deploy NestLocal Hosting immediately');
+  const authorize=workflow.indexOf('Authorize NestLocal login domains');
+  const custom=workflow.indexOf('Connect official custom domain');
+  assert.ok(deploy>=0&&authorize>deploy&&custom>deploy);
+  assert.ok(workflow.includes('continue-on-error: true'));
+  assert.ok(workflow.includes('/live.js?v=20260928-auth-recovery-3'));
 });
