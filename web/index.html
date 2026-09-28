@@ -19,6 +19,28 @@
 <body>
   <div class="noise"></div>
   <div id="app"></div>
-  <script type="module" src="/live.js?v=20260928-auth-recovery-2"></script>
+  <script>
+    (() => {
+      const build = '20260928-auth-recovery-3';
+      const recovery = () => {
+        const root = document.getElementById('app');
+        if (!root) return;
+        const text = (root.textContent || '').toLowerCase();
+        const stuck = !text.trim() || text.includes('conectando sua conta') || text.includes('carregando');
+        if (!stuck) return;
+        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>O acesso demorou mais do que o esperado. Tente novamente para iniciar uma sessão nova.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
+        document.getElementById('boot-retry')?.addEventListener('click', () => {
+          const url = new URL(location.href);
+          url.searchParams.set('_recovery', Date.now().toString());
+          location.replace(url.toString());
+        });
+      };
+      window.__nestLocalBuild = build;
+      window.__nestLocalBootGuard = setTimeout(recovery, 20000);
+      window.addEventListener('error', () => setTimeout(recovery, 0));
+      window.addEventListener('unhandledrejection', () => setTimeout(recovery, 0));
+    })();
+  </script>
+  <script type="module" src="/live.js?v=20260928-auth-recovery-3"></script>
 </body>
 </html>
