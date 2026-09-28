@@ -56,3 +56,26 @@ test('auth recovery states have responsive premium styling',()=>{
   const css=read('../web/premium.css');
   for(const token of ['.auth-recovery','.recovery-actions','.auth-progress','prefers-reduced-motion']) assert.ok(css.includes(token),'missing '+token);
 });
+
+
+test('auth bootstrap observes Firebase state before resolving redirect result',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function startAuthBootstrap()');
+  const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
+  const block=client.slice(start,end);
+  assert.ok(start>=0,'missing auth bootstrap');
+  assert.ok(block.indexOf('onAuthStateChanged(auth')>=0,'missing auth observer');
+  assert.ok(block.indexOf('getRedirectResult(auth)')>=0,'missing redirect recovery');
+  assert.ok(block.indexOf('onAuthStateChanged(auth')<block.indexOf('getRedirectResult(auth)'),'redirect recovery must not block the auth observer');
+  for(const token of ['AUTH_PERSISTENCE_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_STATE_TIMEOUT','AUTH_REDIRECT_TIMEOUT']) assert.ok(block.includes(token),'missing '+token);
+});
+
+test('session bootstrap bounds token, request and network waits',()=>{
+  const client=read('../web/live.js');
+  for(const token of [
+    "withTimeout(S.user.getIdToken(),10000,'AUTH_TOKEN_TIMEOUT')",
+    "api('/api/session',{timeoutMs:15000})",
+    "throw Error('NETWORK_TIMEOUT')",
+    'controller.abort()',
+  ]) assert.ok(client.includes(token),'missing '+token);
+});
