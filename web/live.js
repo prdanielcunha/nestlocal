@@ -1,5 +1,5 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
-import {browserLocalPersistence,getAuth,GoogleAuthProvider,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signInWithPopup,signInWithRedirect,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
+import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,GoogleAuthProvider,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signInWithPopup,signInWithRedirect,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
@@ -219,8 +219,14 @@ const isReview=()=>pathParts()[0]==='review'&&Boolean(pathParts()[1]);
 const lang=()=>`<select data-lang class="lang"><option ${S.lang==='pt'?'selected':''} value="pt">PT</option><option ${S.lang==='en'?'selected':''} value="en">EN</option><option ${S.lang==='es'?'selected':''} value="es">ES</option></select>`;
 const toast=m=>{const e=document.createElement('div');e.className='toast';e.textContent=m;document.body.append(e);setTimeout(()=>e.remove(),2400)};
 function withTimeout(promise,ms,code='TIMEOUT'){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms)})]).finally(()=>clearTimeout(timer))}
+async function ensureAuthPersistence(){
+  for(const [mode,code] of [[browserLocalPersistence,'AUTH_LOCAL_PERSISTENCE_TIMEOUT'],[browserSessionPersistence,'AUTH_SESSION_PERSISTENCE_TIMEOUT'],[inMemoryPersistence,'AUTH_MEMORY_PERSISTENCE_TIMEOUT']]){
+    try{await withTimeout(setPersistence(auth,mode),3000,code);return true}catch{}
+  }
+  return false;
+}
 async function api(path,opt={}){
-  const {timeoutMs=30000,...request}=opt,id=S.user?await withTimeout(S.user.getIdToken(),10000,'AUTH_TOKEN_TIMEOUT'):'',form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const {timeoutMs=15000,...request}=opt,id=S.user?await withTimeout(S.user.getIdToken(),6000,'AUTH_TOKEN_TIMEOUT'):'',form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(path,{...request,signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...(id?{Authorization:`Bearer ${id}`}:{})}});
     const b=await r.json().catch(()=>({}));
@@ -627,7 +633,7 @@ function publicViewV2(){
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
 function render(){const root=document.querySelector('#app'),org=S.session?.organizations?.find(x=>x.id===S.orgId)||S.session?.organizations?.[0];if(isLegal())root.innerHTML=legalView();else if(isRevenueXray())root.innerHTML=revenueXrayView();else if(isReview())root.innerHTML=reviewPublicView();else if(isPublicStore()||location.pathname.startsWith('/s/')||location.pathname.startsWith('/track/'))root.innerHTML=publicViewV2();else if(S.loading)root.innerHTML=loading();else if(!S.user)root.innerHTML=login();else if(S.error&&!S.session)root.innerHTML=sessionFailure();else if(!S.session?.organizations.length)root.innerHTML=noOrg();else if(!org?.nestlocal?.access)root.innerHTML=subscriptionGate();else root.innerHTML=shell();bind()}
-async function loadData(){S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`)}
+async function loadData(){S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000})}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -649,7 +655,7 @@ async function loadGrowth(){
     try{await syncGrowthRadar()}catch(e){toast(e.message)}
   }
 }
-async function loadSession(){S.loading=true;S.error='';render();try{S.session=await api('/api/session',{timeoutMs:15000});const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at')}catch(e){S.session=null;S.data=null;S.error=e.message}S.loading=false;render()}
+async function loadSession(){S.loading=true;S.error='';render();try{S.session=await api('/api/session',{timeoutMs:10000});const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at')}catch(e){S.session=null;S.data=null;S.error=e.message}S.loading=false;render()}
 async function loadPublic(){try{S.store=await api(`/api/public/stores/${encodeURIComponent(publicSlug())}`);if(!S.publicServiceId)S.publicServiceId=S.store.services?.[0]?.id||null}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
@@ -657,7 +663,7 @@ async function beginGoogleLogin(){
   S.error='';
   sessionStorage.setItem('nl_auth_started_at',String(Date.now()));
   try{
-    await setPersistence(auth,browserLocalPersistence);
+    await ensureAuthPersistence();
     await signInWithPopup(auth,googleProvider());
   }catch(err){
     const code=String(err?.code||'');
@@ -746,20 +752,45 @@ function bind(){
   document.querySelectorAll('[data-growth-followup]').forEach(x=>x.onclick=async()=>{await api(`/api/admin/nestlocal/growth/leads/${encodeURIComponent(x.dataset.growthFollowup)}`,{method:'PATCH',body:JSON.stringify({status:'follow_up',scheduleFollowUpDays:2})});await loadGrowth();render();toast(t('schedule2d'))});
   document.querySelectorAll('[data-growth-pain]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form),painSignals={};for(const key of ['quoteLoss','noFollowUp','noReactivation','agendaChaos','volume','ownerFeelsPain','urgency'])painSignals[key]=Number(f.get(key)||0);await api(`/api/admin/nestlocal/growth/leads/${encodeURIComponent(form.dataset.growthPain)}`,{method:'PATCH',body:JSON.stringify({painSignals})});await loadGrowth();render();toast(t('saveQualification'))});
 }
-async function consumeHandoff(){const params=new URLSearchParams(location.search),encoded=params.get('ecosystem_ctx');if(!encoded)return;try{await setPersistence(auth,browserLocalPersistence);const context=JSON.parse(atob(encoded));if(context?.appId!=='nestlocal'||context?.protocolVersion!=='1.0.0'||typeof context?.customToken!=='string'||typeof context?.orgId!=='string'||Number(context?.expiresAt)<=Date.now())throw Error('INVALID_HANDOFF');const credential=await signInWithCustomToken(auth,context.customToken);if(credential.user.uid!==context.userId)throw Error('INVALID_HANDOFF');S.orgId=context.orgId;localStorage.setItem('nl_org',S.orgId);params.delete('ecosystem_ctx');history.replaceState({},'',`${location.pathname}${params.size?`?${params}`:''}${location.hash}`)}catch(e){S.error='INVALID_HANDOFF';toast('Não foi possível concluir a entrada segura. Entre novamente.')}}
+async function consumeHandoff(){const params=new URLSearchParams(location.search),encoded=params.get('ecosystem_ctx');if(!encoded)return false;try{await ensureAuthPersistence();const normalized=encoded.replace(/-/g,'+').replace(/_/g,'/'),context=JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length/4)*4,'=')));if(context?.appId!=='nestlocal'||context?.protocolVersion!=='1.0.0'||typeof context?.customToken!=='string'||typeof context?.orgId!=='string'||Number(context?.expiresAt)<=Date.now())throw Error('INVALID_HANDOFF');const credential=await withTimeout(signInWithCustomToken(auth,context.customToken),7000,'AUTH_HANDOFF_SIGNIN_TIMEOUT');if(credential.user.uid!==context.userId)throw Error('INVALID_HANDOFF');S.orgId=context.orgId;localStorage.setItem('nl_org',S.orgId);params.delete('ecosystem_ctx');history.replaceState({},'',`${location.pathname}${params.size?`?${params}`:''}${location.hash}`);return true}catch(e){S.error='INVALID_HANDOFF';toast('Não foi possível concluir a entrada segura. Entre novamente.');return false}}
 const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth'].includes(requestedView))S.page=requestedView;
 async function startAuthBootstrap(){
-  let resolved=false;
-  try{await withTimeout(setPersistence(auth,browserLocalPersistence),8000,'AUTH_PERSISTENCE_TIMEOUT')}catch(e){S.error=e.message}
-  try{await withTimeout(consumeHandoff(),12000,'AUTH_HANDOFF_TIMEOUT')}catch(e){if(!S.error)S.error=e.message}
+  const params=new URLSearchParams(location.search),handoffExpected=params.has('ecosystem_ctx');
+  let observed=false,sessionStarted=false;
+  const startSession=user=>{
+    if(sessionStarted||!user)return;
+    sessionStarted=true;S.user=user;S.error='';loadSession();
+  };
+  const watchdog=setTimeout(()=>{
+    if(S.loading){
+      S.loading=false;
+      if(!S.error)S.error='AUTH_BOOT_TIMEOUT';
+      render();toast(t('authFailed'));
+    }
+  },18000);
   onAuthStateChanged(auth,u=>{
-    resolved=true;S.user=u;
-    if(u){S.error='';loadSession()}
-    else{S.session=null;S.data=null;S.loading=false;if(!S.error)S.error='';render()}
+    observed=true;
+    if(u){startSession(u);return}
+    S.user=null;S.session=null;S.data=null;
+    if(!handoffExpected){S.loading=false;if(!S.error)S.error='';render()}
+  },()=>{
+    observed=true;S.loading=false;S.user=null;S.session=null;S.data=null;S.error='AUTH_STATE_ERROR';render();toast(t('authFailed'));
   });
-  setTimeout(()=>{if(!resolved){S.loading=false;S.user=null;if(!S.error)S.error='AUTH_STATE_TIMEOUT';render();toast(t('authFailed'))}},12000);
-  withTimeout(getRedirectResult(auth),8000,'AUTH_REDIRECT_TIMEOUT').catch(e=>{
-    if(!resolved&&!S.user){S.error=e.message;S.loading=false;render();toast(t('authFailed'))}
+  if(auth.currentUser)startSession(auth.currentUser);
+  if(handoffExpected){
+    try{await withTimeout(consumeHandoff(),10000,'AUTH_HANDOFF_TIMEOUT')}catch(e){if(!S.error)S.error=e.message}
+    if(auth.currentUser)startSession(auth.currentUser);
+    else if(!sessionStarted){S.loading=false;render()}
+  }
+  withTimeout(getRedirectResult(auth),6000,'AUTH_REDIRECT_TIMEOUT').then(result=>{
+    if(result?.user)startSession(result.user);
+  }).catch(e=>{
+    if(!observed&&!sessionStarted){S.error=e.message;S.loading=false;render();toast(t('authFailed'))}
   });
+  setTimeout(()=>{
+    if(!observed&&!sessionStarted&&auth.currentUser)startSession(auth.currentUser);
+    else if(!observed&&!sessionStarted&&S.loading){S.loading=false;if(!S.error)S.error='AUTH_STATE_TIMEOUT';render();toast(t('authFailed'))}
+  },7000);
+  setTimeout(()=>clearTimeout(watchdog),19000);
 }
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
