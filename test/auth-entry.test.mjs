@@ -4,20 +4,21 @@ import { readFileSync } from 'node:fs';
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 
-test('direct Google login uses canonical Firebase helper domain and popup-first recovery',()=>{
+test('direct private entry reuses the canonical MillionsNest session',()=>{
   const client=read('../web/live.js');
   for(const token of [
     "const canonicalAuthDomain='millionsnest.firebaseapp.com'",
+    "const millionsNestHubOrigin='https://www.millionsnest.com'",
+    "new URL('/apps/nestlocal/launch',millionsNestHubOrigin)",
+    "url.searchParams.set('returnTo',nestLocalReturnPath())",
+    'redirectToMillionsNest()',
     'browserLocalPersistence',
     'browserSessionPersistence',
     'inMemoryPersistence',
-    'ensureAuthPersistence()',
-    'signInWithPopup(auth,googleProvider())',
-    'signInWithRedirect(auth,googleProvider())',
-    "auth/popup-blocked",
-    "auth/operation-not-supported-in-this-environment",
   ]) assert.ok(client.includes(token),'missing '+token);
-  assert.equal(client.includes('const hostingAuthDomain='),false);
+  assert.equal(client.includes('signInWithPopup('),false);
+  assert.equal(client.includes('signInWithRedirect('),false);
+  assert.equal(client.includes('GoogleAuthProvider'),false);
 });
 
 test('authenticated session failures do not masquerade as no-organization state',()=>{
@@ -37,14 +38,14 @@ test('session automatically prefers an eligible organization over an inaccessibl
   ]) assert.ok(client.includes(token),'missing '+token);
 });
 
-test('account switching clears local tenant preference before Google account selection',()=>{
+test('account switching clears local tenant preference and returns to central MillionsNest auth',()=>{
   const client=read('../web/live.js');
   const start=client.indexOf('async function switchGoogleAccount()');
   const end=client.indexOf('function bind()',start);
   const block=client.slice(start,end);
   assert.ok(block.includes("localStorage.removeItem('nl_org')"));
   assert.ok(block.includes('await signOut(auth)'));
-  assert.ok(block.includes('await beginGoogleLogin()'));
+  assert.ok(block.includes('redirectToMillionsNest()'));
 });
 
 test('login and recovery copy exists in PT EN ES',()=>{
@@ -69,7 +70,7 @@ test('auth bootstrap observes Firebase state before resolving redirect result',(
   assert.ok(block.indexOf('onAuthStateChanged(auth')>=0,'missing auth observer');
   assert.ok(block.indexOf('getRedirectResult(auth)')>=0,'missing redirect recovery');
   assert.ok(block.indexOf('onAuthStateChanged(auth')<block.indexOf('getRedirectResult(auth)'),'redirect recovery must not block the auth observer');
-  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_STATE_TIMEOUT','AUTH_REDIRECT_TIMEOUT']) assert.ok(block.includes(token),'missing '+token);
+  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_REDIRECT_TIMEOUT','redirectToMillionsNest()']) assert.ok(block.includes(token),'missing '+token);
 });
 
 test('session bootstrap bounds token, request and network waits',()=>{
@@ -93,30 +94,32 @@ test('iOS auth persistence falls back from local to session to memory',()=>{
   for(const token of ['browserLocalPersistence','browserSessionPersistence','inMemoryPersistence','3000']) assert.ok(block.includes(token),'missing '+token);
 });
 
-test('auth bootstrap has a hard watchdog and observes auth before any handoff wait',()=>{
+test('auth bootstrap reuses local handoff session or quickly falls back to the Hub',()=>{
   const client=read('../web/live.js');
   const start=client.indexOf('async function startAuthBootstrap()');
   const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
   const block=client.slice(start,end);
   assert.ok(block.indexOf('onAuthStateChanged(auth') < block.indexOf('consumeHandoff()'));
-  assert.ok(block.includes("S.error='AUTH_BOOT_TIMEOUT'"));
-  assert.ok(block.includes('},18000)'));
+  assert.ok(block.includes("const goHub=()=>"));
+  assert.ok(block.includes('if(!handoffExpected){goHub();return}'));
+  assert.ok(block.includes('},1500)'));
+  assert.ok(block.includes('},10000)'));
 });
 
 test('root document cache-busts the production auth bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-auth-recovery-3'));
+  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-4'));
 });
 
 
 test('app shell has an independent recovery guard outside the Firebase module',()=>{
   const html=read('../web/index.html');
-  for(const token of ['__nestLocalBootGuard','setTimeout(recovery, 20000)','boot-retry','_recovery','20260928-auth-recovery-3']) assert.ok(html.includes(token),'missing '+token);
+  for(const token of ['__nestLocalBootGuard','setTimeout(recovery, 10000)','boot-retry','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-4']) assert.ok(html.includes(token),'missing '+token);
 });
 
 test('resolved application state clears the independent boot guard',()=>{
   const client=read('../web/live.js');
-  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-auth-recovery-3'"]) assert.ok(client.includes(token),'missing '+token);
+  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-4'"]) assert.ok(client.includes(token),'missing '+token);
 });
 
 test('Firebase Hosting root app shell is explicitly no-store',()=>{
@@ -135,5 +138,14 @@ test('production workflow deploys Hosting before noncritical domain maintenance'
   const custom=workflow.indexOf('Connect official custom domain');
   assert.ok(deploy>=0&&authorize>deploy&&custom>deploy);
   assert.ok(workflow.includes('continue-on-error: true'));
-  assert.ok(workflow.includes('/live.js?v=20260928-auth-recovery-3'));
+  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-4'));
+});
+
+
+test('direct-entry destinations preserve only known private NestLocal views',()=>{
+  const client=read('../web/live.js');
+  for(const token of [
+    "privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth'])",
+    "return view&&privateViews.has(view)?",
+  ]) assert.ok(client.includes(token),'missing '+token);
 });

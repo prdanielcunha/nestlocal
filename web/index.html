@@ -21,26 +21,36 @@
   <div id="app"></div>
   <script>
     (() => {
-      const build = '20260928-auth-recovery-3';
+      const build = '20260928-canonical-sso-4';
+      const launchUrl = () => {
+        const target = new URL('https://www.millionsnest.com/apps/nestlocal/launch');
+        const params = new URLSearchParams(location.search);
+        const allowedViews = new Set(['today','requests','customers','agenda','services','automation','page','growth']);
+        const view = params.get('view');
+        target.searchParams.set('returnTo', view && allowedViews.has(view) ? '/?view=' + encodeURIComponent(view) : '/');
+        return target.toString();
+      };
       const recovery = () => {
         const root = document.getElementById('app');
         if (!root) return;
         const text = (root.textContent || '').toLowerCase();
         const stuck = !text.trim() || text.includes('conectando sua conta') || text.includes('carregando');
         if (!stuck) return;
-        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>O acesso demorou mais do que o esperado. Tente novamente para iniciar uma sessão nova.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
-        document.getElementById('boot-retry')?.addEventListener('click', () => {
-          const url = new URL(location.href);
-          url.searchParams.set('_recovery', Date.now().toString());
-          location.replace(url.toString());
-        });
+        const handoffExpected = new URLSearchParams(location.search).has('ecosystem_ctx');
+        if (!handoffExpected) {
+          location.replace(launchUrl());
+          return;
+        }
+        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>Vamos renovar sua sessão usando a mesma conta do MillionsNest.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
+        document.getElementById('boot-retry')?.addEventListener('click', () => location.replace(launchUrl()));
       };
       window.__nestLocalBuild = build;
-      window.__nestLocalBootGuard = setTimeout(recovery, 20000);
+      window.__nestLocalHubLaunch = launchUrl;
+      window.__nestLocalBootGuard = setTimeout(recovery, 10000);
       window.addEventListener('error', () => setTimeout(recovery, 0));
       window.addEventListener('unhandledrejection', () => setTimeout(recovery, 0));
     })();
   </script>
-  <script type="module" src="/live.js?v=20260928-auth-recovery-3"></script>
+  <script type="module" src="/live.js?v=20260928-canonical-sso-4"></script>
 </body>
 </html>

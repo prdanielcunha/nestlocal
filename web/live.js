@@ -1,5 +1,5 @@
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
-import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,GoogleAuthProvider,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signInWithPopup,signInWithRedirect,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
+import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,getRedirectResult,onAuthStateChanged,setPersistence,signInWithCustomToken,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
@@ -9,7 +9,21 @@ import {experimentContextForAction,experimentForAction,renderExperimentAssist,re
 const canonicalAuthDomain='millionsnest.firebaseapp.com';
 const cfg={apiKey:'AIzaSyAhXY8TV8qoXz8Pd2u5jFHUTVssZmi3kMs',authDomain:canonicalAuthDomain,projectId:'millionsnest',storageBucket:'millionsnest.firebasestorage.app',messagingSenderId:'555464791734',appId:'1:555464791734:web:3059e8ac2b8089a1767817'};
 const auth=getAuth(initializeApp(cfg));
-const googleProvider=()=>{const provider=new GoogleAuthProvider();provider.setCustomParameters({prompt:'select_account'});return provider};
+const millionsNestHubOrigin='https://www.millionsnest.com';
+const privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth']);
+function nestLocalReturnPath(){
+  const params=new URLSearchParams(location.search),view=params.get('view');
+  return view&&privateViews.has(view)?`/?view=${encodeURIComponent(view)}`:'/';
+}
+function millionsNestLaunchUrl(){
+  const url=new URL('/apps/nestlocal/launch',millionsNestHubOrigin);
+  url.searchParams.set('returnTo',nestLocalReturnPath());
+  return url.toString();
+}
+function redirectToMillionsNest(){
+  if(location.href.startsWith(millionsNestHubOrigin))return;
+  location.replace(millionsNestLaunchUrl());
+}
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
 const S={page:'today',lang:localStorage.getItem('nl_lang')||'pt',user:null,session:null,orgId:localStorage.getItem('nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null};
@@ -632,7 +646,7 @@ function publicViewV2(){
   const x=S.store,today=zonedDateInfo(new Date(),x.store?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC')?.date||localDateIso(),selected=x.services.find(s=>s.id===(S.publicServiceId||x.services[0]?.id))||x.services[0];return `<main class="public-shell"><section class="public-card wide-public"><div class="public-brand">${brand()}${lang()}</div><span class="eyebrow">${esc(x.store.businessName)}</span><h1>${t('publicTitle')}</h1><p>${t('publicHelp')}</p><form id="public" class="form-grid"><label class="wide">${t('selectService')}<select id="public-service" name="serviceId">${x.services.map(s=>`<option value="${esc(s.id)}" ${selected?.id===s.id?'selected':''}>${esc(serviceName(s))}${s.mode==='fixed'?` · ${t('startingAt')} ${money(s.unitPriceCents)}`:''}</option>`).join('')}</select></label><label>${t('name')}<input name="name" autocomplete="name" required></label><label>${t('phone')}<input name="phone" autocomplete="tel" required inputmode="tel"></label><label>${t('city')}<select name="coverageCode">${x.store.coverageCodes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label><label>${t('quantity')}<input name="quantity" type="number" min="1" max="10" value="1"></label><label class="wide">${t('address')}<input name="addressLine" autocomplete="street-address" required minlength="5"></label><label>${t('preferredDate')}<input name="preferredDate" type="date" min="${today}" required></label><label>${t('preferredWindow')}<select name="preferredWindow"><option value="morning">${t('morning')}</option><option value="afternoon">${t('afternoon')}</option><option value="evening">${t('evening')}</option><option value="flexible">${t('flexible')}</option></select></label>${selected?.requiresEquipmentType!==false?`<label>${t('equipment')}<select name="equipmentType">${(selected?.equipmentTypes?.length?selected.equipmentTypes:['other']).map(v=>`<option value="${esc(v)}">${esc(humanizeOption(v))}</option>`).join('')}</select></label>`:''}${selected?.requiresSafeAccess!==false?`<label>${t('access')}<select name="safeAccess"><option value="true">${t('yes')}</option><option value="false">${t('unsure')}</option></select></label>`:''}${renderPublicIntakeFields(selected)}<label class="wide">${t('note')}<textarea name="note" rows="3"></textarea></label><label class="wide">${t('photos')}<input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="wide consent"><input name="whatsappServiceOptIn" type="checkbox"><span>${esc(replaceBusiness('whatsappServiceOptIn',x.store.businessName))}</span></label><label class="wide consent"><input name="whatsappMaintenanceOptIn" type="checkbox"><span>${esc(replaceBusiness('whatsappMaintenanceOptIn',x.store.businessName))}</span></label>${publicConsentAnchor}<button class="button primary wide">${t('send')}</button></form></section></main>`
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
-function render(){const root=document.querySelector('#app'),org=S.session?.organizations?.find(x=>x.id===S.orgId)||S.session?.organizations?.[0];if(isLegal())root.innerHTML=legalView();else if(isRevenueXray())root.innerHTML=revenueXrayView();else if(isReview())root.innerHTML=reviewPublicView();else if(isPublicStore()||location.pathname.startsWith('/s/')||location.pathname.startsWith('/track/'))root.innerHTML=publicViewV2();else if(S.loading)root.innerHTML=loading();else if(!S.user)root.innerHTML=login();else if(S.error&&!S.session)root.innerHTML=sessionFailure();else if(!S.session?.organizations.length)root.innerHTML=noOrg();else if(!org?.nestlocal?.access)root.innerHTML=subscriptionGate();else root.innerHTML=shell();if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}document.documentElement.dataset.nlBuild='20260928-auth-recovery-3';bind()}
+function render(){const root=document.querySelector('#app'),org=S.session?.organizations?.find(x=>x.id===S.orgId)||S.session?.organizations?.[0];if(isLegal())root.innerHTML=legalView();else if(isRevenueXray())root.innerHTML=revenueXrayView();else if(isReview())root.innerHTML=reviewPublicView();else if(isPublicStore()||location.pathname.startsWith('/s/')||location.pathname.startsWith('/track/'))root.innerHTML=publicViewV2();else if(S.loading)root.innerHTML=loading();else if(!S.user)root.innerHTML=login();else if(S.error&&!S.session)root.innerHTML=sessionFailure();else if(!S.session?.organizations.length)root.innerHTML=noOrg();else if(!org?.nestlocal?.access)root.innerHTML=subscriptionGate();else root.innerHTML=shell();if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}document.documentElement.dataset.nlBuild='20260928-canonical-sso-4';bind()}
 async function loadData(){S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000})}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
@@ -662,17 +676,9 @@ async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${
 async function beginGoogleLogin(){
   S.error='';
   sessionStorage.setItem('nl_auth_started_at',String(Date.now()));
-  try{
-    await ensureAuthPersistence();
-    await signInWithPopup(auth,googleProvider());
-  }catch(err){
-    const code=String(err?.code||'');
-    if(['auth/popup-blocked','auth/operation-not-supported-in-this-environment','auth/web-storage-unsupported'].includes(code)){await signInWithRedirect(auth,googleProvider());return}
-    if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request')throw Error('AUTH_POPUP_CLOSED');
-    throw err;
-  }
+  redirectToMillionsNest();
 }
-async function switchGoogleAccount(){try{await signOut(auth)}catch{}S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');await beginGoogleLogin()}
+async function switchGoogleAccount(){try{await signOut(auth)}catch{}S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');redirectToMillionsNest()}
 function bind(){
   document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=async()=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.page=x.dataset.nav;if(S.page==='growth'&&isGrowthAdmin()){S.growth=null;render();try{await loadGrowth()}catch(e){toast(e.message)}}render()});
   function returnToAutopilotQueue(){S.page='today';S.focusRequestId='';S.autopilotRequestId='';render();toast(t('nextActionUpdated'))}
@@ -756,41 +762,50 @@ async function consumeHandoff(){const params=new URLSearchParams(location.search
 const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth'].includes(requestedView))S.page=requestedView;
 async function startAuthBootstrap(){
   const params=new URLSearchParams(location.search),handoffExpected=params.has('ecosystem_ctx');
-  let observed=false,sessionStarted=false;
+  let observed=false,sessionStarted=false,redirecting=false;
+  const goHub=()=>{
+    if(handoffExpected||sessionStarted||redirecting)return;
+    redirecting=true;
+    redirectToMillionsNest();
+  };
   const startSession=user=>{
     if(sessionStarted||!user)return;
     sessionStarted=true;S.user=user;S.error='';loadSession();
   };
   const watchdog=setTimeout(()=>{
-    if(S.loading){
-      S.loading=false;
-      if(!S.error)S.error='AUTH_BOOT_TIMEOUT';
-      render();toast(t('authFailed'));
-    }
-  },18000);
+    if(!S.loading)return;
+    if(!handoffExpected){goHub();return}
+    S.loading=false;
+    if(!S.error)S.error='AUTH_BOOT_TIMEOUT';
+    render();toast(t('authFailed'));
+  },10000);
   onAuthStateChanged(auth,u=>{
     observed=true;
     if(u){startSession(u);return}
     S.user=null;S.session=null;S.data=null;
-    if(!handoffExpected){S.loading=false;if(!S.error)S.error='';render()}
+    if(!handoffExpected){goHub();return}
   },()=>{
-    observed=true;S.loading=false;S.user=null;S.session=null;S.data=null;S.error='AUTH_STATE_ERROR';render();toast(t('authFailed'));
+    observed=true;
+    if(!handoffExpected){goHub();return}
+    S.loading=false;S.user=null;S.session=null;S.data=null;S.error='AUTH_STATE_ERROR';render();toast(t('authFailed'));
   });
   if(auth.currentUser)startSession(auth.currentUser);
   if(handoffExpected){
     try{await withTimeout(consumeHandoff(),10000,'AUTH_HANDOFF_TIMEOUT')}catch(e){if(!S.error)S.error=e.message}
     if(auth.currentUser)startSession(auth.currentUser);
     else if(!sessionStarted){S.loading=false;render()}
+  }else{
+    setTimeout(()=>{if(!sessionStarted&&!auth.currentUser)goHub()},1500);
   }
-  withTimeout(getRedirectResult(auth),6000,'AUTH_REDIRECT_TIMEOUT').then(result=>{
+  withTimeout(getRedirectResult(auth),4000,'AUTH_REDIRECT_TIMEOUT').then(result=>{
     if(result?.user)startSession(result.user);
   }).catch(e=>{
-    if(!observed&&!sessionStarted){S.error=e.message;S.loading=false;render();toast(t('authFailed'))}
+    if(handoffExpected&&!observed&&!sessionStarted){S.error=e.message;S.loading=false;render();toast(t('authFailed'))}
   });
   setTimeout(()=>{
     if(!observed&&!sessionStarted&&auth.currentUser)startSession(auth.currentUser);
-    else if(!observed&&!sessionStarted&&S.loading){S.loading=false;if(!S.error)S.error='AUTH_STATE_TIMEOUT';render();toast(t('authFailed'))}
-  },7000);
-  setTimeout(()=>clearTimeout(watchdog),19000);
+    else if(!observed&&!sessionStarted&&!handoffExpected)goHub();
+  },4000);
+  setTimeout(()=>clearTimeout(watchdog),11000);
 }
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
