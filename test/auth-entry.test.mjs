@@ -198,8 +198,8 @@ test('auth recovery states have responsive premium styling',()=>{
 
 test('root document cache-busts the backend SSO bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260929-session-9'));
-  assert.ok(html.includes('20260929-session-9'));
+  assert.ok(html.includes('/live.js?v=20260929-render-fix-10'));
+  assert.ok(html.includes('20260929-render-fix-10'));
 });
 
 test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
@@ -226,7 +226,7 @@ test('independent boot guard stays armed through handoff and clears only after l
   const renderBlock=client.slice(renderStart,renderEnd);
   assert.ok(renderBlock.includes("if(!S.loading&&window.__nestLocalBootGuard)"));
   assert.ok(renderBlock.includes('clearTimeout(window.__nestLocalBootGuard)'));
-  assert.ok(client.includes("dataset.nlBuild='20260929-session-9'"));
+  assert.ok(client.includes("dataset.nlBuild='20260929-render-fix-10'"));
 });
 
 test('inline boot recovery script is valid JavaScript and contains no literal escaped newlines',()=>{
@@ -291,8 +291,8 @@ test('production workflow deploys backend SSO bundle and validates it on the off
   const custom=workflow.indexOf('Connect official custom domain');
   const smoke=workflow.indexOf('Smoke production endpoints');
   assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
-  assert.ok(workflow.includes('/live.js?v=20260929-session-9'));
-  assert.ok(workflow.includes('20260929-session-9'));
+  assert.ok(workflow.includes('/live.js?v=20260929-render-fix-10'));
+  assert.ok(workflow.includes('20260929-render-fix-10'));
 });
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
@@ -301,4 +301,17 @@ test('direct-entry destinations preserve only known private NestLocal views',()=
     "privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth'])",
     "return view&&privateViews.has(view)?",
   ]) assert.ok(client.includes(token),'missing '+token);
+});
+
+
+test('private shell renderer registry maps navigation ids to real render functions',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('function shell()');
+  const end=client.indexOf('function reviewPublicView()',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes('automation:automations'),'automation navigation must map to automations renderer');
+  assert.equal(block.includes('{today,requests,customers,agenda,services,automation,page,growth}'),false,'bare undeclared automation renderer must not return');
+  for(const fn of ['today','requests','customers','agenda','services','automations','page','growth']){
+    assert.ok(client.includes(`function ${fn}(`)||client.includes(`const ${fn}=`)||client.includes(`let ${fn}=`),`missing renderer function ${fn}`);
+  }
 });
