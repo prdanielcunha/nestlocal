@@ -88,14 +88,14 @@ test('session projection populates the local user from the backend session',()=>
   const block=client.slice(start,end);
   assert.ok(block.includes("S.session=await api('/api/session'"));
   assert.ok(block.includes("S.user=S.session?.user||{uid:'nestlocal-session'}"));
-  assert.ok(block.includes("const eligible=S.session.organizations.filter(x=>x.nestlocal?.access)"));
+  assert.ok(block.includes("const eligible=organizations.filter(x=>x.nestlocal?.access)"));
 });
 
 test('switch account and logout revoke only the NestLocal cookie session',()=>{
   const client=read('../web/live.js');
   for(const token of [
     "api('/api/auth/session',{method:'DELETE'",
-    "localStorage.removeItem('nl_org')",
+    "storageRemove(localStorage,'nl_org')",
     'redirectToMillionsNest()',
   ]) assert.ok(client.includes(token),'missing '+token);
   assert.equal(client.includes('signOut(auth)'),false);
