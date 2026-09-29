@@ -69,7 +69,7 @@ test('handoff is consumed before any existing local Firebase session can start t
   assert.ok(start>=0,'missing auth bootstrap');
   assert.ok(block.includes('handoffResolved=!handoffExpected'),'missing handoff resolution gate');
   assert.ok(block.includes('if(handoffExpected&&!handoffResolved)return'),'auth observer must defer stale local users while handoff is pending');
-  assert.ok(block.includes("consumed=await withTimeout(consumeHandoff(),10000,'AUTH_HANDOFF_TIMEOUT')"),'handoff must be consumed first');
+  assert.ok(block.includes("consumed=await withTimeout(consumeHandoff(),15000,'AUTH_HANDOFF_TIMEOUT')"),'handoff must be consumed first');
   assert.ok(block.includes('if(consumed&&auth.currentUser)startSession(auth.currentUser)'),'session must start only from the consumed handoff');
   assert.equal(block.includes('getRedirectResult(auth)'),false,'legacy redirect auth must not race canonical Hub handoff');
   for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','redirectToMillionsNest()']) assert.ok(block.includes(token),'missing '+token);
@@ -93,7 +93,7 @@ test('iOS auth persistence falls back from local to session to memory',()=>{
   const end=client.indexOf('async function api(',start);
   const block=client.slice(start,end);
   assert.ok(start>=0,'missing persistence recovery');
-  for(const token of ['browserLocalPersistence','browserSessionPersistence','inMemoryPersistence','3000']) assert.ok(block.includes(token),'missing '+token);
+  for(const token of ['browserLocalPersistence','browserSessionPersistence','inMemoryPersistence','1200','900','500']) assert.ok(block.includes(token),'missing '+token);
 });
 
 test('auth bootstrap reuses local handoff session or quickly falls back to the Hub',()=>{
@@ -105,18 +105,29 @@ test('auth bootstrap reuses local handoff session or quickly falls back to the H
   assert.ok(block.includes("const goHub=()=>"));
   assert.ok(block.includes('if(!handoffExpected){goHub();return}'));
   assert.ok(block.includes('},1500)'));
-  assert.ok(block.includes('},10000)'));
+  assert.ok(block.includes('},18000)'));
 });
 
 test('root document cache-busts the production auth bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-5'));
+  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-6'));
 });
 
 
 test('app shell recovery guard remembers a handoff even after the sensitive query is removed',()=>{
   const html=read('../web/index.html');
-  for(const token of ['__nestLocalBootGuard','__nestLocalHandoffExpectedAtBoot','handoffExpectedAtBoot','setTimeout(recovery, 10000)','boot-retry','location.reload()','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-5']) assert.ok(html.includes(token),'missing '+token);
+  for(const token of ['__nestLocalBootGuard','__nestLocalHandoffExpectedAtBoot','handoffExpectedAtBoot','setTimeout(recovery, 22000)','boot-retry','location.reload()','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-6']) assert.ok(html.includes(token),'missing '+token);
+});
+
+test('iOS handoff does not wait for persistence before exchanging the custom token',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function consumeHandoff()');
+  const end=client.indexOf('const requestedView',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes("signInWithCustomToken(auth,context.customToken),12000,'AUTH_HANDOFF_SIGNIN_TIMEOUT'"));
+  assert.ok(block.includes('void ensureAuthPersistence();'));
+  assert.equal(block.includes('await ensureAuthPersistence()'),false);
+  assert.ok(block.indexOf('signInWithCustomToken')<block.indexOf('void ensureAuthPersistence()'));
 });
 
 test('successful handoff clears the independent boot redirect guard before session data loads',()=>{
@@ -130,7 +141,7 @@ test('successful handoff clears the independent boot redirect guard before sessi
 
 test('resolved application state clears the independent boot guard',()=>{
   const client=read('../web/live.js');
-  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-5'"]) assert.ok(client.includes(token),'missing '+token);
+  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-6'"]) assert.ok(client.includes(token),'missing '+token);
 });
 
 test('Firebase Hosting root app shell is explicitly no-store',()=>{
@@ -149,7 +160,7 @@ test('production workflow deploys Hosting before noncritical domain maintenance'
   const custom=workflow.indexOf('Connect official custom domain');
   assert.ok(deploy>=0&&authorize>deploy&&custom>deploy);
   assert.ok(workflow.includes('continue-on-error: true'));
-  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-5'));
+  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-6'));
 });
 
 
