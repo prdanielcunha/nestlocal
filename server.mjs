@@ -863,11 +863,17 @@ app.get('/api/session',authenticate,async(req,res)=>{
     const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists)return sendError(res,403,'USER_NOT_FOUND');
     const data=user.data()||{};if(inactive(data))return sendError(res,403,'USER_INACTIVE');
     const systemRole=clean(data.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole);
-    let ids=[data.organizationId,data.primaryOrganizationId,data.activeOrganizationId,...(Array.isArray(data.organizations)?data.organizations:[])].filter(x=>typeof x==='string'&&x);
-    const legacy=await db.collection('organization_members').where('uid','==',req.identity.uid).limit(50).get();
-    ids.push(...legacy.docs.filter(x=>!inactive(x.data())).map(x=>x.data().organizationId).filter(Boolean));
-    if(administrative){const all=await db.collection('organizations').limit(50).get();ids.push(...all.docs.map(x=>x.id))}
-    ids=[...new Set(ids)];
+    const handoffAppId=clean(req.identity.appId).toLowerCase(),handoffOrgId=safeId(req.identity.orgId);
+    let ids=[];
+    if(handoffAppId==='nestlocal'&&handoffOrgId){
+      ids=[handoffOrgId];
+    }else{
+      ids=[data.organizationId,data.primaryOrganizationId,data.activeOrganizationId,...(Array.isArray(data.organizations)?data.organizations:[])].filter(x=>typeof x==='string'&&x);
+      const legacy=await db.collection('organization_members').where('uid','==',req.identity.uid).limit(50).get();
+      ids.push(...legacy.docs.filter(x=>!inactive(x.data())).map(x=>x.data().organizationId).filter(Boolean));
+      if(administrative){const all=await db.collection('organizations').limit(50).get();ids.push(...all.docs.map(x=>x.id))}
+      ids=[...new Set(ids)];
+    }
     const docs=await Promise.all(ids.map(async id=>{
       const [org,member,subscription]=await Promise.all([
         db.doc(`organizations/${id}`).get(),

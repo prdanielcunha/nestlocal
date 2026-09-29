@@ -21,7 +21,7 @@
   <div id="app"></div>
   <script>
     (() => {
-      const build = '20260928-canonical-sso-5';
+      const build = '20260928-canonical-sso-6';
       const launchUrl = () => {
         const target = new URL('https://www.millionsnest.com/apps/nestlocal/launch');
         const params = new URLSearchParams(location.search);
@@ -42,18 +42,18 @@
           location.replace(launchUrl());
           return;
         }
-        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>A autenticação já chegou ao NestLocal, mas a abertura demorou além do esperado. Tente novamente sem sair desta tela.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
+        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>A autenticação chegou ao NestLocal, mas não terminou no tempo esperado. Tente novamente sem voltar ao MillionsNest.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
         document.getElementById('boot-retry')?.addEventListener('click', () => location.reload());
       };
       window.__nestLocalBuild = build;
       window.__nestLocalHubLaunch = launchUrl;
       window.__nestLocalHandoffExpectedAtBoot = handoffExpectedAtBoot;
       window.__nestLocalHandoffConsumed = false;
-      window.__nestLocalBootGuard = setTimeout(recovery, 10000);
+      window.__nestLocalBootGuard = setTimeout(recovery, 22000);
       window.addEventListener('error', () => setTimeout(recovery, 0));
       window.addEventListener('unhandledrejection', () => setTimeout(recovery, 0));
     })();
   </script>
-  <script type="module" src="/live.js?v=20260928-canonical-sso-5"></script>
+  <script type="module" src="/live.js?v=20260928-canonical-sso-6"></script>
 </body>
 </html>
