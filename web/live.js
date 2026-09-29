@@ -1,14 +1,10 @@
-import {initializeApp} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
-import {browserLocalPersistence,browserSessionPersistence,inMemoryPersistence,getAuth,onAuthStateChanged,setPersistence,signInWithCustomToken,signOut} from 'https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
+
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
 
-const canonicalAuthDomain='millionsnest.firebaseapp.com';
-const cfg={apiKey:'AIzaSyAhXY8TV8qoXz8Pd2u5jFHUTVssZmi3kMs',authDomain:canonicalAuthDomain,projectId:'millionsnest',storageBucket:'millionsnest.firebasestorage.app',messagingSenderId:'555464791734',appId:'1:555464791734:web:3059e8ac2b8089a1767817'};
-const auth=getAuth(initializeApp(cfg));
 const millionsNestHubOrigin='https://www.millionsnest.com';
 const privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth']);
 function nestLocalReturnPath(){
@@ -233,25 +229,19 @@ const isReview=()=>pathParts()[0]==='review'&&Boolean(pathParts()[1]);
 const lang=()=>`<select data-lang class="lang"><option ${S.lang==='pt'?'selected':''} value="pt">PT</option><option ${S.lang==='en'?'selected':''} value="en">EN</option><option ${S.lang==='es'?'selected':''} value="es">ES</option></select>`;
 const toast=m=>{const e=document.createElement('div');e.className='toast';e.textContent=m;document.body.append(e);setTimeout(()=>e.remove(),2400)};
 function withTimeout(promise,ms,code='TIMEOUT'){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms)})]).finally(()=>clearTimeout(timer))}
-async function ensureAuthPersistence(){
-  for(const [mode,code,timeoutMs] of [[browserLocalPersistence,'AUTH_LOCAL_PERSISTENCE_TIMEOUT',1200],[browserSessionPersistence,'AUTH_SESSION_PERSISTENCE_TIMEOUT',900],[inMemoryPersistence,'AUTH_MEMORY_PERSISTENCE_TIMEOUT',500]]){
-    try{await withTimeout(setPersistence(auth,mode),timeoutMs,code);return true}catch{}
-  }
-  return false;
-}
 async function api(path,opt={}){
-  const {timeoutMs=15000,...request}=opt,id=S.user?await withTimeout(S.user.getIdToken(),6000,'AUTH_TOKEN_TIMEOUT'):'',form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
+  const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
-    const r=await fetch(path,{...request,signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...(id?{Authorization:`Bearer ${id}`}:{})}});
+    const r=await fetch(path,{...request,credentials:'same-origin',cache:request.cache||'no-store',signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...(request.headers||{})}});
     const b=await r.json().catch(()=>({}));
-    if(!r.ok)throw Error(b.error||`HTTP_${r.status}`);
+    if(!r.ok){const error=Error(b.error||`HTTP_${r.status}`);error.status=r.status;throw error}
     return b;
   }catch(e){
     if(e?.name==='AbortError')throw Error('NETWORK_TIMEOUT');
     throw e;
   }finally{clearTimeout(timer)}
 }
-async function openPhoto(path){const id=await S.user.getIdToken(),r=await fetch(path,{headers:{Authorization:`Bearer ${id}`}});if(!r.ok)throw Error(`HTTP_${r.status}`);const u=URL.createObjectURL(await r.blob());window.open(u,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(u),60000)}
+async function openPhoto(path){const r=await fetch(path,{credentials:'same-origin',cache:'no-store'});if(!r.ok)throw Error(`HTTP_${r.status}`);const u=URL.createObjectURL(await r.blob());window.open(u,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(u),60000)}
 const brand=()=>`<div class="brand"><span class="brandmark">N</span>NestLocal</div>`;
 function login(){return `<main class="login-shell premium-login"><section class="login-card">${brand()}<span class="eyebrow">AI Revenue & Service OS</span><h1>${t('welcome')}</h1><p>${t('loginHelp')}</p><div class="login-proof"><span>Orçamentos em minutos</span><span>Pedidos organizados</span><span>7 dias grátis</span></div><button class="button primary login-button" id="login">${t('login')}</button><a class="button login-button" href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_growth_monthly">${t('loginPricing')}</a><a class="xray-login-link" href="/raio-x">${t('xrayCta')}</a><small class="login-trust">Login seguro pelo Google · cobrança gerenciada no MillionsNest</small>${lang()}</section></main>`}
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
@@ -646,7 +636,7 @@ function publicViewV2(){
   const x=S.store,today=zonedDateInfo(new Date(),x.store?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC')?.date||localDateIso(),selected=x.services.find(s=>s.id===(S.publicServiceId||x.services[0]?.id))||x.services[0];return `<main class="public-shell"><section class="public-card wide-public"><div class="public-brand">${brand()}${lang()}</div><span class="eyebrow">${esc(x.store.businessName)}</span><h1>${t('publicTitle')}</h1><p>${t('publicHelp')}</p><form id="public" class="form-grid"><label class="wide">${t('selectService')}<select id="public-service" name="serviceId">${x.services.map(s=>`<option value="${esc(s.id)}" ${selected?.id===s.id?'selected':''}>${esc(serviceName(s))}${s.mode==='fixed'?` · ${t('startingAt')} ${money(s.unitPriceCents)}`:''}</option>`).join('')}</select></label><label>${t('name')}<input name="name" autocomplete="name" required></label><label>${t('phone')}<input name="phone" autocomplete="tel" required inputmode="tel"></label><label>${t('city')}<select name="coverageCode">${x.store.coverageCodes.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join('')}</select></label><label>${t('quantity')}<input name="quantity" type="number" min="1" max="10" value="1"></label><label class="wide">${t('address')}<input name="addressLine" autocomplete="street-address" required minlength="5"></label><label>${t('preferredDate')}<input name="preferredDate" type="date" min="${today}" required></label><label>${t('preferredWindow')}<select name="preferredWindow"><option value="morning">${t('morning')}</option><option value="afternoon">${t('afternoon')}</option><option value="evening">${t('evening')}</option><option value="flexible">${t('flexible')}</option></select></label>${selected?.requiresEquipmentType!==false?`<label>${t('equipment')}<select name="equipmentType">${(selected?.equipmentTypes?.length?selected.equipmentTypes:['other']).map(v=>`<option value="${esc(v)}">${esc(humanizeOption(v))}</option>`).join('')}</select></label>`:''}${selected?.requiresSafeAccess!==false?`<label>${t('access')}<select name="safeAccess"><option value="true">${t('yes')}</option><option value="false">${t('unsure')}</option></select></label>`:''}${renderPublicIntakeFields(selected)}<label class="wide">${t('note')}<textarea name="note" rows="3"></textarea></label><label class="wide">${t('photos')}<input name="photos" type="file" accept="image/jpeg,image/png,image/webp" multiple></label><label class="wide consent"><input name="whatsappServiceOptIn" type="checkbox"><span>${esc(replaceBusiness('whatsappServiceOptIn',x.store.businessName))}</span></label><label class="wide consent"><input name="whatsappMaintenanceOptIn" type="checkbox"><span>${esc(replaceBusiness('whatsappMaintenanceOptIn',x.store.businessName))}</span></label>${publicConsentAnchor}<button class="button primary wide">${t('send')}</button></form></section></main>`
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
-function render(){const root=document.querySelector('#app'),org=S.session?.organizations?.find(x=>x.id===S.orgId)||S.session?.organizations?.[0];if(isLegal())root.innerHTML=legalView();else if(isRevenueXray())root.innerHTML=revenueXrayView();else if(isReview())root.innerHTML=reviewPublicView();else if(isPublicStore()||location.pathname.startsWith('/s/')||location.pathname.startsWith('/track/'))root.innerHTML=publicViewV2();else if(S.loading)root.innerHTML=loading();else if(!S.user)root.innerHTML=login();else if(S.error&&!S.session)root.innerHTML=sessionFailure();else if(!S.session?.organizations.length)root.innerHTML=noOrg();else if(!org?.nestlocal?.access)root.innerHTML=subscriptionGate();else root.innerHTML=shell();if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}document.documentElement.dataset.nlBuild='20260928-canonical-sso-6';bind()}
+function render(){const root=document.querySelector('#app'),org=S.session?.organizations?.find(x=>x.id===S.orgId)||S.session?.organizations?.[0];if(isLegal())root.innerHTML=legalView();else if(isRevenueXray())root.innerHTML=revenueXrayView();else if(isReview())root.innerHTML=reviewPublicView();else if(isPublicStore()||location.pathname.startsWith('/s/')||location.pathname.startsWith('/track/'))root.innerHTML=publicViewV2();else if(S.loading)root.innerHTML=loading();else if(S.error&&!S.session)root.innerHTML=sessionFailure();else if(!S.user)root.innerHTML=login();else if(!S.session?.organizations.length)root.innerHTML=noOrg();else if(!org?.nestlocal?.access)root.innerHTML=subscriptionGate();else root.innerHTML=shell();if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}document.documentElement.dataset.nlBuild='20260928-backend-sso-7';bind()}
 async function loadData(){S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000})}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
@@ -669,7 +659,7 @@ async function loadGrowth(){
     try{await syncGrowthRadar()}catch(e){toast(e.message)}
   }
 }
-async function loadSession(){S.loading=true;S.error='';render();try{S.session=await api('/api/session',{timeoutMs:10000});const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at')}catch(e){S.session=null;S.data=null;S.error=e.message}S.loading=false;render()}
+async function loadSession(){S.loading=true;S.error='';render();let ok=false;try{S.session=await api('/api/session',{timeoutMs:10000});S.user=S.session?.user||{uid:'nestlocal-session'};const eligible=S.session.organizations.filter(x=>x.nestlocal?.access),remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access);S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||'';if(S.orgId){localStorage.setItem('nl_org',S.orgId);const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};if(S.page==='growth'&&isGrowthAdmin())await loadGrowth()}sessionStorage.removeItem('nl_auth_started_at');ok=true}catch(e){S.user=null;S.session=null;S.data=null;S.error=e.message}S.loading=false;render();return ok}
 async function loadPublic(){try{S.store=await api(`/api/public/stores/${encodeURIComponent(publicSlug())}`);if(!S.publicServiceId)S.publicServiceId=S.store.services?.[0]?.id||null}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
@@ -678,7 +668,7 @@ async function beginGoogleLogin(){
   sessionStorage.setItem('nl_auth_started_at',String(Date.now()));
   redirectToMillionsNest();
 }
-async function switchGoogleAccount(){try{await signOut(auth)}catch{}S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');redirectToMillionsNest()}
+async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');redirectToMillionsNest()}
 function bind(){
   document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=async()=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.page=x.dataset.nav;if(S.page==='growth'&&isGrowthAdmin()){S.growth=null;render();try{await loadGrowth()}catch(e){toast(e.message)}}render()});
   function returnToAutopilotQueue(){S.page='today';S.focusRequestId='';S.autopilotRequestId='';render();toast(t('nextActionUpdated'))}
@@ -705,9 +695,9 @@ function bind(){
 
   document.querySelectorAll('[data-lang]').forEach(x=>x.onchange=()=>{S.lang=x.value;localStorage.setItem('nl_lang',S.lang);render()});
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{await beginGoogleLogin()}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
-  document.querySelector('#retry-session')?.addEventListener('click',()=>loadSession());
+  document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
-  document.querySelector('#logout')?.addEventListener('click',async()=>{S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');await signOut(auth)});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.orgId='';localStorage.removeItem('nl_org');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;localStorage.setItem('nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
@@ -758,53 +748,43 @@ function bind(){
   document.querySelectorAll('[data-growth-followup]').forEach(x=>x.onclick=async()=>{await api(`/api/admin/nestlocal/growth/leads/${encodeURIComponent(x.dataset.growthFollowup)}`,{method:'PATCH',body:JSON.stringify({status:'follow_up',scheduleFollowUpDays:2})});await loadGrowth();render();toast(t('schedule2d'))});
   document.querySelectorAll('[data-growth-pain]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const f=new FormData(form),painSignals={};for(const key of ['quoteLoss','noFollowUp','noReactivation','agendaChaos','volume','ownerFeelsPain','urgency'])painSignals[key]=Number(f.get(key)||0);await api(`/api/admin/nestlocal/growth/leads/${encodeURIComponent(form.dataset.growthPain)}`,{method:'PATCH',body:JSON.stringify({painSignals})});await loadGrowth();render();toast(t('saveQualification'))});
 }
-async function consumeHandoff(){const params=new URLSearchParams(location.search),encoded=params.get('ecosystem_ctx');if(!encoded)return false;try{const normalized=encoded.replace(/-/g,'+').replace(/_/g,'/'),context=JSON.parse(atob(normalized.padEnd(Math.ceil(normalized.length/4)*4,'=')));if(context?.appId!=='nestlocal'||context?.protocolVersion!=='1.0.0'||typeof context?.customToken!=='string'||typeof context?.orgId!=='string'||Number(context?.expiresAt)<=Date.now())throw Error('INVALID_HANDOFF');const credential=await withTimeout(signInWithCustomToken(auth,context.customToken),12000,'AUTH_HANDOFF_SIGNIN_TIMEOUT');if(credential.user.uid!==context.userId)throw Error('INVALID_HANDOFF');S.orgId=context.orgId;localStorage.setItem('nl_org',S.orgId);sessionStorage.removeItem('nl_hub_redirect_at');sessionStorage.removeItem('nl_hub_redirect_count');window.__nestLocalHandoffConsumed=true;if(window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}params.delete('ecosystem_ctx');history.replaceState({},'',`${location.pathname}${params.size?`?${params}`:''}${location.hash}`);void ensureAuthPersistence();return true}catch(e){S.error=e?.message||'INVALID_HANDOFF';toast('Não foi possível concluir a entrada segura. Entre novamente.');return false}}
+async function consumeHandoff(){
+  const params=new URLSearchParams(location.search),code=params.get('code');
+  if(!code||!/^[A-Za-z0-9_-]{43}$/.test(code)){S.error='HANDOFF_INVALID_OR_EXPIRED';return false}
+  try{
+    const result=await api('/api/auth/handoff/redeem',{method:'POST',body:JSON.stringify({code}),timeoutMs:10000});
+    if(!result?.ok||typeof result.organizationId!=='string'||!result.organizationId)throw Error('HANDOFF_REDEEM_FAILED');
+    S.orgId=result.organizationId;
+    localStorage.setItem('nl_org',S.orgId);
+    sessionStorage.removeItem('nl_hub_redirect_at');
+    sessionStorage.removeItem('nl_hub_redirect_count');
+    window.__nestLocalHandoffConsumed=true;
+    if(window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
+    const returnTo=params.get('returnTo');
+    let next='/';
+    if(returnTo&&returnTo.startsWith('/')&&!returnTo.startsWith('//')&&!returnTo.includes('://')&&!returnTo.includes('\\'))next=returnTo;
+    const nextUrl=new URL(next,location.origin),nextView=nextUrl.searchParams.get('view');
+    if(['today','requests','customers','agenda','services','automation','page','growth'].includes(nextView))S.page=nextView;
+    history.replaceState({},'',`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+    return true;
+  }catch(e){
+    S.error=e?.message||'HANDOFF_REDEEM_FAILED';
+    return false;
+  }
+}
 const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth'].includes(requestedView))S.page=requestedView;
 async function startAuthBootstrap(){
-  const params=new URLSearchParams(location.search),handoffExpected=params.has('ecosystem_ctx');
-  let observed=false,sessionStarted=false,redirecting=false,handoffResolved=!handoffExpected;
-  const goHub=()=>{
-    if(handoffExpected||sessionStarted||redirecting)return;
-    redirecting=true;
-    redirectToMillionsNest();
-  };
-  const startSession=user=>{
-    if(sessionStarted||!user)return;
-    sessionStarted=true;S.user=user;S.error='';loadSession();
-  };
-  const watchdog=setTimeout(()=>{
-    if(!S.loading)return;
-    if(!handoffExpected){goHub();return}
-    S.loading=false;
-    if(!S.error)S.error='AUTH_BOOT_TIMEOUT';
-    render();toast(t('authFailed'));
-  },18000);
-  onAuthStateChanged(auth,u=>{
-    observed=true;
-    if(handoffExpected&&!handoffResolved)return;
-    if(u){startSession(u);return}
-    S.user=null;S.session=null;S.data=null;
-    if(!handoffExpected){goHub();return}
-  },()=>{
-    observed=true;
-    if(handoffExpected&&!handoffResolved)return;
-    if(!handoffExpected){goHub();return}
-    S.loading=false;S.user=null;S.session=null;S.data=null;S.error='AUTH_STATE_ERROR';render();toast(t('authFailed'));
-  });
-  if(handoffExpected){
-    let consumed=false;
-    try{consumed=await withTimeout(consumeHandoff(),15000,'AUTH_HANDOFF_TIMEOUT')}catch(e){if(!S.error)S.error=e.message}
-    handoffResolved=true;
-    if(consumed&&auth.currentUser)startSession(auth.currentUser);
-    else if(!sessionStarted){S.loading=false;render()}
-  }else{
-    if(auth.currentUser)startSession(auth.currentUser);
-    setTimeout(()=>{if(!sessionStarted&&!auth.currentUser)goHub()},1500);
+  const params=new URLSearchParams(location.search),codeExpected=params.has('code');
+  S.loading=true;S.error='';render();
+  if(codeExpected){
+    let redeemed=false;
+    try{redeemed=await withTimeout(consumeHandoff(),12000,'HANDOFF_REDEEM_TIMEOUT')}catch(e){S.error=e?.message||'HANDOFF_REDEEM_TIMEOUT'}
+    if(!redeemed){S.user=null;S.session=null;S.data=null;S.loading=false;render();return}
+    await loadSession();
+    return;
   }
-  setTimeout(()=>{
-    if(!observed&&!sessionStarted&&auth.currentUser&&!handoffExpected)startSession(auth.currentUser);
-    else if(!observed&&!sessionStarted&&!handoffExpected)goHub();
-  },4000);
-  setTimeout(()=>clearTimeout(watchdog),20000);
+  const loaded=await loadSession();
+  if(loaded)return;
+  if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)){redirectToMillionsNest();return}
 }
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
