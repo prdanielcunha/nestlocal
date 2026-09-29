@@ -33,6 +33,19 @@ jobs:
           workload_identity_provider: projects/555464791734/locations/global/workloadIdentityPools/mn-prod-github/providers/github
           service_account: mn-web-deployer@millionsnest.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v3
+      - name: Check connected Radar source
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          TOKEN="$(gcloud auth print-access-token)"
+          CODE="$(curl --silent --show-error --output /tmp/radar-source-check.json --write-out '%{http_code}'             -H "Authorization: Bearer $TOKEN"             'https://sheets.googleapis.com/v4/spreadsheets/1QX4yW4xmvcdrpg7k5oa0wtQup7yaECTxQuuO-EaAPJ0/values/Leads!A1:A1')"
+          echo "Radar source HTTP: $CODE"
+          if [[ "$CODE" == "200" ]]; then
+            echo "Radar source reachable from Google runtime credentials."
+          else
+            jq -c '{code:.error.code,status:.error.status,message:.error.message,reason:(.error.details[0].reason // .error.details[1].reason // "")}' /tmp/radar-source-check.json || cat /tmp/radar-source-check.json
+          fi
       - name: Detect API changes
         id: changes
         shell: bash
