@@ -34,7 +34,7 @@ test('the client supports central checkout and short-lived backend Hub handoff',
     'data-team',
   ]) assert.ok(client.includes(token), `missing ${token}`);
   for (const token of [
-    "__Host-nl_session",
+    "__session",
     "handoff.appId!=='nestlocal'",
     "consumedBy:'nestlocal-backend-session-v1'",
   ]) assert.ok(server.includes(token), `missing ${token}`);
