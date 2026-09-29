@@ -4,21 +4,73 @@ import { readFileSync } from 'node:fs';
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 
-test('direct private entry reuses the canonical MillionsNest session',()=>{
+test('direct private entry delegates identity to the canonical MillionsNest Hub',()=>{
   const client=read('../web/live.js');
   for(const token of [
-    "const canonicalAuthDomain='millionsnest.firebaseapp.com'",
     "const millionsNestHubOrigin='https://www.millionsnest.com'",
     "new URL('/apps/nestlocal/launch',millionsNestHubOrigin)",
     "url.searchParams.set('returnTo',nestLocalReturnPath())",
     'redirectToMillionsNest()',
-    'browserLocalPersistence',
-    'browserSessionPersistence',
-    'inMemoryPersistence',
   ]) assert.ok(client.includes(token),'missing '+token);
-  assert.equal(client.includes('signInWithPopup('),false);
-  assert.equal(client.includes('signInWithRedirect('),false);
-  assert.equal(client.includes('GoogleAuthProvider'),false);
+
+  for(const forbidden of [
+    'firebase-app.js',
+    'firebase-auth.js',
+    'initializeApp',
+    'getAuth(',
+    'onAuthStateChanged',
+    'signInWithCustomToken',
+    'GoogleAuthProvider',
+    'signInWithPopup(',
+    'signInWithRedirect(',
+    'getIdToken()',
+  ]) assert.equal(client.includes(forbidden),false,'browser auth must not contain '+forbidden);
+});
+
+test('private API requests rely on same-origin HttpOnly session cookies instead of bearer tokens',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function api(');
+  const end=client.indexOf('async function openPhoto',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes("credentials:'same-origin'"));
+  assert.ok(block.includes("cache:request.cache||'no-store'"));
+  assert.equal(block.includes('Authorization:'),false);
+  assert.equal(block.includes('getIdToken'),false);
+});
+
+test('backend handoff redeems a short opaque code and never places Firebase credentials in browser state',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function consumeHandoff()');
+  const end=client.indexOf('const requestedView',start);
+  const block=client.slice(start,end);
+  for(const token of [
+    "params.get('code')",
+    "/^[A-Za-z0-9_-]{43}$/",
+    "api('/api/auth/handoff/redeem'",
+    "body:JSON.stringify({code})",
+    "window.__nestLocalHandoffConsumed=true",
+    "clearTimeout(window.__nestLocalBootGuard)",
+    "history.replaceState",
+  ]) assert.ok(block.includes(token),'missing '+token);
+  for(const forbidden of ['ecosystem_ctx','customToken','atob(','signInWithCustomToken']) {
+    assert.equal(block.includes(forbidden),false,'handoff consumer must not use '+forbidden);
+  }
+});
+
+test('bootstrap first redeems code, then resolves the server session; direct entry reuses cookie or returns to Hub',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function startAuthBootstrap()');
+  const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
+  const block=client.slice(start,end);
+  for(const token of [
+    "codeExpected=params.has('code')",
+    "consumeHandoff()",
+    "await loadSession()",
+    "const loaded=await loadSession()",
+    "['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)",
+    'redirectToMillionsNest()',
+  ]) assert.ok(block.includes(token),'missing '+token);
+  assert.ok(block.indexOf('consumeHandoff()')<block.indexOf('await loadSession()'));
 });
 
 test('authenticated session failures do not masquerade as no-organization state',()=>{
@@ -29,23 +81,73 @@ test('authenticated session failures do not masquerade as no-organization state'
   assert.ok(client.includes("userNotFoundHelp"));
 });
 
-test('session automatically prefers an eligible organization over an inaccessible remembered tenant',()=>{
+test('session projection populates the local user from the backend session',()=>{
   const client=read('../web/live.js');
-  for(const token of [
-    "const eligible=S.session.organizations.filter(x=>x.nestlocal?.access)",
-    "remembered=S.session.organizations.find(x=>x.id===S.orgId&&x.nestlocal?.access)",
-    "S.orgId=remembered?.id||eligible[0]?.id||S.session.organizations[0]?.id||''",
-  ]) assert.ok(client.includes(token),'missing '+token);
+  const start=client.indexOf('async function loadSession()');
+  const end=client.indexOf('async function loadPublic()',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes("S.session=await api('/api/session'"));
+  assert.ok(block.includes("S.user=S.session?.user||{uid:'nestlocal-session'}"));
+  assert.ok(block.includes("const eligible=S.session.organizations.filter(x=>x.nestlocal?.access)"));
 });
 
-test('account switching clears local tenant preference and returns to central MillionsNest auth',()=>{
+test('switch account and logout revoke only the NestLocal cookie session',()=>{
   const client=read('../web/live.js');
-  const start=client.indexOf('async function switchGoogleAccount()');
-  const end=client.indexOf('function bind()',start);
-  const block=client.slice(start,end);
-  assert.ok(block.includes("localStorage.removeItem('nl_org')"));
-  assert.ok(block.includes('await signOut(auth)'));
-  assert.ok(block.includes('redirectToMillionsNest()'));
+  for(const token of [
+    "api('/api/auth/session',{method:'DELETE'",
+    "localStorage.removeItem('nl_org')",
+    'redirectToMillionsNest()',
+  ]) assert.ok(client.includes(token),'missing '+token);
+  assert.equal(client.includes('signOut(auth)'),false);
+});
+
+test('server stores only an opaque __Host cookie and validates central session version',()=>{
+  const server=read('../server.mjs');
+  for(const token of [
+    "const nestLocalSessionCookie='__Host-nl_session'",
+    'HttpOnly; Secure; SameSite=Lax',
+    "db.doc(`nestlocal_sessions/${sessionHash}`)",
+    "normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==session.sessionVersion",
+    "sessionKind:'nestlocal_cookie'",
+  ]) assert.ok(server.includes(token),'missing '+token);
+});
+
+test('handoff redemption is single-use, expiring and atomically creates the local session',()=>{
+  const server=read('../server.mjs');
+  const start=server.indexOf("app.post('/api/auth/handoff/redeem'");
+  const end=server.indexOf("app.delete('/api/auth/session'",start);
+  const block=server.slice(start,end);
+  for(const token of [
+    "handoff.appId!=='nestlocal'",
+    "handoff.status!=='issued'",
+    "handoff.consumedAt!==null",
+    "handoffExpires.getTime()<=now",
+    "tx.update(handoffRef,{status:'consumed'",
+    "tx.create(sessionRef",
+    "consumedBy:'nestlocal-backend-session-v1'",
+    "res.setHeader('Set-Cookie'",
+  ]) assert.ok(block.includes(token),'missing '+token);
+});
+
+test('cookie session is bound to the organization selected by the Hub',()=>{
+  const server=read('../server.mjs');
+  assert.ok(server.includes("if(req.identity?.sessionKind==='nestlocal_cookie'&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH')"));
+  const sessionStart=server.indexOf("app.get('/api/session'");
+  const sessionEnd=server.indexOf("app.get('/api/organizations/:orgId/nestlocal'",sessionStart);
+  const sessionBlock=server.slice(sessionStart,sessionEnd);
+  assert.ok(sessionBlock.includes("handoffAppId=clean(req.identity.appId).toLowerCase()"));
+  assert.ok(sessionBlock.includes("handoffOrgId=safeId(req.identity.orgId)"));
+  assert.ok(sessionBlock.includes("ids=[handoffOrgId]"));
+});
+
+test('Bearer authentication remains available for controlled compatibility',()=>{
+  const server=read('../server.mjs');
+  const start=server.indexOf('async function authenticate(req,res,next)');
+  const end=server.indexOf('async function authorize',start);
+  const block=server.slice(start,end);
+  assert.ok(block.includes("value.startsWith('Bearer ')"));
+  assert.ok(block.includes('admin.auth().verifyIdToken'));
+  assert.ok(block.includes('resolveNestLocalCookieIdentity'));
 });
 
 test('login and recovery copy exists in PT EN ES',()=>{
@@ -60,88 +162,32 @@ test('auth recovery states have responsive premium styling',()=>{
   for(const token of ['.auth-recovery','.recovery-actions','.auth-progress','prefers-reduced-motion']) assert.ok(css.includes(token),'missing '+token);
 });
 
-
-test('handoff is consumed before any existing local Firebase session can start the app',()=>{
-  const client=read('../web/live.js');
-  const start=client.indexOf('async function startAuthBootstrap()');
-  const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
-  const block=client.slice(start,end);
-  assert.ok(start>=0,'missing auth bootstrap');
-  assert.ok(block.includes('handoffResolved=!handoffExpected'),'missing handoff resolution gate');
-  assert.ok(block.includes('if(handoffExpected&&!handoffResolved)return'),'auth observer must defer stale local users while handoff is pending');
-  assert.ok(block.includes("consumed=await withTimeout(consumeHandoff(),15000,'AUTH_HANDOFF_TIMEOUT')"),'handoff must be consumed first');
-  assert.ok(block.includes('if(consumed&&auth.currentUser)startSession(auth.currentUser)'),'session must start only from the consumed handoff');
-  assert.equal(block.includes('getRedirectResult(auth)'),false,'legacy redirect auth must not race canonical Hub handoff');
-  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','redirectToMillionsNest()']) assert.ok(block.includes(token),'missing '+token);
+test('root document cache-busts the backend SSO bundle',()=>{
+  const html=read('../web/index.html');
+  assert.ok(html.includes('/live.js?v=20260928-backend-sso-7'));
+  assert.ok(html.includes('20260928-backend-sso-7'));
 });
 
-test('session bootstrap bounds token, request and network waits',()=>{
-  const client=read('../web/live.js');
+test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
+  const html=read('../web/index.html');
   for(const token of [
-    "withTimeout(S.user.getIdToken(),6000,'AUTH_TOKEN_TIMEOUT')",
-    "api('/api/session',{timeoutMs:10000})",
-    "timeoutMs:12000",
-    "throw Error('NETWORK_TIMEOUT')",
-    'controller.abort()',
-  ]) assert.ok(client.includes(token),'missing '+token);
-});
-
-
-test('iOS auth persistence falls back from local to session to memory',()=>{
-  const client=read('../web/live.js');
-  const start=client.indexOf('async function ensureAuthPersistence()');
-  const end=client.indexOf('async function api(',start);
-  const block=client.slice(start,end);
-  assert.ok(start>=0,'missing persistence recovery');
-  for(const token of ['browserLocalPersistence','browserSessionPersistence','inMemoryPersistence','1200','900','500']) assert.ok(block.includes(token),'missing '+token);
-});
-
-test('auth bootstrap reuses local handoff session or quickly falls back to the Hub',()=>{
-  const client=read('../web/live.js');
-  const start=client.indexOf('async function startAuthBootstrap()');
-  const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
-  const block=client.slice(start,end);
-  assert.ok(block.indexOf('onAuthStateChanged(auth') < block.indexOf('consumeHandoff()'));
-  assert.ok(block.includes("const goHub=()=>"));
-  assert.ok(block.includes('if(!handoffExpected){goHub();return}'));
-  assert.ok(block.includes('},1500)'));
-  assert.ok(block.includes('},18000)'));
-});
-
-test('root document cache-busts the production auth bundle',()=>{
-  const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-6'));
-});
-
-
-test('app shell recovery guard remembers a handoff even after the sensitive query is removed',()=>{
-  const html=read('../web/index.html');
-  for(const token of ['__nestLocalBootGuard','__nestLocalHandoffExpectedAtBoot','handoffExpectedAtBoot','setTimeout(recovery, 22000)','boot-retry','location.reload()','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-6']) assert.ok(html.includes(token),'missing '+token);
-});
-
-test('iOS handoff does not wait for persistence before exchanging the custom token',()=>{
-  const client=read('../web/live.js');
-  const start=client.indexOf('async function consumeHandoff()');
-  const end=client.indexOf('const requestedView',start);
-  const block=client.slice(start,end);
-  assert.ok(block.includes("signInWithCustomToken(auth,context.customToken),12000,'AUTH_HANDOFF_SIGNIN_TIMEOUT'"));
-  assert.ok(block.includes('void ensureAuthPersistence();'));
-  assert.equal(block.includes('await ensureAuthPersistence()'),false);
-  assert.ok(block.indexOf('signInWithCustomToken')<block.indexOf('void ensureAuthPersistence()'));
-});
-
-test('successful handoff clears the independent boot redirect guard before session data loads',()=>{
-  const client=read('../web/live.js');
-  const start=client.indexOf('async function consumeHandoff()');
-  const end=client.indexOf('const requestedView',start);
-  const block=client.slice(start,end);
-  for(const token of ['__nestLocalHandoffConsumed=true','clearTimeout(window.__nestLocalBootGuard)','window.__nestLocalBootGuard=null',"params.delete('ecosystem_ctx')"]) assert.ok(block.includes(token),'missing '+token);
-  assert.ok(block.indexOf('clearTimeout(window.__nestLocalBootGuard)')<block.indexOf("params.delete('ecosystem_ctx')"),'boot guard must be disabled before ecosystem_ctx is removed');
+    '__nestLocalBootGuard',
+    '__nestLocalHandoffExpectedAtBoot',
+    "bootParams.has('code')",
+    "bootParams.has('ecosystem_ctx')",
+    'boot-retry',
+    'location.reload()',
+    '/apps/nestlocal/launch',
+  ]) assert.ok(html.includes(token),'missing '+token);
 });
 
 test('resolved application state clears the independent boot guard',()=>{
   const client=read('../web/live.js');
-  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-6'"]) assert.ok(client.includes(token),'missing '+token);
+  for(const token of [
+    'window.__nestLocalBootGuard',
+    'clearTimeout(window.__nestLocalBootGuard)',
+    "dataset.nlBuild='20260928-backend-sso-7'",
+  ]) assert.ok(client.includes(token),'missing '+token);
 });
 
 test('Firebase Hosting root app shell is explicitly no-store',()=>{
@@ -153,16 +199,15 @@ test('Firebase Hosting root app shell is explicitly no-store',()=>{
   }
 });
 
-test('production workflow deploys Hosting before noncritical domain maintenance',()=>{
+test('production workflow deploys backend SSO bundle and validates it on the official domain',()=>{
   const workflow=read('../.github/workflows/firebase-hosting-deploy.yml');
   const deploy=workflow.indexOf('Deploy NestLocal Hosting immediately');
-  const authorize=workflow.indexOf('Authorize NestLocal login domains');
   const custom=workflow.indexOf('Connect official custom domain');
-  assert.ok(deploy>=0&&authorize>deploy&&custom>deploy);
-  assert.ok(workflow.includes('continue-on-error: true'));
-  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-6'));
+  const smoke=workflow.indexOf('Smoke production endpoints');
+  assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
+  assert.ok(workflow.includes('/live.js?v=20260928-backend-sso-7'));
+  assert.ok(workflow.includes('20260928-backend-sso-7'));
 });
-
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
   const client=read('../web/live.js');
