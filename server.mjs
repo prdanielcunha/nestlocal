@@ -137,7 +137,7 @@ const upload=multer({storage:multer.memoryStorage(),limits:{files:5,fileSize:5*1
 const evidenceUpload=multer({storage:multer.memoryStorage(),limits:{files:8,fileSize:8*1024*1024},fileFilter:(_req,file,cb)=>cb(null,['image/jpeg','image/png','image/webp'].includes(file.mimetype))});
 const reviewTokenValid=(record,value)=>{const digest=hash(value);return record?.reviewTokenHash===digest||(Array.isArray(record?.reviewTokenHashes)&&record.reviewTokenHashes.includes(digest))};
 
-const nestLocalSessionCookie='__Host-nl_session';
+const nestLocalSessionCookie='__session';
 const nestLocalSessionTtlMs=12*60*60*1000;
 const normalizeEcosystemSessionVersion=value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=1?value:1;
 const parseCookies=header=>String(header||'').split(';').reduce((acc,part)=>{const index=part.indexOf('=');if(index<1)return acc;const key=part.slice(0,index).trim(),value=part.slice(index+1).trim();if(key)acc[key]=value;return acc},{});
