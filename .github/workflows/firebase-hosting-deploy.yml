@@ -100,7 +100,7 @@ jobs:
           test -s web/live.css
           test -s web/styles.css
           grep -q 'NestLocal' web/index.html
-          grep -q '20260928-canonical-sso-5' web/index.html
+          grep -q '20260928-canonical-sso-6' web/index.html
           grep -q 'AUTH_BOOT_TIMEOUT' web/live.js
       - name: Deploy NestLocal Hosting immediately
         run: firebase deploy --only hosting:nestlocal,hosting:nestlocal-alias --project millionsnest --non-interactive
@@ -172,13 +172,13 @@ jobs:
           fetch https://nestlocal.millionsnest.com/api/health > /tmp/nestlocal-health.json
           jq -e '.ok == true and .service == "nestlocal-api"' /tmp/nestlocal-health.json >/dev/null
 
-          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20260928-canonical-sso-5' '20260928-canonical-sso-5'
+          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20260928-canonical-sso-6' '20260928-canonical-sso-6'
           fetch_until_contains https://nestlocal.millionsnest.com/raio-x /tmp/nestlocal-xray.html 'id="app"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
             'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
             'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
-            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'canonicalAuthDomain' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' 'AUTH_BOOT_TIMEOUT' '20260928-canonical-sso-5' 'browserSessionPersistence' 'inMemoryPersistence' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
+            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'canonicalAuthDomain' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' 'AUTH_BOOT_TIMEOUT' '20260928-canonical-sso-6' 'browserSessionPersistence' 'inMemoryPersistence' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/guided-experiment.js /tmp/nestlocal-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction' 'decisionMemoryLibrary' 'experimentContextForAction' 'renderExperimentContext' 'buildExperimentReviewModel' 'guidedExperimentState' 'decisionMemoryLibrary' 'renderDecisionMemoryLibrary'
@@ -195,7 +195,7 @@ jobs:
 
           fetch_until_contains https://nestlocal.web.app/live.js /tmp/nestlocal-alias-live.js \
             'revenueXrayView' 'nextBestActions' 'outcomeLearningCard' 'explainableInsights' \
-            'data-start-experiment' 'canonicalAuthDomain' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' 'AUTH_BOOT_TIMEOUT' '20260928-canonical-sso-5' 'browserSessionPersistence' 'inMemoryPersistence' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
+            'data-start-experiment' 'canonicalAuthDomain' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' 'AUTH_BOOT_TIMEOUT' '20260928-canonical-sso-6' 'browserSessionPersistence' 'inMemoryPersistence' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
 
           fetch_until_contains https://nestlocal.web.app/guided-experiment.js /tmp/nestlocal-alias-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction'
