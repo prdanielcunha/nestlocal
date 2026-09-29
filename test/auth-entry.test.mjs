@@ -101,10 +101,10 @@ test('switch account and logout revoke only the NestLocal cookie session',()=>{
   assert.equal(client.includes('signOut(auth)'),false);
 });
 
-test('server stores only an opaque __Host cookie and validates central session version',()=>{
+test('server stores only an Firebase Hosting-compatible opaque cookie and validates central session version',()=>{
   const server=read('../server.mjs');
   for(const token of [
-    "const nestLocalSessionCookie='__Host-nl_session'",
+    "const nestLocalSessionCookie='__session'",
     'HttpOnly; Secure; SameSite=Lax',
     "db.doc(`nestlocal_sessions/${sessionHash}`)",
     "normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==session.sessionVersion",
