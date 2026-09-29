@@ -336,6 +336,7 @@ function radarSourceState(data={}){
   };
 }
 
+// Connected Radar uses an explicit Google Sheets OAuth scope.
 const googleSheetsAuth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets']});
 async function googleRuntimeAccessToken(){
   const client=await googleSheetsAuth.getClient();
