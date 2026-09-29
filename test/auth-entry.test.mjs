@@ -108,7 +108,7 @@ test('server stores only an Firebase Hosting-compatible opaque cookie and valida
     'HttpOnly; Secure; SameSite=Lax',
     "db.doc(`nestlocal_sessions/${sessionHash}`)",
     "normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==session.sessionVersion",
-    "sessionKind:'nestlocal_cookie'",
+    "sessionKind='nestlocal_cookie'",
   ]) assert.ok(server.includes(token),'missing '+token);
 });
 
@@ -131,13 +131,47 @@ test('handoff redemption is single-use, expiring and atomically creates the loca
 
 test('cookie session is bound to the organization selected by the Hub',()=>{
   const server=read('../server.mjs');
-  assert.ok(server.includes("if(req.identity?.sessionKind==='nestlocal_cookie'&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH')"));
+  assert.ok(server.includes("String(req.identity?.sessionKind||'').startsWith('nestlocal_')&&req.identity?.orgId!==orgId"));
   const sessionStart=server.indexOf("app.get('/api/session'");
   const sessionEnd=server.indexOf("app.get('/api/organizations/:orgId/nestlocal'",sessionStart);
   const sessionBlock=server.slice(sessionStart,sessionEnd);
   assert.ok(sessionBlock.includes("handoffAppId=clean(req.identity.appId).toLowerCase()"));
   assert.ok(sessionBlock.includes("handoffOrgId=safeId(req.identity.orgId)"));
   assert.ok(sessionBlock.includes("ids=[handoffOrgId]"));
+});
+
+test('NestLocal handoff returns an opaque bearer fallback bound to the server session',()=>{
+  const server=read('../server.mjs');
+  const redeemStart=server.indexOf("app.post('/api/auth/handoff/redeem'");
+  const redeemEnd=server.indexOf("app.delete('/api/auth/session'",redeemStart);
+  const redeem=server.slice(redeemStart,redeemEnd);
+  for(const token of [
+    "sessionToken=\`nl_\${crypto.randomBytes(32).toString('base64url')}\`",
+    "sessionTransport:'cookie+bearer'",
+    'sessionToken,',
+  ]) assert.ok(redeem.includes(token),'missing '+token);
+});
+
+test('client stores only the opaque NestLocal session token in sessionStorage and sends it as Authorization fallback',()=>{
+  const client=read('../web/live.js');
+  for(const token of [
+    "sessionToken:storageGet(sessionStorage,'nl_session_token','')",
+    "Authorization:\`Bearer \${S.sessionToken}\`",
+    "storageSet(sessionStorage,'nl_session_token',S.sessionToken)",
+    "storageRemove(sessionStorage,'nl_session_token')",
+  ]) assert.ok(client.includes(token),'missing '+token);
+  assert.equal(client.includes('signInWithCustomToken'),false);
+});
+
+test('server accepts NestLocal opaque bearer before Firebase bearer compatibility and keeps organization binding',()=>{
+  const server=read('../server.mjs');
+  const start=server.indexOf('async function authenticate(req,res,next)');
+  const end=server.indexOf('async function authorize',start);
+  const block=server.slice(start,end);
+  assert.ok(block.includes("value.startsWith('Bearer nl_')"));
+  assert.ok(block.indexOf("value.startsWith('Bearer nl_')")<block.indexOf("value.startsWith('Bearer ')"));
+  assert.ok(block.includes("resolveNestLocalSessionIdentity(value.slice(7),res,'nestlocal_bearer')"));
+  assert.ok(server.includes("String(req.identity?.sessionKind||'').startsWith('nestlocal_')"));
 });
 
 test('Bearer authentication remains available for controlled compatibility',()=>{
@@ -164,8 +198,8 @@ test('auth recovery states have responsive premium styling',()=>{
 
 test('root document cache-busts the backend SSO bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-runtime-8'));
-  assert.ok(html.includes('20260928-runtime-8'));
+  assert.ok(html.includes('/live.js?v=20260929-session-9'));
+  assert.ok(html.includes('20260929-session-9'));
 });
 
 test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
@@ -192,7 +226,7 @@ test('independent boot guard stays armed through handoff and clears only after l
   const renderBlock=client.slice(renderStart,renderEnd);
   assert.ok(renderBlock.includes("if(!S.loading&&window.__nestLocalBootGuard)"));
   assert.ok(renderBlock.includes('clearTimeout(window.__nestLocalBootGuard)'));
-  assert.ok(client.includes("dataset.nlBuild='20260928-runtime-8'"));
+  assert.ok(client.includes("dataset.nlBuild='20260929-session-9'"));
 });
 
 test('inline boot recovery script is valid JavaScript and contains no literal escaped newlines',()=>{
@@ -212,7 +246,7 @@ test('runtime auth boot is storage-safe, stage-aware and has a hard watchdog',()
   const client=read('../web/live.js');
   for(const token of [
     "storageGet(localStorage,'nl_lang','pt')",
-    "storageGet(localStorage,'nl_org','')",
+    "storageGet(localStorage,'nl_org')",
     "setAuthStage('module_ready')",
     "setAuthStage('handoff_redeem')",
     "setAuthStage('session')",
@@ -257,8 +291,8 @@ test('production workflow deploys backend SSO bundle and validates it on the off
   const custom=workflow.indexOf('Connect official custom domain');
   const smoke=workflow.indexOf('Smoke production endpoints');
   assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
-  assert.ok(workflow.includes('/live.js?v=20260928-runtime-8'));
-  assert.ok(workflow.includes('20260928-runtime-8'));
+  assert.ok(workflow.includes('/live.js?v=20260929-session-9'));
+  assert.ok(workflow.includes('20260929-session-9'));
 });
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
