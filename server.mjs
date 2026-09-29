@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
+import {GoogleAuth} from 'google-auth-library';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
@@ -137,14 +138,65 @@ const upload=multer({storage:multer.memoryStorage(),limits:{files:5,fileSize:5*1
 const evidenceUpload=multer({storage:multer.memoryStorage(),limits:{files:8,fileSize:8*1024*1024},fileFilter:(_req,file,cb)=>cb(null,['image/jpeg','image/png','image/webp'].includes(file.mimetype))});
 const reviewTokenValid=(record,value)=>{const digest=hash(value);return record?.reviewTokenHash===digest||(Array.isArray(record?.reviewTokenHashes)&&record.reviewTokenHashes.includes(digest))};
 
+const nestLocalSessionCookie='__session';
+const nestLocalSessionTtlMs=12*60*60*1000;
+const nestLocalSessionTokenPattern=/^nl_[A-Za-z0-9_-]{43}$/;
+const legacyNestLocalSessionTokenPattern=/^[A-Za-z0-9_-]{43}$/;
+const normalizeEcosystemSessionVersion=value=>typeof value==='number'&&Number.isSafeInteger(value)&&value>=1?value:1;
+const parseCookies=header=>String(header||'').split(';').reduce((acc,part)=>{const index=part.indexOf('=');if(index<1)return acc;const key=part.slice(0,index).trim(),value=part.slice(index+1).trim();if(key)acc[key]=value;return acc},{});
+const sessionCookieHeader=(value,maxAgeSeconds)=>`${nestLocalSessionCookie}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAgeSeconds}`;
+const clearNestLocalSessionCookie=res=>res.setHeader('Set-Cookie',sessionCookieHeader('',0));
+const validNestLocalSessionToken=value=>typeof value==='string'&&(nestLocalSessionTokenPattern.test(value)||legacyNestLocalSessionTokenPattern.test(value));
+
+async function resolveNestLocalSessionIdentity(raw,res,sessionKind='nestlocal_cookie'){
+  if(!validNestLocalSessionToken(raw))return null;
+  const sessionHash=hash(raw),sessionRef=db.doc(`nestlocal_sessions/${sessionHash}`);
+  const sessionDoc=await sessionRef.get();
+  if(!sessionDoc.exists)return null;
+  const session=sessionDoc.data()||{},expiresAt=session.expiresAt?.toDate?.();
+  if(session.status!=='active'||session.appId!=='nestlocal'||!safeId(session.uid)||!safeId(session.organizationId)||!Number.isSafeInteger(session.sessionVersion)||!expiresAt||expiresAt.getTime()<=Date.now()){
+    await sessionRef.delete().catch(()=>undefined);
+    if(sessionKind==='nestlocal_cookie')clearNestLocalSessionCookie(res);
+    return null;
+  }
+  const userDoc=await db.doc(`users/${session.uid}`).get();
+  if(!userDoc.exists||inactive(userDoc.data())||normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==session.sessionVersion){
+    await sessionRef.delete().catch(()=>undefined);
+    if(sessionKind==='nestlocal_cookie')clearNestLocalSessionCookie(res);
+    return null;
+  }
+  return{uid:session.uid,appId:'nestlocal',orgId:session.organizationId,supportMode:session.supportMode===true,sessionKind};
+}
+
+async function resolveNestLocalCookieIdentity(req,res){
+  const raw=parseCookies(req.headers.cookie)[nestLocalSessionCookie];
+  return resolveNestLocalSessionIdentity(raw,res,'nestlocal_cookie');
+}
+
 async function authenticate(req,res,next){
-  const value=req.headers.authorization||'';
-  if(!value.startsWith('Bearer ')) return sendError(res,401,'AUTH_REQUIRED');
-  try{req.identity=await admin.auth().verifyIdToken(value.slice(7));next()}catch{return sendError(res,401,'INVALID_TOKEN')}
+  const value=typeof req.headers.authorization==='string'?req.headers.authorization:'';
+  if(value.startsWith('Bearer nl_')){
+    try{
+      const identity=await resolveNestLocalSessionIdentity(value.slice(7),res,'nestlocal_bearer');
+      if(!identity)return sendError(res,401,'AUTH_REQUIRED');
+      req.identity=identity;
+      return next();
+    }catch(e){console.error('[NESTLOCAL_BEARER_AUTH]',e);return sendError(res,401,'AUTH_REQUIRED')}
+  }
+  if(value.startsWith('Bearer ')){
+    try{req.identity=await admin.auth().verifyIdToken(value.slice(7));return next()}catch{return sendError(res,401,'INVALID_TOKEN')}
+  }
+  try{
+    const identity=await resolveNestLocalCookieIdentity(req,res);
+    if(!identity)return sendError(res,401,'AUTH_REQUIRED');
+    req.identity=identity;
+    return next();
+  }catch(e){console.error('[NESTLOCAL_SESSION_AUTH]',e);return sendError(res,401,'AUTH_REQUIRED')}
 }
 
 async function authorize(req,res,next){
   const orgId=clean(req.params.orgId);if(!orgId)return sendError(res,400,'ORGANIZATION_REQUIRED');
+  if(String(req.identity?.sessionKind||'').startsWith('nestlocal_')&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH');
   try{
     const [user,org,member,subscription]=await Promise.all([
       db.doc(`users/${req.identity.uid}`).get(),
@@ -284,10 +336,12 @@ function radarSourceState(data={}){
   };
 }
 
+// Connected Radar uses an explicit Google Sheets OAuth scope.
+const googleSheetsAuth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets']});
 async function googleRuntimeAccessToken(){
-  const credential=admin.credential.applicationDefault();
-  const tokenResult=await credential.getAccessToken();
-  const accessToken=clean(tokenResult?.access_token);
+  const client=await googleSheetsAuth.getClient();
+  const tokenResult=await client.getAccessToken();
+  const accessToken=clean(typeof tokenResult==='string'?tokenResult:tokenResult?.token);
   if(!accessToken)throw new TypeError('RADAR_SOURCE_AUTH_FAILED');
   return accessToken;
 }
@@ -566,6 +620,81 @@ async function requireGrowthAdmin(req,res,next){
 
 app.get('/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
+
+app.post('/api/auth/handoff/redeem',async(req,res)=>{
+  res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma','no-cache');
+  res.setHeader('Expires','0');
+  try{
+    const code=clean(req.body?.code);
+    if(!/^[A-Za-z0-9_-]{43}$/.test(code))return sendError(res,400,'HANDOFF_INVALID_OR_EXPIRED');
+    const codeHash=hash(code),handoffRef=db.doc(`ecosystemHandoffs/${codeHash}`);
+    const sessionToken=`nl_${crypto.randomBytes(32).toString('base64url')}`,sessionHash=hash(sessionToken),sessionRef=db.doc(`nestlocal_sessions/${sessionHash}`);
+    const now=Date.now(),expiresAt=admin.firestore.Timestamp.fromMillis(now+nestLocalSessionTtlMs);
+    let issuedSession=null;
+    await db.runTransaction(async tx=>{
+      const handoffDoc=await tx.get(handoffRef);
+      if(!handoffDoc.exists)throw new Error('HANDOFF_INVALID_OR_EXPIRED');
+      const handoff=handoffDoc.data()||{},handoffExpires=handoff.expiresAt?.toDate?.();
+      if(
+        handoff.version!==1||
+        handoff.appId!=='nestlocal'||
+        handoff.status!=='issued'||
+        handoff.consumedAt!==null||
+        !safeId(handoff.uid)||
+        !safeId(handoff.organizationId)||
+        !clean(handoff.accessSource)||
+        !Number.isSafeInteger(handoff.sessionVersion)||
+        handoff.sessionVersion<1||
+        !handoffExpires||
+        handoffExpires.getTime()<=now
+      )throw new Error('HANDOFF_INVALID_OR_EXPIRED');
+      const userRef=db.doc(`users/${handoff.uid}`),userDoc=await tx.get(userRef);
+      if(!userDoc.exists||inactive(userDoc.data())||normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==handoff.sessionVersion)throw new Error('HANDOFF_INVALID_OR_EXPIRED');
+      tx.update(handoffRef,{status:'consumed',consumedAt:admin.firestore.FieldValue.serverTimestamp(),consumedBy:'nestlocal-backend-session-v1'});
+      tx.create(sessionRef,{
+        version:1,
+        appId:'nestlocal',
+        status:'active',
+        uid:handoff.uid,
+        organizationId:handoff.organizationId,
+        accessSource:handoff.accessSource,
+        supportMode:handoff.supportMode===true,
+        sessionVersion:handoff.sessionVersion,
+        createdAt:admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt
+      });
+      issuedSession={uid:handoff.uid,organizationId:handoff.organizationId};
+    });
+    if(!issuedSession)return sendError(res,400,'HANDOFF_INVALID_OR_EXPIRED');
+    res.setHeader('Set-Cookie',sessionCookieHeader(sessionToken,Math.floor(nestLocalSessionTtlMs/1000)));
+    return res.json({
+      ok:true,
+      organizationId:issuedSession.organizationId,
+      sessionToken,
+      sessionTransport:'cookie+bearer',
+      expiresInSeconds:Math.floor(nestLocalSessionTtlMs/1000)
+    });
+  }catch(e){
+    if(e?.message==='HANDOFF_INVALID_OR_EXPIRED')return sendError(res,400,'HANDOFF_INVALID_OR_EXPIRED');
+    console.error('[NESTLOCAL_HANDOFF_REDEEM]',e);
+    return sendError(res,500,'HANDOFF_REDEEM_FAILED');
+  }
+});
+
+app.delete('/api/auth/session',async(req,res)=>{
+  try{
+    const cookieToken=parseCookies(req.headers.cookie)[nestLocalSessionCookie];
+    const auth=typeof req.headers.authorization==='string'?req.headers.authorization:'';
+    const bearerToken=auth.startsWith('Bearer nl_')?auth.slice(7):'';
+    const tokens=[cookieToken,bearerToken].filter(validNestLocalSessionToken);
+    await Promise.all([...new Set(tokens)].map(raw=>db.doc(`nestlocal_sessions/${hash(raw)}`).delete().catch(()=>undefined)));
+  }finally{
+    clearNestLocalSessionCookie(res);
+    res.setHeader('Cache-Control','no-store');
+  }
+  return res.json({ok:true});
+});
 
 
 app.post('/api/public/growth/diagnostic',async(req,res)=>{

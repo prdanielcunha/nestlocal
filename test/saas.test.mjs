@@ -23,15 +23,22 @@ test('SaaS access is server-authored and plan scoped', () => {
   ]) assert.ok(server.includes(token), `missing ${token}`);
 });
 
-test('the client supports central checkout and short-lived Hub handoff', () => {
+test('the client supports central checkout and short-lived backend Hub handoff', () => {
   const client = read('../web/live.js');
+  const server = read('../server.mjs');
   for (const token of [
-    'signInWithCustomToken',
-    "context?.appId!=='nestlocal'",
+    "/api/auth/handoff/redeem",
+    "params.get('code')",
     'nestlocal_${id}_monthly',
     'app=nestlocal',
     'data-team',
   ]) assert.ok(client.includes(token), `missing ${token}`);
+  for (const token of [
+    "__session",
+    "handoff.appId!=='nestlocal'",
+    "consumedBy:'nestlocal-backend-session-v1'",
+  ]) assert.ok(server.includes(token), `missing ${token}`);
+  assert.equal(client.includes('signInWithCustomToken'), false);
 });
 
 test('all SaaS copy is available in Portuguese, English, and Spanish', () => {
