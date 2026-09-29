@@ -171,3 +171,16 @@ test('direct-entry destinations preserve only known private NestLocal views',()=
     "return view&&privateViews.has(view)?",
   ]) assert.ok(client.includes(token),'missing '+token);
 });
+
+
+test('private shell renderer registry maps navigation ids to real render functions',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('function shell()');
+  const end=client.indexOf('function reviewPublicView()',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes('automation:automations'),'automation navigation must map to automations renderer');
+  assert.equal(block.includes('{today,requests,customers,agenda,services,automation,page,growth}'),false,'bare undeclared automation renderer must not return');
+  for(const fn of ['today','requests','customers','agenda','services','automations','page','growth']){
+    assert.ok(client.includes(`function ${fn}(`)||client.includes(`const ${fn}=`)||client.includes(`let ${fn}=`),`missing renderer function ${fn}`);
+  }
+});
