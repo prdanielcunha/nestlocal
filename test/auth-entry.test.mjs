@@ -61,16 +61,18 @@ test('auth recovery states have responsive premium styling',()=>{
 });
 
 
-test('auth bootstrap observes Firebase state before resolving redirect result',()=>{
+test('handoff is consumed before any existing local Firebase session can start the app',()=>{
   const client=read('../web/live.js');
   const start=client.indexOf('async function startAuthBootstrap()');
   const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
   const block=client.slice(start,end);
   assert.ok(start>=0,'missing auth bootstrap');
-  assert.ok(block.indexOf('onAuthStateChanged(auth')>=0,'missing auth observer');
-  assert.ok(block.indexOf('getRedirectResult(auth)')>=0,'missing redirect recovery');
-  assert.ok(block.indexOf('onAuthStateChanged(auth')<block.indexOf('getRedirectResult(auth)'),'redirect recovery must not block the auth observer');
-  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','AUTH_REDIRECT_TIMEOUT','redirectToMillionsNest()']) assert.ok(block.includes(token),'missing '+token);
+  assert.ok(block.includes('handoffResolved=!handoffExpected'),'missing handoff resolution gate');
+  assert.ok(block.includes('if(handoffExpected&&!handoffResolved)return'),'auth observer must defer stale local users while handoff is pending');
+  assert.ok(block.includes("consumed=await withTimeout(consumeHandoff(),10000,'AUTH_HANDOFF_TIMEOUT')"),'handoff must be consumed first');
+  assert.ok(block.includes('if(consumed&&auth.currentUser)startSession(auth.currentUser)'),'session must start only from the consumed handoff');
+  assert.equal(block.includes('getRedirectResult(auth)'),false,'legacy redirect auth must not race canonical Hub handoff');
+  for(const token of ['AUTH_BOOT_TIMEOUT','AUTH_HANDOFF_TIMEOUT','redirectToMillionsNest()']) assert.ok(block.includes(token),'missing '+token);
 });
 
 test('session bootstrap bounds token, request and network waits',()=>{
@@ -108,18 +110,27 @@ test('auth bootstrap reuses local handoff session or quickly falls back to the H
 
 test('root document cache-busts the production auth bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-4'));
+  assert.ok(html.includes('/live.js?v=20260928-canonical-sso-5'));
 });
 
 
-test('app shell has an independent recovery guard outside the Firebase module',()=>{
+test('app shell recovery guard remembers a handoff even after the sensitive query is removed',()=>{
   const html=read('../web/index.html');
-  for(const token of ['__nestLocalBootGuard','setTimeout(recovery, 10000)','boot-retry','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-4']) assert.ok(html.includes(token),'missing '+token);
+  for(const token of ['__nestLocalBootGuard','__nestLocalHandoffExpectedAtBoot','handoffExpectedAtBoot','setTimeout(recovery, 10000)','boot-retry','location.reload()','/apps/nestlocal/launch','ecosystem_ctx','20260928-canonical-sso-5']) assert.ok(html.includes(token),'missing '+token);
+});
+
+test('successful handoff clears the independent boot redirect guard before session data loads',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('async function consumeHandoff()');
+  const end=client.indexOf('const requestedView',start);
+  const block=client.slice(start,end);
+  for(const token of ['__nestLocalHandoffConsumed=true','clearTimeout(window.__nestLocalBootGuard)','window.__nestLocalBootGuard=null',"params.delete('ecosystem_ctx')"]) assert.ok(block.includes(token),'missing '+token);
+  assert.ok(block.indexOf('clearTimeout(window.__nestLocalBootGuard)')<block.indexOf("params.delete('ecosystem_ctx')"),'boot guard must be disabled before ecosystem_ctx is removed');
 });
 
 test('resolved application state clears the independent boot guard',()=>{
   const client=read('../web/live.js');
-  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-4'"]) assert.ok(client.includes(token),'missing '+token);
+  for(const token of ['window.__nestLocalBootGuard','clearTimeout(window.__nestLocalBootGuard)',"dataset.nlBuild='20260928-canonical-sso-5'"]) assert.ok(client.includes(token),'missing '+token);
 });
 
 test('Firebase Hosting root app shell is explicitly no-store',()=>{
@@ -138,7 +149,7 @@ test('production workflow deploys Hosting before noncritical domain maintenance'
   const custom=workflow.indexOf('Connect official custom domain');
   assert.ok(deploy>=0&&authorize>deploy&&custom>deploy);
   assert.ok(workflow.includes('continue-on-error: true'));
-  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-4'));
+  assert.ok(workflow.includes('/live.js?v=20260928-canonical-sso-5'));
 });
 
 
