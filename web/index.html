@@ -21,7 +21,7 @@
   <div id="app"></div>
   <script>
     (() => {
-      const build = '20260928-backend-sso-7';
+      const build = '20260928-runtime-8';
       const launchUrl = () => {
         const target = new URL('https://www.millionsnest.com/apps/nestlocal/launch');
         const params = new URLSearchParams(location.search);
@@ -30,30 +30,60 @@
         target.searchParams.set('returnTo', view && allowedViews.has(view) ? '/?view=' + encodeURIComponent(view) : '/');
         return target.toString();
       };
-      const bootParams = new URLSearchParams(location.search);\n      const handoffExpectedAtBoot = bootParams.has('code') || bootParams.has('ecosystem_ctx');
-      const recovery = () => {
+
+      const bootParams = new URLSearchParams(location.search);
+      const handoffExpectedAtBoot = bootParams.has('code') || bootParams.has('ecosystem_ctx');
+
+      const recovery = (reason = '') => {
         const root = document.getElementById('app');
         if (!root) return;
         const text = (root.textContent || '').toLowerCase();
         const stuck = !text.trim() || text.includes('conectando sua conta') || text.includes('carregando');
         if (!stuck) return;
-        const currentParams = new URLSearchParams(location.search);\n        const handoffExpected = window.__nestLocalHandoffExpectedAtBoot === true || currentParams.has('code') || currentParams.has('ecosystem_ctx');
-        if (!handoffExpected) {
+
+        const currentParams = new URLSearchParams(location.search);
+        const handoffExpected =
+          window.__nestLocalHandoffExpectedAtBoot === true ||
+          currentParams.has('code') ||
+          currentParams.has('ecosystem_ctx');
+
+        if (!handoffExpected && !window.__nestLocalHandoffConsumed) {
           location.replace(launchUrl());
           return;
         }
-        root.innerHTML = '<main class="login-shell"><section class="login-card auth-recovery"><div class="brand"><span class="brandmark">N</span>NestLocal</div><span class="eyebrow">NestLocal</span><h1>Não foi possível concluir a entrada</h1><p>O acesso seguro chegou ao NestLocal, mas não terminou no tempo esperado. Tente novamente sem voltar ao MillionsNest.</p><div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button><a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div></section></main>';
+
+        const stage = String(window.__nestLocalAuthStage || reason || 'bootstrap').replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
+        root.innerHTML =
+          '<main class="login-shell"><section class="login-card auth-recovery">' +
+          '<div class="brand"><span class="brandmark">N</span>NestLocal</div>' +
+          '<span class="eyebrow">NestLocal</span>' +
+          '<h1>Não foi possível concluir a entrada</h1>' +
+          '<p>O acesso chegou ao NestLocal, mas a abertura parou antes de concluir. Tente novamente nesta tela.</p>' +
+          '<small class="login-trust">Etapa: ' + (stage || 'bootstrap') + ' · ' + build + '</small>' +
+          '<div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button>' +
+          '<a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div>' +
+          '</section></main>';
         document.getElementById('boot-retry')?.addEventListener('click', () => location.reload());
       };
+
       window.__nestLocalBuild = build;
       window.__nestLocalHubLaunch = launchUrl;
       window.__nestLocalHandoffExpectedAtBoot = handoffExpectedAtBoot;
       window.__nestLocalHandoffConsumed = false;
-      window.__nestLocalBootGuard = setTimeout(recovery, 22000);
-      window.addEventListener('error', () => setTimeout(recovery, 0));
-      window.addEventListener('unhandledrejection', () => setTimeout(recovery, 0));
+      window.__nestLocalAuthStage = 'html_boot';
+      window.__nestLocalRecover = recovery;
+      window.__nestLocalBootGuard = setTimeout(() => recovery('html_timeout'), 20000);
+
+      window.addEventListener('error', event => {
+        window.__nestLocalAuthStage = window.__nestLocalAuthStage || 'window_error';
+        setTimeout(() => recovery('window_error'), 0);
+      });
+      window.addEventListener('unhandledrejection', () => {
+        window.__nestLocalAuthStage = window.__nestLocalAuthStage || 'unhandled_rejection';
+        setTimeout(() => recovery('unhandled_rejection'), 0);
+      });
     })();
   </script>
-  <script type="module" src="/live.js?v=20260928-backend-sso-7"></script>
+  <script type="module" src="/live.js?v=20260928-runtime-8"></script>
 </body>
 </html>

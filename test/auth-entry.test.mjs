@@ -49,7 +49,7 @@ test('backend handoff redeems a short opaque code and never places Firebase cred
     "api('/api/auth/handoff/redeem'",
     "body:JSON.stringify({code})",
     "window.__nestLocalHandoffConsumed=true",
-    "clearTimeout(window.__nestLocalBootGuard)",
+    "setAuthStage('handoff_redeemed')",
     "history.replaceState",
   ]) assert.ok(block.includes(token),'missing '+token);
   for(const forbidden of ['ecosystem_ctx','customToken','atob(','signInWithCustomToken']) {
@@ -88,14 +88,14 @@ test('session projection populates the local user from the backend session',()=>
   const block=client.slice(start,end);
   assert.ok(block.includes("S.session=await api('/api/session'"));
   assert.ok(block.includes("S.user=S.session?.user||{uid:'nestlocal-session'}"));
-  assert.ok(block.includes("const eligible=S.session.organizations.filter(x=>x.nestlocal?.access)"));
+  assert.ok(block.includes("const eligible=organizations.filter(x=>x.nestlocal?.access)"));
 });
 
 test('switch account and logout revoke only the NestLocal cookie session',()=>{
   const client=read('../web/live.js');
   for(const token of [
     "api('/api/auth/session',{method:'DELETE'",
-    "localStorage.removeItem('nl_org')",
+    "storageRemove(localStorage,'nl_org')",
     'redirectToMillionsNest()',
   ]) assert.ok(client.includes(token),'missing '+token);
   assert.equal(client.includes('signOut(auth)'),false);
@@ -164,8 +164,8 @@ test('auth recovery states have responsive premium styling',()=>{
 
 test('root document cache-busts the backend SSO bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20260928-backend-sso-7'));
-  assert.ok(html.includes('20260928-backend-sso-7'));
+  assert.ok(html.includes('/live.js?v=20260928-runtime-8'));
+  assert.ok(html.includes('20260928-runtime-8'));
 });
 
 test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
@@ -181,13 +181,65 @@ test('app shell recovery guard recognizes both new code handoff and stale legacy
   ]) assert.ok(html.includes(token),'missing '+token);
 });
 
-test('resolved application state clears the independent boot guard',()=>{
+test('independent boot guard stays armed through handoff and clears only after loading resolves',()=>{
+  const client=read('../web/live.js');
+  const consumeStart=client.indexOf('async function consumeHandoff()');
+  const consumeEnd=client.indexOf('const requestedView',consumeStart);
+  const consume=client.slice(consumeStart,consumeEnd);
+  assert.equal(consume.includes('clearTimeout(window.__nestLocalBootGuard)'),false);
+  const renderStart=client.indexOf('function render()');
+  const renderEnd=client.indexOf('async function loadData()',renderStart);
+  const renderBlock=client.slice(renderStart,renderEnd);
+  assert.ok(renderBlock.includes("if(!S.loading&&window.__nestLocalBootGuard)"));
+  assert.ok(renderBlock.includes('clearTimeout(window.__nestLocalBootGuard)'));
+  assert.ok(client.includes("dataset.nlBuild='20260928-runtime-8'"));
+});
+
+test('inline boot recovery script is valid JavaScript and contains no literal escaped newlines',()=>{
+  const html=read('../web/index.html');
+  assert.equal(html.includes('\\\\n'),false,'inline script must not contain literal \\n tokens');
+  const match=html.match(/<script>([\s\S]*?)<\/script>/);
+  assert.ok(match?.[1],'inline boot script missing');
+  assert.doesNotThrow(()=>new Function(match[1]));
+  for(const token of [
+    "__nestLocalRecover",
+    "__nestLocalAuthStage = 'html_boot'",
+    "setTimeout(() => recovery('html_timeout'), 20000)",
+  ]) assert.ok(match[1].includes(token),'missing '+token);
+});
+
+test('runtime auth boot is storage-safe, stage-aware and has a hard watchdog',()=>{
   const client=read('../web/live.js');
   for(const token of [
-    'window.__nestLocalBootGuard',
-    'clearTimeout(window.__nestLocalBootGuard)',
-    "dataset.nlBuild='20260928-backend-sso-7'",
+    "storageGet(localStorage,'nl_lang','pt')",
+    "storageGet(localStorage,'nl_org','')",
+    "setAuthStage('module_ready')",
+    "setAuthStage('handoff_redeem')",
+    "setAuthStage('session')",
+    "setAuthStage('operation_data')",
+    "setAuthStage('ready')",
+    "[NESTLOCAL_BOOT_TIMEOUT]",
+    "setTimeout(()=>{",
+    "},18000)",
   ]) assert.ok(client.includes(token),'missing '+token);
+  for(const forbidden of [
+    'localStorage.getItem(',
+    'localStorage.setItem(',
+    'localStorage.removeItem(',
+    'sessionStorage.setItem(',
+    'sessionStorage.removeItem(',
+  ]) assert.equal(client.includes(forbidden),false,'unsafe storage access remains: '+forbidden);
+});
+
+test('private shell recovers from a page renderer exception instead of leaving the auth screen stuck',()=>{
+  const client=read('../web/live.js');
+  const start=client.indexOf('function shell()');
+  const end=client.indexOf('function reviewPublicView()',start);
+  const block=client.slice(start,end);
+  assert.ok(block.includes("try{"));
+  assert.ok(block.includes("[NESTLOCAL_PAGE_RENDER]"));
+  assert.ok(block.includes("setAuthStage('render_recovered')"));
+  assert.ok(block.includes('Operação aberta'));
 });
 
 test('Firebase Hosting root app shell is explicitly no-store',()=>{
@@ -205,8 +257,8 @@ test('production workflow deploys backend SSO bundle and validates it on the off
   const custom=workflow.indexOf('Connect official custom domain');
   const smoke=workflow.indexOf('Smoke production endpoints');
   assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
-  assert.ok(workflow.includes('/live.js?v=20260928-backend-sso-7'));
-  assert.ok(workflow.includes('20260928-backend-sso-7'));
+  assert.ok(workflow.includes('/live.js?v=20260928-runtime-8'));
+  assert.ok(workflow.includes('20260928-runtime-8'));
 });
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
