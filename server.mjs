@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
+import {GoogleAuth} from 'google-auth-library';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
@@ -335,10 +336,11 @@ function radarSourceState(data={}){
   };
 }
 
+const googleSheetsAuth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets']});
 async function googleRuntimeAccessToken(){
-  const credential=admin.credential.applicationDefault();
-  const tokenResult=await credential.getAccessToken();
-  const accessToken=clean(tokenResult?.access_token);
+  const client=await googleSheetsAuth.getClient();
+  const tokenResult=await client.getAccessToken();
+  const accessToken=clean(typeof tokenResult==='string'?tokenResult:tokenResult?.token);
   if(!accessToken)throw new TypeError('RADAR_SOURCE_AUTH_FAILED');
   return accessToken;
 }
