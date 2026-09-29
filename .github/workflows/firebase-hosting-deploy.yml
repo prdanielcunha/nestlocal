@@ -33,8 +33,6 @@ jobs:
           workload_identity_provider: projects/555464791734/locations/global/workloadIdentityPools/mn-prod-github/providers/github
           service_account: mn-web-deployer@millionsnest.iam.gserviceaccount.com
       - uses: google-github-actions/setup-gcloud@v3
-      - name: Ensure Google Sheets API
-        run: gcloud services enable sheets.googleapis.com --project millionsnest --quiet
       - name: Detect API changes
         id: changes
         shell: bash
