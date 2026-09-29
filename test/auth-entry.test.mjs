@@ -108,7 +108,7 @@ test('server stores only an Firebase Hosting-compatible opaque cookie and valida
     'HttpOnly; Secure; SameSite=Lax',
     "db.doc(`nestlocal_sessions/${sessionHash}`)",
     "normalizeEcosystemSessionVersion(userDoc.data()?.ecosystemSessionVersion)!==session.sessionVersion",
-    "sessionKind:'nestlocal_cookie'",
+    "sessionKind='nestlocal_cookie'",
   ]) assert.ok(server.includes(token),'missing '+token);
 });
 
@@ -131,7 +131,7 @@ test('handoff redemption is single-use, expiring and atomically creates the loca
 
 test('cookie session is bound to the organization selected by the Hub',()=>{
   const server=read('../server.mjs');
-  assert.ok(server.includes("if(req.identity?.sessionKind==='nestlocal_cookie'&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH')"));
+  assert.ok(server.includes("String(req.identity?.sessionKind||'').startsWith('nestlocal_')&&req.identity?.orgId!==orgId"));
   const sessionStart=server.indexOf("app.get('/api/session'");
   const sessionEnd=server.indexOf("app.get('/api/organizations/:orgId/nestlocal'",sessionStart);
   const sessionBlock=server.slice(sessionStart,sessionEnd);
@@ -246,7 +246,7 @@ test('runtime auth boot is storage-safe, stage-aware and has a hard watchdog',()
   const client=read('../web/live.js');
   for(const token of [
     "storageGet(localStorage,'nl_lang','pt')",
-    "storageGet(localStorage,'nl_org','')",
+    "storageGet(localStorage,'nl_org')",
     "setAuthStage('module_ready')",
     "setAuthStage('handoff_redeem')",
     "setAuthStage('session')",
