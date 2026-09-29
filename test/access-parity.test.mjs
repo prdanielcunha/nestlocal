@@ -57,6 +57,20 @@ test('session projection and protected API share the same resolver',()=>{
   assert.ok(server.slice(sessionStart,sessionEnd).includes('reason:access.reason'));
 });
 
+test('canonical NestLocal handoff session resolves only the token-bound organization',()=>{
+  const server=read('../server.mjs');
+  const start=server.indexOf("app.get('/api/session'");
+  const end=server.indexOf("app.get('/api/organizations/:orgId/nestlocal'",start);
+  const block=server.slice(start,end);
+  for(const token of [
+    "handoffAppId=clean(req.identity.appId).toLowerCase()",
+    "handoffOrgId=safeId(req.identity.orgId)",
+    "if(handoffAppId==='nestlocal'&&handoffOrgId)",
+    "ids=[handoffOrgId]",
+  ]) assert.ok(block.includes(token),'missing '+token);
+  assert.ok(block.indexOf("if(handoffAppId==='nestlocal'&&handoffOrgId)")<block.indexOf("db.collection('organization_members')"),'handoff fast path must avoid legacy membership enumeration');
+});
+
 test('bootstrap relies on canonical authorize gate instead of stale enabledApps duplication',()=>{
   const server=read('../server.mjs');
   const start=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/bootstrap'");
