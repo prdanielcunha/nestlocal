@@ -190,6 +190,20 @@ jobs:
           fetch https://nestlocal.millionsnest.com/api/health > /tmp/nestlocal-health.json
           jq -e '.ok == true and .service == "nestlocal-api"' /tmp/nestlocal-health.json >/dev/null
 
+          radar_ready=0
+          for attempt in $(seq 1 12); do
+            if fetch https://nestlocal.millionsnest.com/api/health/radar > /tmp/nestlocal-radar-health.json 2>/dev/null && jq -e '.ok == true and .ready == true and .totalSource >= .expectedMinimum' /tmp/nestlocal-radar-health.json >/dev/null; then
+              radar_ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$radar_ready" != "1" ]]; then
+            cat /tmp/nestlocal-radar-health.json 2>/dev/null || true
+            echo "Radar did not become ready after production deploy" >&2
+            exit 1
+          fi
+
           fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20260929-render-fix-10' '20260929-render-fix-10'
           fetch_until_contains https://nestlocal.millionsnest.com/raio-x /tmp/nestlocal-xray.html 'id="app"'
 

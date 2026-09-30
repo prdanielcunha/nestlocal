@@ -640,6 +640,13 @@ async function requireGrowthAdmin(req,res,next){
 
 app.get('/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
+app.get('/api/health/radar',async(_req,res)=>{
+  try{
+    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},totalSource=Number(data.totalSource||0),lastError=clean(data.lastError),sourceMode=clean(data.sourceMode),lastSyncedAt=radarTimestampIso(data.lastSyncedAt);
+    const ready=Boolean(lastSyncedAt)&&!lastError&&totalSource>=radarSeedValues.length-1;
+    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource,expectedMinimum:radarSeedValues.length-1,sourceMode,lastError,lastSyncedAt,sourceVersion:clean(data.sourceVersion)});
+  }catch(error){console.error(error);res.status(503).json({ok:false,service:'nestlocal-radar',ready:false,error:'RADAR_HEALTH_FAILED'})}
+});
 
 app.post('/api/auth/handoff/redeem',async(req,res)=>{
   res.setHeader('Cache-Control','no-store, no-cache, must-revalidate');
