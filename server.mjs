@@ -7,6 +7,7 @@ import { quote } from './src/domain/quote.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
+import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -329,6 +330,10 @@ function radarSourceState(data={}){
     removedCount:Number(data.removedCount)||0,
     lastError:clean(data.lastError),
     revision:clean(data.revision),
+    sourceMode:clean(data.sourceMode)||'unknown',
+    sourceVersion:clean(data.sourceVersion),
+    sourceWarning:clean(data.sourceWarning),
+    feedbackStorage:clean(data.feedbackStorage),
     feedbackSheetId:radarFeedbackSheetId,
     feedbackSheetUrl:`https://docs.google.com/spreadsheets/d/${radarFeedbackSheetId}/edit`,
     feedbackLastPublishedAt:radarTimestampIso(data.feedbackLastPublishedAt),
@@ -347,18 +352,24 @@ async function googleRuntimeAccessToken(){
 }
 
 async function fetchRadarSheetValues(){
-  const accessToken=await googleRuntimeAccessToken();
-  const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarSheetId)}/values/${encodeURIComponent(radarSheetRange)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
-  const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(6000)});
-  if(!response.ok){
-    const payload=await response.json().catch(()=>({}));
-    const reason=clean(payload?.error?.status);
-    if(response.status===403)throw new TypeError(reason==='PERMISSION_DENIED'?'RADAR_SOURCE_FORBIDDEN':'RADAR_SOURCE_API_FORBIDDEN');
-    if(response.status===404)throw new TypeError('RADAR_SOURCE_NOT_FOUND');
-    throw new TypeError('RADAR_SOURCE_UNAVAILABLE');
+  try{
+    const accessToken=await googleRuntimeAccessToken();
+    const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarSheetId)}/values/${encodeURIComponent(radarSheetRange)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
+    const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(6000)});
+    if(!response.ok){
+      const payload=await response.json().catch(()=>({}));
+      const reason=clean(payload?.error?.status);
+      const code=response.status===403?(reason==='PERMISSION_DENIED'?'RADAR_SOURCE_FORBIDDEN':'RADAR_SOURCE_API_FORBIDDEN'):response.status===404?'RADAR_SOURCE_NOT_FOUND':'RADAR_SOURCE_UNAVAILABLE';
+      throw new TypeError(code);
+    }
+    const payload=await response.json();
+    const remoteValues=Array.isArray(payload.values)?payload.values:[];
+    if(remoteValues.length<2)throw new TypeError('RADAR_SOURCE_EMPTY');
+    return {values:remoteValues,sourceMode:'google_sheet',sourceVersion:'live',sourceWarning:''};
+  }catch(error){
+    console.warn('Radar Google source unavailable; using managed production snapshot',clean(error?.message)||'RADAR_SOURCE_UNAVAILABLE');
+    return {values:radarSeedValues,sourceMode:'managed_snapshot',sourceVersion:RADAR_SEED_VERSION,sourceWarning:clean(error?.message)||'RADAR_SOURCE_UNAVAILABLE'};
   }
-  const payload=await response.json();
-  return Array.isArray(payload.values)?payload.values:[];
 }
 
 function radarExistingIdentityKeys(lead={}){
@@ -418,13 +429,20 @@ function growthLearningFeedbackValues(leads=[]){
 
 async function publishGrowthLearningFeedback(){
   const snap=await db.collection('nestlocal_growth_leads').limit(1000).get(),leads=snap.docs.map(doc=>({id:doc.id,...doc.data()})),values=growthLearningFeedbackValues(leads);
-  const accessToken=await googleRuntimeAccessToken(),encodedRange=encodeURIComponent(radarFeedbackSheetRange);
-  const clear=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodedRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(6000)});
-  if(!clear.ok)throw new TypeError('RADAR_FEEDBACK_WRITE_FAILED');
-  const update=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodeURIComponent('Learning!A1')}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({range:'Learning!A1',majorDimension:'ROWS',values}),signal:AbortSignal.timeout(6000)});
-  if(!update.ok)throw new TypeError('RADAR_FEEDBACK_WRITE_FAILED');
-  await radarSourceRef().set({feedbackLastPublishedAt:admin.firestore.FieldValue.serverTimestamp(),feedbackLastError:'',feedbackRows:values.length-1},{merge:true});
-  return {rows:values.length-1};
+  let feedbackStorage='firestore',sheetError='';
+  try{
+    const accessToken=await googleRuntimeAccessToken(),encodedRange=encodeURIComponent(radarFeedbackSheetRange);
+    const clear=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodedRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(6000)});
+    if(!clear.ok)throw new TypeError('RADAR_FEEDBACK_SHEET_UNAVAILABLE');
+    const update=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodeURIComponent('Learning!A1')}?valueInputOption=RAW`,{method:'PUT',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:JSON.stringify({range:'Learning!A1',majorDimension:'ROWS',values}),signal:AbortSignal.timeout(6000)});
+    if(!update.ok)throw new TypeError('RADAR_FEEDBACK_SHEET_UNAVAILABLE');
+    feedbackStorage='google_sheet';
+  }catch(error){
+    sheetError=clean(error?.message)||'RADAR_FEEDBACK_SHEET_UNAVAILABLE';
+    await db.doc('nestlocal_growth_feedback/latest').set({values,rows:values.length-1,updatedAt:admin.firestore.FieldValue.serverTimestamp(),source:'nestlocal_growth_engine'},{merge:false});
+  }
+  await radarSourceRef().set({feedbackLastPublishedAt:admin.firestore.FieldValue.serverTimestamp(),feedbackLastError:'',feedbackStorage,feedbackSheetWarning:sheetError,feedbackRows:values.length-1},{merge:true});
+  return {rows:values.length-1,storage:feedbackStorage};
 }
 
 async function safelyPublishGrowthLearningFeedback(){
@@ -439,7 +457,7 @@ async function syncProspectRadar(actorUid){
   const sourceRef=radarSourceRef(),attemptedAt=admin.firestore.FieldValue.serverTimestamp();
   await sourceRef.set({sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,lastAttemptAt:attemptedAt},{merge:true});
   try{
-    const values=await fetchRadarSheetValues(),incoming=parseRadarRows(values);
+    const sourcePayload=await fetchRadarSheetValues(),values=sourcePayload.values,incoming=parseRadarRows(values);
     if(!incoming.length)throw new TypeError('RADAR_SOURCE_EMPTY');
     const existingSnap=await db.collection('nestlocal_growth_leads').limit(1000).get();
     const existing=existingSnap.docs.map(doc=>({id:doc.id,ref:doc.ref,...doc.data()}));
@@ -498,7 +516,7 @@ async function syncProspectRadar(actorUid){
     await refreshGrowthAttackBaselines();
     await safelyPublishGrowthLearningFeedback();
     const revision=hash(incoming.map(x=>x.revisionHash).sort().join('|')).slice(0,40);
-    const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
+    const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',sourceMode:sourcePayload.sourceMode,sourceVersion:sourcePayload.sourceVersion,sourceWarning:sourcePayload.sourceWarning,lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
     await sourceRef.set(summary,{merge:true});
     return {...summary,lastSyncedAt:new Date().toISOString(),lastAttemptAt:new Date().toISOString()};
   }catch(error){
@@ -721,14 +739,17 @@ app.use('/api/admin/nestlocal/growth',authenticate,requireGrowthAdmin);
 
 app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
   try{
-    const [snap,sourceSnap]=await Promise.all([
-      db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(300).get(),
-      radarSourceRef().get()
-    ]);
+    let sourceSnap=await radarSourceRef().get(),sourceData=sourceSnap.exists?sourceSnap.data()||{}:{};
+    const lastSyncMs=sourceData.lastSyncedAt?.toMillis?.()||0;
+    if(!lastSyncMs||(Date.now()-lastSyncMs)>radarStaleAfterMs||clean(sourceData.lastError)){
+      try{await syncProspectRadar(_req.growthAdmin.uid)}catch(error){console.error('Radar auto-heal failed',error)}
+      sourceSnap=await radarSourceRef().get();sourceData=sourceSnap.exists?sourceSnap.data()||{}:{};
+    }
+    const snap=await db.collection('nestlocal_growth_leads').orderBy('createdAt','desc').limit(300).get();
     const raw=snap.docs.map(doc=>({id:doc.id,...doc.data()}));
     const leads=raw.map(d=>({...d,createdAt:timestampIso(d.createdAt),updatedAt:timestampIso(d.updatedAt),nextContactAt:timestampIso(d.nextContactAt),painQualifiedAt:timestampIso(d.painQualifiedAt),lastContactAt:timestampIso(d.lastContactAt),stageHistory:Array.isArray(d.stageHistory)?d.stageHistory.map(event=>({...event,at:timestampIso(event.at)})):[],radar:d.radar?{...d.radar,firstSeenAt:timestampIso(d.radar.firstSeenAt),lastSeenAt:timestampIso(d.radar.lastSeenAt),lastMissingAt:timestampIso(d.radar.lastMissingAt),attackBaselineAt:timestampIso(d.radar.attackBaselineAt)}:undefined,consent:undefined}));
     const lang=['pt','en','es'].includes(clean(_req.query?.lang))?clean(_req.query.lang):'pt';
-    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceSnap.exists?sourceSnap.data():{}),...growthRadarInsights(leads,lang)});
+    res.json({leads,metrics:growthFunnelMetrics(raw),source:radarSourceState(sourceData),...growthRadarInsights(leads,lang)});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
