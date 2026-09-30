@@ -430,7 +430,9 @@ function growthLearningFeedbackValues(leads=[]){
 async function publishGrowthLearningFeedback(){
   const snap=await db.collection('nestlocal_growth_leads').limit(1000).get(),leads=snap.docs.map(doc=>({id:doc.id,...doc.data()})),values=growthLearningFeedbackValues(leads);
   let feedbackStorage='firestore',sheetError='';
+  const sourceSnap=await radarSourceRef().get(),sourceMode=clean(sourceSnap.data()?.sourceMode);
   try{
+    if(sourceMode==='managed_snapshot')throw new TypeError('RADAR_FEEDBACK_MANAGED_IN_FIRESTORE');
     const accessToken=await googleRuntimeAccessToken(),encodedRange=encodeURIComponent(radarFeedbackSheetRange);
     const clear=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodedRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(6000)});
     if(!clear.ok)throw new TypeError('RADAR_FEEDBACK_SHEET_UNAVAILABLE');
@@ -1518,4 +1520,15 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
 
 app.use((err,_req,res,_next)=>{console.error(err);sendError(res,err?.code==='LIMIT_FILE_SIZE'?413:400,err?.code==='LIMIT_FILE_SIZE'?'PHOTO_TOO_LARGE':'INVALID_UPLOAD')});
 app.use((_req,res)=>sendError(res,404,'NOT_FOUND'));
-const port=Number(process.env.PORT||8080);app.listen(port,()=>console.log(`NestLocal API listening on ${port}`));
+
+async function ensureRadarReadyOnBoot(){
+  try{
+    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},lastSyncMs=data.lastSyncedAt?.toMillis?.()||0;
+    if(!lastSyncMs||(Date.now()-lastSyncMs)>radarStaleAfterMs||clean(data.lastError)||Number(data.totalSource||0)<radarSeedValues.length-1){
+      const result=await syncProspectRadar('system_radar_boot');
+      console.log('NestLocal Radar ready',JSON.stringify({totalSource:result.totalSource,created:result.createdCount,updated:result.updatedCount,mode:result.sourceMode}));
+    }
+  }catch(error){console.error('NestLocal Radar boot repair failed',error)}
+}
+const port=Number(process.env.PORT||8080);
+app.listen(port,()=>{console.log(`NestLocal API listening on ${port}`);setTimeout(()=>ensureRadarReadyOnBoot(),250)});
