@@ -191,8 +191,8 @@ jobs:
           jq -e '.ok == true and .service == "nestlocal-api"' /tmp/nestlocal-health.json >/dev/null
 
           radar_ready=0
-          for attempt in $(seq 1 12); do
-            if fetch https://nestlocal.millionsnest.com/api/health/radar > /tmp/nestlocal-radar-health.json 2>/dev/null && jq -e '.ok == true and .ready == true and .totalSource >= .expectedMinimum' /tmp/nestlocal-radar-health.json >/dev/null; then
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error --location --connect-timeout 5 --max-time 10 https://nestlocal.millionsnest.com/api/health/radar > /tmp/nestlocal-radar-health.json 2>/dev/null && jq -e '.ok == true and .ready == true and .totalSource >= .expectedMinimum' /tmp/nestlocal-radar-health.json >/dev/null; then
               radar_ready=1
               break
             fi
