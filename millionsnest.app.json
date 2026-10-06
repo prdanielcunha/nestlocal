@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "appId": "nestlocal",
+  "name": "NestLocal",
+  "ai": {
+    "enabled": true,
+    "tasks": [
+      "nestlocal.request.extract",
+      "nestlocal.quote.compose",
+      "nestlocal.followup.compose"
+    ],
+    "defaultSensitivity": "P2_PERSONAL"
+  },
+  "locales": [
+    "pt-BR",
+    "en",
+    "es"
+  ],
+  "owner": {
+    "repository": "prdanielcunha/nestlocal"
+  }
+}
