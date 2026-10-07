@@ -8,6 +8,7 @@ import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-l
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
+import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup } from './src/nestai.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -1299,6 +1300,75 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/ai/request-extract',authenticate,authorize,async(req,res)=>{
+  try{
+    const text=clean(req.body?.text).slice(0,6000);
+    if(text.length<3)return sendError(res,400,'AI_REQUEST_TEXT_REQUIRED');
+    const sessionToken=readNestLocalSessionToken(req);
+    const suggestion=await extractNestLocalRequest({sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',text});
+    return res.json({ok:true,authority:'suggestion_only',suggestion});
+  }catch(e){console.error('[NESTLOCAL_NESTAI_REQUEST_EXTRACT]',e?.message||e);return sendError(res,503,'AI_ASSIST_UNAVAILABLE')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/ai/quote-compose',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.body?.requestId);if(!requestId)return sendError(res,400,'REQUEST_REQUIRED');
+    const root=`organizations/${req.access.orgId}`;
+    const [requestSnap,settingsSnap,servicesSnap]=await Promise.all([
+      db.doc(`${root}/nestlocal_requests/${requestId}`).get(),
+      db.doc(`${root}/nestlocal_settings/public`).get(),
+      db.collection(`${root}/nestlocal_services`).get(),
+    ]);
+    if(!requestSnap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const data=requestSnap.data()||{},amount=Number(data.quote?.totalCents||0);
+    if(!Number.isSafeInteger(amount)||amount<=0)return sendError(res,409,'QUOTE_NOT_READY');
+    const service=servicesSnap.docs.find(doc=>doc.id===data.serviceId)?.data()||{};
+    const sessionToken=readNestLocalSessionToken(req);
+    const draft=await composeNestLocalQuote({
+      sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',
+      businessName:clean(settingsSnap.data()?.businessName||req.access.org.name),
+      customerName:clean(data.customer?.name).split(/\s+/)[0]||'',
+      service:clean(service.name||data.serviceId),
+      currency:clean(data.quote?.currency||'BRL'),
+      totalCents:amount,
+      expiresAt:data.quote?.expiresAt||null,
+      scope:{inclusions:service.inclusions||null,exclusions:service.exclusions||null,manualNote:data.quote?.manualNote||null},
+      schedule:data.schedule?.date?{date:data.schedule.date,window:data.schedule.window||null}:null,
+    });
+    return res.json({ok:true,authority:'draft_only',draft,quote:{currency:data.quote?.currency||'BRL',totalCents:amount,expiresAt:data.quote?.expiresAt||null}});
+  }catch(e){console.error('[NESTLOCAL_NESTAI_QUOTE_COMPOSE]',e?.message||e);return sendError(res,503,'AI_ASSIST_UNAVAILABLE')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/ai/followup-compose',authenticate,authorize,async(req,res)=>{
+  try{
+    const requestId=safeId(req.body?.requestId);if(!requestId)return sendError(res,400,'REQUEST_REQUIRED');
+    const root=`organizations/${req.access.orgId}`;
+    const [requestSnap,settingsSnap,servicesSnap]=await Promise.all([
+      db.doc(`${root}/nestlocal_requests/${requestId}`).get(),
+      db.doc(`${root}/nestlocal_settings/public`).get(),
+      db.collection(`${root}/nestlocal_services`).get(),
+    ]);
+    if(!requestSnap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const data=requestSnap.data()||{},created=typeof data.updatedAt?.toMillis==='function'?data.updatedAt.toMillis():typeof data.createdAt?.toMillis==='function'?data.createdAt.toMillis():Date.now();
+    const service=servicesSnap.docs.find(doc=>doc.id===data.serviceId)?.data()||{};
+    const sessionToken=readNestLocalSessionToken(req);
+    const draft=await composeNestLocalFollowup({
+      sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',
+      businessName:clean(settingsSnap.data()?.businessName||req.access.org.name),
+      customerName:clean(data.customer?.name).split(/\s+/)[0]||'',
+      service:clean(service.name||data.serviceId),
+      status:clean(data.status),
+      currency:clean(data.quote?.currency||'BRL'),
+      totalCents:Number.isSafeInteger(Number(data.quote?.totalCents))?Number(data.quote.totalCents):null,
+      ageHours:Math.max(0,Math.floor((Date.now()-created)/(60*60*1000))),
+      lastOutcome:clean(data.lastAssistanceOutcome?.outcome),
+      lastOutcomeNote:clean(data.lastAssistanceOutcome?.outcomeNote).slice(0,180),
+      whatsappAllowed:data.messagingConsent?.serviceUpdates?.accepted===true,
+    });
+    return res.json({ok:true,authority:'draft_only',draft,send:false});
+  }catch(e){console.error('[NESTLOCAL_NESTAI_FOLLOWUP_COMPOSE]',e?.message||e);return sendError(res,503,'AI_ASSIST_UNAVAILABLE')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/messages/prepare',authenticate,authorize,async(req,res)=>{
