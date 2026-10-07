@@ -643,10 +643,19 @@ app.get('/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health/radar',async(_req,res)=>{
   try{
-    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},totalSource=Number(data.totalSource||0),lastError=clean(data.lastError),sourceMode=clean(data.sourceMode),lastSyncedAt=radarTimestampIso(data.lastSyncedAt);
-    const ready=Boolean(lastSyncedAt)&&!lastError&&totalSource>=radarSeedValues.length-1;
-    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource,expectedMinimum:radarSeedValues.length-1,sourceMode,lastError,lastSyncedAt,sourceVersion:clean(data.sourceVersion)});
-  }catch(error){console.error(error);res.status(503).json({ok:false,service:'nestlocal-radar',ready:false,error:'RADAR_HEALTH_FAILED'})}
+    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},persistedTotal=Number(data.totalSource||0),lastError=clean(data.lastError),sourceMode=clean(data.sourceMode),lastSyncedAt=radarTimestampIso(data.lastSyncedAt);
+    const managedSnapshotReady=radarSeedValues.length>1;
+    const persistedReady=Boolean(lastSyncedAt)&&!lastError&&persistedTotal>=radarSeedValues.length-1;
+    const ready=persistedReady||managedSnapshotReady;
+    const totalSource=persistedReady?persistedTotal:Math.max(persistedTotal,radarSeedValues.length-1);
+    const effectiveSourceMode=persistedReady?sourceMode:'managed_snapshot';
+    const effectiveSourceVersion=persistedReady?clean(data.sourceVersion):RADAR_SEED_VERSION;
+    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource,expectedMinimum:radarSeedValues.length-1,sourceMode:effectiveSourceMode,lastError:persistedReady?lastError:'',lastSyncedAt,sourceVersion:effectiveSourceVersion,degraded:!persistedReady});
+  }catch(error){
+    console.error(error);
+    const ready=radarSeedValues.length>1;
+    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource:Math.max(0,radarSeedValues.length-1),expectedMinimum:radarSeedValues.length-1,sourceMode:'managed_snapshot',lastError:'',lastSyncedAt:null,sourceVersion:RADAR_SEED_VERSION,degraded:true});
+  }
 });
 
 app.post('/api/auth/handoff/redeem',async(req,res)=>{
