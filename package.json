@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@millionsnest/ai": "https://github.com/prdanielcunha/NestAI/releases/download/sdk-v0.2.0/millionsnest-ai-0.2.0.tgz",
     "express": "5.1.0",
     "firebase-admin": "13.5.0",
-    "multer": "2.0.2",
-    "google-auth-library": "9.15.1"
+    "google-auth-library": "9.15.1",
+    "multer": "2.0.2"
   },
   "engines": {
     "node": ">=24"
@@ -15,6 +16,6 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check src/domain/quote.mjs && node --check server.mjs && node --check web/live.js && node --check web/opportunity-pulse.js && node --check web/action-focus.js && node --check web/action-playbooks.js && node --check web/outcome-learning.js && node --check web/guided-experiment.js && node --test"
+    "check": "node --check src/domain/quote.mjs && node --check src/nestai.mjs && node --check server.mjs && node --check web/live.js && node --check web/opportunity-pulse.js && node --check web/action-focus.js && node --check web/action-playbooks.js && node --check web/outcome-learning.js && node --check web/guided-experiment.js && node --test"
   }
 }
