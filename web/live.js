@@ -11,7 +11,7 @@ const storageGet=(storage,key,fallback='')=>{try{return storage?.getItem?.(key)?
 const storageSet=(storage,key,value)=>{try{storage?.setItem?.(key,String(value));return true}catch{return false}};
 const storageRemove=(storage,key)=>{try{storage?.removeItem?.(key);return true}catch{return false}};
 setAuthStage('module_ready');
-const privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth']);
+const privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth','privacy']);
 function nestLocalReturnPath(){
   const params=new URLSearchParams(location.search),view=params.get('view');
   return view&&privateViews.has(view)?`/?view=${encodeURIComponent(view)}`:'/';
@@ -27,7 +27,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -223,7 +223,7 @@ function requestIntakeSummary(r){
   return Object.entries(values).map(([key,value])=>{const field=fields.find(x=>x.id===key);return `<p><strong>${esc(field?fieldLabel(field):humanizeOption(key))}:</strong> ${esc(value)}</p>`}).join('');
 }
 const isGrowthAdmin=()=>growthAdminRoles.has(S.session?.user?.systemRole);
-const labels=()=>isGrowthAdmin()?{today:t('today'),growth:t('growth'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page')}:{today:t('today'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page')};
+const labels=()=>isGrowthAdmin()?{today:t('today'),growth:t('growth'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')};
 const pathParts=()=>location.pathname.split('/').filter(Boolean);
 const publicSlug=()=>{const p=pathParts();return p[0]==='s'?p[1]:p[0]};
 const publicReserved=new Set(['track','review','privacy','terms','raio-x','diagnostico']);
@@ -502,6 +502,27 @@ function paymentSettingsCard(s){
   const pix=s?.payments?.pix||{};
   return `<form id="payment-settings" class="card payment-settings"><div class="section-title"><div><h2>${t('pixSettings')}</h2><p class="help">${t('pixSettingsHelp')}</p></div><span class="tag ${pix.enabled?'':'review'}">${pix.enabled?'Pix':'—'}</span></div><label class="wide plan-toggle"><input name="enabled" type="checkbox" ${pix.enabled?'checked':''}><span>${t('pixEnabled')}</span></label><label>${t('pixKey')}<input name="key" maxlength="180" value="${esc(pix.key||'')}"></label><label>${t('pixLabel')}<input name="label" maxlength="100" value="${esc(pix.label||'')}"></label><label class="wide">${t('pixInstructions')}<textarea name="instructions" rows="2" maxlength="300">${esc(pix.instructions||'')}</textarea></label><button class="button small wide" type="submit">${t('save')}</button></form>`;
 }
+const privacyCopy={
+pt:{title:'Central de Privacidade',intro:'Você decide quais canais o NestLocal usa. Cadastrar um número não conecta suas conversas.',status:'Situação',active:'Ativo',off:'Desativado',manual:'Link manual do WhatsApp',manualHelp:'O link abre o aplicativo de mensagens. Não lemos conversas nem registramos mensagens como enviadas apenas por abrir o link.',email:'E-mail comercial',phone:'Telefone comercial',official:'Integração oficial',officialHelp:'Gerenciada pelo MillionsNest Connect. Conexão e revogação oficiais precisam do fluxo validado do provedor; não estão disponíveis nesta etapa.',revoke:'Revogar canal',configure:'Configurar canais',none:'Sem conexão obrigatória',consentTitle:'Consentimento por finalidade',consentHelp:'A autorização para atualizações de pedidos e para lembretes de manutenção é separada e registrada nos próprios pedidos/clientes.',updates:'Pedidos com aceite para atualizações',reminders:'Clientes com aceite para lembretes',records:'Registros de atendimento e financeiro são preservados quando você altera canais.',confirm:'Confirma a revogação deste canal? Ela não exclui seus pedidos e clientes.',mustKeep:'Para manter sua página pública, configure outro meio válido de resposta antes de revogar o último canal.',exportHelp:'Acesso, exportação ou eliminação de dados pessoais precisam respeitar a política do serviço e solicitações do titular.'},
+en:{title:'Privacy Center',intro:'You decide which channels NestLocal uses. Saving a number never connects your conversations.',status:'Status',active:'Active',off:'Off',manual:'Manual WhatsApp link',manualHelp:'The link opens your messaging app. We neither read conversations nor mark messages as sent merely because a link was opened.',email:'Business email',phone:'Business phone',official:'Official integration',officialHelp:'Managed by MillionsNest Connect. Official authorization and revocation require a validated provider flow, unavailable in this stage.',revoke:'Revoke channel',configure:'Manage channels',none:'No required connection',consentTitle:'Purpose-specific consent',consentHelp:'Consent for request updates and maintenance reminders is separate and tracked on requests/customers.',updates:'Requests opted in to updates',reminders:'Customers opted in to maintenance reminders',records:'Customer, service and payment records are preserved when channels change.',confirm:'Revoke this channel? Requests and customers will not be deleted.',mustKeep:'Set up another legitimate response channel before revoking the last one on a published page.',exportHelp:'Access, export and erasure requests must follow the service privacy policy and data subject rights.'},
+es:{title:'Centro de Privacidad',intro:'Tú eliges qué canales usa NestLocal. Guardar un número nunca conecta conversaciones.',status:'Estado',active:'Activo',off:'Desactivado',manual:'Enlace manual de WhatsApp',manualHelp:'El enlace abre la aplicación. No leemos conversaciones ni marcamos mensajes como enviados solo por abrir el enlace.',email:'Correo comercial',phone:'Teléfono comercial',official:'Integración oficial',officialHelp:'Gestionada por MillionsNest Connect. La autorización y revocación oficiales requieren un flujo validado del proveedor, no disponible todavía.',revoke:'Revocar canal',configure:'Gestionar canales',none:'Sin conexión obligatoria',consentTitle:'Consentimiento por finalidad',consentHelp:'Los consentimientos para actualizaciones y mantenimiento son distintos y están registrados en solicitudes/clientes.',updates:'Solicitudes con autorización para novedades',reminders:'Clientes con autorización para recordatorios',records:'Los registros operativos y financieros permanecen cuando cambias canales.',confirm:'¿Revocar este canal? No se borrarán pedidos ni clientes.',mustKeep:'Configura otro canal válido antes de revocar el último de una página publicada.',exportHelp:'El acceso, la exportación y la eliminación de datos deben seguir la política y derechos aplicables.'}
+};
+function privacyCenter(){
+  const c=privacyCopy[S.lang]||privacyCopy.pt,s=S.data?.settings||null,p=S.privacyPermissions||{},enabled=p.responseChannels||{};
+  if(!s)return '<article class="card"><h2>'+c.title+'</h2><p>'+c.intro+'</p><button class="button primary" data-action-page="services">'+c.configure+'</button></article>';
+  const manual=p.manualLink?.active===true||s.communicationMode==='manual'&&Boolean(s.whatsapp);
+  const email=enabled.email===true||Boolean(s.contactEmail),phone=enabled.phone===true||Boolean(s.contactPhone);
+  const requests=(S.data.requests||[]).filter(r=>r.messagingConsent?.serviceUpdates?.accepted===true).length;
+  const customers=(S.data.customers||[]).filter(r=>r.messaging?.consents?.maintenanceReminders?.accepted===true).length;
+  const channel=(title,help,active,purpose)=>'<article class="card privacy-channel"><div><h3>'+title+'</h3><p class="help">'+help+'</p></div><div class="privacy-channel-actions"><span class="tag '+(active?'':'review')+'">'+(active?c.active:c.off)+'</span>'+
+    (active?'<button class="button small" data-privacy-revoke="'+purpose+'">'+c.revoke+'</button>':'')+'</div></article>';
+  return '<section class="privacy-center"><div class="card privacy-hero"><span class="eyebrow">NESTLOCAL / TRUSTSTART</span><h2>'+c.title+'</h2><p>'+c.intro+'</p><button class="button primary small" data-action-page="services">'+c.configure+'</button></div>'+
+    '<div class="privacy-channels">'+channel(c.manual,c.manualHelp,manual,'manual_link')+
+    channel(c.email,c.records,email,'contact_email')+channel(c.phone,c.records,phone,'contact_phone')+
+    '<article class="card privacy-channel"><div><h3>'+c.official+'</h3><p class="help">'+c.officialHelp+'</p></div><span class="tag review">'+(p.official?.connected?c.active:c.off)+'</span></article></div>'+
+    '<article class="card"><h3>'+c.consentTitle+'</h3><p class="help">'+c.consentHelp+'</p><div class="privacy-facts"><div><strong>'+requests+'</strong><span>'+c.updates+'</span></div><div><strong>'+customers+'</strong><span>'+c.reminders+'</span></div></div><p class="help">'+c.exportHelp+'</p><a class="button small" href="/privacy" target="_blank" rel="noopener">'+t('privacy')+'</a></article></section>';
+}
+
 function services(){
   if(!S.data.settings)return setup();
   const s=S.data.settings,m=s.messaging||{},templates=m.templates||{},capacity=s.capacity||{},days=Array.isArray(capacity.workingDays)?capacity.workingDays.map(Number):[],windows=Array.isArray(capacity.windows)?capacity.windows:[],ready=S.data.setupReadiness?.ready===true;
@@ -640,7 +661,7 @@ function growth(){
 }
 
 function shell(){
-  const renderer={today,requests,customers,agenda,services,automation:automations,page,growth}[S.page]||today;
+  const renderer={today,requests,customers,agenda,services,automation:automations,page,growth,privacy:privacyCenter}[S.page]||today;
   let C='';
   try{
     setAuthStage('render_'+S.page);
@@ -702,7 +723,7 @@ function render(){
   document.documentElement.dataset.nlBuild='20260929-render-fix-10';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000})}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null)}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -760,6 +781,13 @@ async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'
 function bind(){
   document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=async()=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.page=x.dataset.nav;if(S.page==='growth'&&isGrowthAdmin()){S.growth=null;render();try{await loadGrowth()}catch(e){toast(e.message)}}render()});
   function returnToAutopilotQueue(){S.page='today';S.focusRequestId='';S.autopilotRequestId='';render();toast(t('nextActionUpdated'))}
+  document.querySelectorAll('[data-privacy-revoke]').forEach(button=>button.onclick=async()=>{
+    const purpose=button.dataset.privacyRevoke,c=privacyCopy[S.lang]||privacyCopy.pt;
+    if(!['manual_link','contact_email','contact_phone'].includes(purpose)||!window.confirm(c.confirm))return;
+    button.disabled=true;
+    try{await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/privacy/revoke',{method:'POST',body:JSON.stringify({purpose}),timeoutMs:8000});await loadData();render()}
+    catch(error){button.disabled=false;toast(error.message==='RESPONSE_CHANNEL_REQUIRED'?c.mustKeep:error.message)}
+  });
   document.querySelectorAll('[data-action-page]').forEach(x=>x.onclick=()=>{S.focusRequestId='';S.page=x.dataset.actionPage;render()});
   document.querySelectorAll('[data-return-autopilot]').forEach(x=>x.onclick=()=>returnToAutopilotQueue());
   document.querySelectorAll('[data-open-request]').forEach(x=>x.onclick=()=>{const id=x.dataset.openRequest;if(!id)return;const fromAutopilot=S.page==='today';S.actionAssist=null;S.page='requests';S.focusRequestId=id;S.autopilotRequestId=fromAutopilot?id:'';render()});
@@ -867,7 +895,7 @@ async function consumeHandoff(){
     return false;
   }
 }
-const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth'].includes(requestedView))S.page=requestedView;
+const requestedView=new URLSearchParams(location.search).get('view');if(['today','requests','customers','agenda','services','automation','page','growth','privacy'].includes(requestedView))S.page=requestedView;
 async function startAuthBootstrap(){
   const params=new URLSearchParams(location.search),codeExpected=params.has('code');
   setAuthStage(codeExpected?'handoff_start':'session_reuse');
