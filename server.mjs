@@ -8,7 +8,7 @@ import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-l
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
-import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup, explainNestLocalPulse } from './src/nestai.mjs';
+import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup, explainNestLocalPulse, assistNestLocalSetup, suggestNestLocalReturn } from './src/nestai.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -1490,6 +1490,54 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Setup/return are draft-only assists. These server endpoints remain OFF until authorized F4 canaries pass.
+app.post('/api/organizations/:orgId/nestlocal/ai/setup-assist',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const root=`organizations/${req.access.orgId}`;
+    const [settingsSnap,services]=await Promise.all([
+      db.doc(root+'/nestlocal_settings/public').get(),
+      db.collection(root+'/nestlocal_services').limit(100).get(),
+    ]);
+    if(!settingsSnap.exists)return sendError(res,409,'SETUP_REQUIRED');
+    const settings=settingsSnap.data()||{},mode=clean(settings.communicationMode||'none');
+    const facts={businessType:clean(settings.businessType||'general').slice(0,40),
+      coverageCount:Array.isArray(settings.coverageCodes)?settings.coverageCodes.length:0,
+      serviceDraftCount:services.docs.filter(x=>x.data().published!==true).length,
+      hasReplyChannel:validContactEmail(settings.contactEmail)||phone(settings.contactPhone).length>=10||
+        mode==='manual'&&phone(settings.whatsapp).length>=10};
+    const fallback={ok:true,mode:'manual',authority:'suggestion_only',facts,
+      nextStep:'Revisar os serviços, a região atendida e um canal de resposta antes da publicação.'};
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await assistNestLocalSetup({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),...facts});
+      return res.json({ok:true,mode:'nestai',authority:'suggestion_only',suggestion,facts});
+    }catch(error){console.warn('SETUP_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));return res.json(fallback)}
+  }catch(error){console.error('SETUP_ASSIST_FAILED',error?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/ai/return-suggest',authenticate,authorize,async(req,res)=>{
+  try{
+    const customerId=safeId(req.body?.customerId);
+    if(!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
+    const customer=await db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`).get();
+    if(!customer.exists)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+    const data=customer.data()||{},dueDate=clean(data.nextServiceDate).slice(0,10);
+    const purposeConsent=data.messaging?.consents?.maintenanceReminders?.accepted===true||
+       data.messaging?.consents?.maintenanceEmail?.accepted===true;
+    if(!purposeConsent)return sendError(res,403,'PURPOSE_CONSENT_REQUIRED');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))return sendError(res,409,'RETURN_DATE_NOT_SET');
+    const fallback={ok:true,mode:'manual',authority:'draft_only',draft:'Conferir a data de retorno e preparar um contato somente pelo canal autorizado. Nenhuma mensagem foi enviada.',send:false};
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await suggestNestLocalReturn({
+        sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),
+        serviceCategory:clean(data.lastServiceId||'service').slice(0,60),dueDate,purposeConsent,
+      });
+      return res.json({ok:true,mode:'nestai',authority:'draft_only',suggestion,send:false});
+    }catch(error){console.warn('RETURN_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));return res.json(fallback)}
+  }catch(error){console.error('RETURN_SUGGEST_FAILED',error?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/ai/pulse-explain',authenticate,authorize,async(req,res)=>{
