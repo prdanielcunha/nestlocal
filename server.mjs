@@ -229,7 +229,11 @@ async function authorize(req,res,next){
       const status=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE','ENTITLEMENT_INACTIVE'].includes(access.reason)?402:access.reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?402:403;
       return sendError(res,status,access.reason||'ACCESS_DENIED');
     }
-    if(access.entitlement?.readOnly && !canNestLocalMutate(access.entitlement,req.method)) {
+    // Consent revocation must remain available even when the commercial
+    // product is read-only; privacy rights are not subscription benefits.
+    const isPrivacyRevoke=req.method==='POST'&&req.path.endsWith('/nestlocal/privacy/revoke');
+    if(access.entitlement?.readOnly && !isPrivacyRevoke &&
+       !canNestLocalMutate(access.entitlement,req.method)) {
       // Billing and LGPD management live in the Hub; no mutation jobs continue here.
       return sendError(res,402,'TRIAL_EXPIRED_READ_ONLY');
     }
