@@ -1108,7 +1108,10 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     const root=`organizations/${orgId}`,[doc,settingsSnap]=await Promise.all([db.doc(`${root}/nestlocal_requests/${id}`).get(),db.doc(`${root}/nestlocal_settings/public`).get()]);
     if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
     const d=doc.data(),settings=settingsSnap.data()||{},displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null,paidCents=Math.max(0,Number(d.commercial?.amountPaidCents||0)),balanceCents=displayTotalCents===null?null:Math.max(0,displayTotalCents-paidCents);
-    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    // A customer may still track an old request after a trial expires, but
+    // actions must not be advertised when writes are blocked.
+    const storeEntitlement=await getPublicEntitlement(orgId);
+    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
       id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
