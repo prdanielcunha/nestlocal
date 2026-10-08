@@ -71,7 +71,7 @@ test('Metrics are strictly anonymous, aggregated and not written to tenant opera
   const start=server.indexOf("app.post('/api/public/demo/events'");
   const end=server.indexOf("app.post('/api/public/growth/diagnostic'",start);
   const api=server.slice(start,end);
-  for(const field of ["new Set(['demo_started'","DEMO_PII_NOT_ALLOWED","publicGrowthRateLimit(req,'demo_event')","nestlocal_demo_metrics/",'FieldValue.increment(1)'])assert.ok(api.includes(field));
+  for(const field of ["new Set(['demo_started'","DEMO_PII_NOT_ALLOWED","publicGrowthRateLimit(req,'demo_event',20)","nestlocal_demo_metrics/",'FieldValue.increment(1)'])assert.ok(api.includes(field));
   assert.doesNotMatch(api,/nestlocal_requests|nestlocal_customers|nestlocal_growth_leads|authorization|tenant/);
 });
 test('Both Firebase Hosting targets expose /experience without authentication',()=>{
