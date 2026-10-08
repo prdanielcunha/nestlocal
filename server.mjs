@@ -762,7 +762,7 @@ app.post('/api/public/growth/diagnostic/lead',async(req,res)=>{
       contactEmail=clean(b.email).toLowerCase().slice(0,254),
       city=clean(b.city).slice(0,100),segment=clean(b.segment).slice(0,100),
       contactChannel=clean(b.contactChannel).toLowerCase(),projection=diagnosticProjection(b);
-    const emailValid=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(contactEmail);
+    const emailValid=/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(contactEmail);
     const channelValid=(contactChannel==='email'&&emailValid)||(contactChannel==='phone'&&contactPhone.length>=10);
     if(!projection||businessName.length<2||contactName.length<2||city.length<2||segment.length<2||!channelValid||b.acceptedTerms!==true||b.acceptedContact!==true)return sendError(res,400,'INVALID_DIAGNOSTIC_CONSENT');
     // Deterministic document ID makes retries harmless. Do not overwrite consent evidence.
