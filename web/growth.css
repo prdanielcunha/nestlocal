@@ -183,3 +183,13 @@ radial-gradient(circle at 88% 18%,rgba(84,126,255,.10),transparent 30%),
   .radar-feedback-actions{width:100%;justify-content:flex-start}
   .attack-message{flex-direction:column}
 }
+
+/* NestLocal 2.0 — result first, explicitly optional contact */
+.xray-optin{margin-top:clamp(24px,5vw,40px);padding-top:24px;border-top:1px solid rgba(150,180,165,.32)}
+.xray-optin h2{font-size:clamp(1.2rem,3vw,1.6rem);line-height:1.25;letter-spacing:-.025em;margin:0 0 8px}
+.xray-optin>p{line-height:1.6;max-width:56ch;opacity:.82;margin:0 0 22px}
+.xray-optin .xray-form{margin-top:0}
+.xray-optin-status{margin-top:24px}
+.xray-optin input:focus-visible,.xray-optin select:focus-visible,.xray-optin button:focus-visible{outline:3px solid #3DB89D;outline-offset:3px}
+.xray-optin button{min-height:44px}
+@media(max-width:430px){.xray-optin .xray-form{display:grid;grid-template-columns:minmax(0,1fr)}.xray-optin .xray-form>*{min-width:0;grid-column:1/-1}}
