@@ -70,7 +70,7 @@ const u=k=>explain[state.language]?.[k]||explain.pt[k]||k;
 
 const paths={
  pt:{
- question:'Como seu cliente chega até você?',hint:'Escolha um caminho. O NestLocal entra na sua rotina sem obrigar você a trocar de canal.',
+ journeyTitle:'Acompanhe do contato ao próximo serviço',question:'Como seu cliente chega até você?',hint:'Escolha um caminho. O NestLocal entra na sua rotina sem obrigar você a trocar de canal.',
  whatsapp:'Pelo meu WhatsApp',whatsappDesc:'Você continua conversando no seu número. O pedido só entra no NestLocal quando você o registra ou compartilha o link de solicitação.',
  instagram:'Pelo Instagram e redes',instagramDesc:'Você coloca o link da sua página de serviços na bio, Stories ou anúncio. Mensagens diretas não são importadas automaticamente.',
  website:'Pelo meu próprio site',websiteDesc:'Um botão Solicitar orçamento leva à sua página de serviços do NestLocal. Seu site e sua marca continuam sendo seus.',
@@ -99,7 +99,7 @@ const paths={
  badge:'Sem conectar WhatsApp',length:'Leva cerca de 2 minutos',
  },
  en:{
- question:'Where do your customers find you?',hint:'Pick a route. NestLocal fits your workflow without forcing you to switch channels.',
+ journeyTitle:'Follow the job from contact to repeat service',question:'Where do your customers find you?',hint:'Pick a route. NestLocal fits your workflow without forcing you to switch channels.',
  whatsapp:'My own WhatsApp',whatsappDesc:'Keep chatting on your number. A request only enters NestLocal if you record it or share your request-page link.',
  instagram:'Instagram and social media',instagramDesc:'Share your service-page link in your bio, Stories, or ads. Direct messages are not imported automatically.',
  website:'My existing website',websiteDesc:'A Request a Quote button leads to your NestLocal-branded service page. Your existing website stays yours.',
@@ -125,7 +125,7 @@ const paths={
  badge:'No WhatsApp connection',length:'About 2 minutes',
  },
  es:{
- question:'¿Dónde te encuentran tus clientes?',hint:'Elige un camino. NestLocal se adapta a tu rutina sin obligarte a cambiar de canal.',
+ journeyTitle:'Acompaña desde el contacto al próximo servicio',question:'¿Dónde te encuentran tus clientes?',hint:'Elige un camino. NestLocal se adapta a tu rutina sin obligarte a cambiar de canal.',
  whatsapp:'Mi propio WhatsApp',whatsappDesc:'Sigue conversando en tu número. La solicitud entra en NestLocal al registrarla o compartir tu enlace.',
  instagram:'Instagram y redes',instagramDesc:'Comparte el enlace de servicios en biografía, Stories o anuncios. Los mensajes directos no se importan solos.',
  website:'Mi sitio web',websiteDesc:'El botón Solicitar presupuesto lleva a la página de servicios de tu empresa. Conservas tu sitio y tu marca.',
@@ -181,7 +181,9 @@ function layout(content){
    '<div class="tour-route"><span>'+p('result')+'</span><strong>'+p(state.entry+'Flow')+'</strong></div></section>':'';
  const faq='<section class="tour-faq"><h3>'+u('faqTitle')+'</h3>'+
   [1,2,3,4,5].map(i=>'<details><summary>'+u('faq'+i)+'</summary><p>'+u('answer'+i)+'</p></details>').join('')+'</section>';
- const intro='<section class="intro"><div class="hero-topline"><span class="eyebrow">'+p('release')+'</span><span class="hero-timing">'+p('badge')+' · '+p('length')+'</span></div><h1>'+p('punch')+'</h1><p>'+p('jobIntro')+'</p>'+
+ const intro=state.sector?
+ '<section class="intro intro-compact"><span class="eyebrow">'+p('release')+'</span><h1>'+p('journeyTitle')+'</h1><p>'+p('jobIntro')+'</p></section>':
+ '<section class="intro"><div class="hero-topline"><span class="eyebrow">'+p('release')+'</span><span class="hero-timing">'+p('badge')+' · '+p('length')+'</span></div><h1>'+p('punch')+'</h1><p>'+p('jobIntro')+'</p>'+
  '<div class="hero-process"><span>'+t('step1')+'</span><i aria-hidden="true">→</i><span>'+t('step2')+'</span><i aria-hidden="true">→</i><span>'+t('step4')+'</span><i aria-hidden="true">→</i><span>'+t('step6')+'</span></div></section>';
  const track=state.sector?'<div class="progress-shell"><div class="progress-caption"><span>'+p('counter')+' '+Math.min(state.step,6)+' / 6</span><strong>'+v(state.sector.name)+'</strong></div><div class="progress-track" role="progressbar" aria-label="'+t('progress')+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+progress+'"><i style="width:'+progress+'%"></i></div></div>':'';
  const routeHint=state.sector?'<section class="tour-route compact"><span>'+p('customerChannel')+': '+p(state.entry)+'</span><strong>'+p(state.entry+'Flow')+'</strong></section>':'';
