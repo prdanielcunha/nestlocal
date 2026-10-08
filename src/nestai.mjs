@@ -116,3 +116,25 @@ export async function composeNestLocalFollowup(input) {
   });
   return String(response.result || '').trim();
 }
+
+// F4 gated adapter: no provider or model IDs belong in NestLocal.
+// Only minimal structured operational facts are forwarded; generated output is never an action.
+export async function explainNestLocalPulse(input) {
+  const client=createNestLocalAiClient(input);
+  const sourceId=String(input.sourceId||'').slice(0,128);
+  const response=await client.run({
+    task:'nestlocal.pulse.explain',
+    input:{
+      facts:{status:String(input.status||'').slice(0,40),date:String(input.date||'').slice(0,10)},
+      sourceIds:[sourceId],
+      authority:{mode:'suggestion_only',sendMessage:false,reserveSchedule:false,mutateRequest:false,calculatePrice:false},
+    },
+  });
+  const result=typeof response.result==='string'?JSON.parse(response.result):response.result;
+  if(!result||typeof result.summary!=='string'||!Array.isArray(result.sourceIds)||
+     result.sourceIds.length!==1||result.sourceIds[0]!==sourceId)throw new Error('AI_UNGROUNDED_OUTPUT');
+  return {summary:result.summary.slice(0,700),reason:String(result.reason||'').slice(0,700),
+    nextStep:String(result.nextStep||'').slice(0,400),
+    uncertainty:result.uncertainty?String(result.uncertainty).slice(0,400):null,
+    sourceIds:[sourceId]};
+}
