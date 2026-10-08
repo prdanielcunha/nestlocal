@@ -699,7 +699,7 @@ app.get('/api/calendar/feeds/:orgId/:uid.ics',async(req,res)=>{
     if(!access.accessible)return sendError(res,404,'NOT_FOUND');
     const root='organizations/'+orgId;
     const [requests,services]=await Promise.all([
-      db.collection(root+'/nestlocal_requests').orderBy('createdAt','desc').limit(200).get(),
+      db.collection(root+'/nestlocal_requests').where('status','in',['scheduled','in_progress']).limit(250).get(),
       db.collection(root+'/nestlocal_services').limit(100).get()
     ]);
     const seeAll=access.administrative===true||['owner','admin'].includes(clean(access.member?.role||access.member?.organizationRole).toLowerCase());
