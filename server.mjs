@@ -734,6 +734,22 @@ app.delete('/api/auth/session',async(req,res)=>{
 });
 
 
+// Anonymous Experience metrics are coarse daily counters, never operational tenant records.
+app.post('/api/public/demo/events',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+    const {event,segment,step}=req.body||{};
+    const events=new Set(['demo_started','demo_step_completed','demo_completed','demo_to_signup']);
+    const segments=new Set(['climate','cleaning','pest','electrical','general']);
+    if(!events.has(event)||!segments.has(segment)||!Number.isSafeInteger(step)||step<1||step>7)return sendError(res,400,'INVALID_DEMO_EVENT');
+    if(Object.keys(req.body||{}).some(key=>!['event','segment','step'].includes(key)))return sendError(res,400,'DEMO_PII_NOT_ALLOWED');
+    if(!(await publicGrowthRateLimit(req,'demo_event')))return sendError(res,429,'RATE_LIMITED');
+    const day=new Date().toISOString().slice(0,10),ref=db.doc('nestlocal_demo_metrics/'+day+'_'+segment);
+    await ref.set({day,segment,updatedAt:admin.firestore.FieldValue.serverTimestamp(),[event]:admin.firestore.FieldValue.increment(1)},{merge:true});
+    return res.status(204).end();
+  }catch(e){console.error('DEMO_METRICS_FAILED',e?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/public/growth/diagnostic',async(req,res)=>{
   try{
     if(!(await publicGrowthRateLimit(req,'diagnostic')))return sendError(res,429,'RATE_LIMITED');
