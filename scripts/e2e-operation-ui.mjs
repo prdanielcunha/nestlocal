@@ -45,8 +45,10 @@ try{
     await page.screenshot({path:'artifacts/experience/pulse-facts-'+width+'.png',fullPage:true});
     await page.locator('.pulse2-queue>summary').click();
     await page.locator('button[data-pulse-feedback="snooze"]').click();
-    assert.equal(feedback.length,1);
+    // The feedback POST and dashboard refresh are async. Wait for the user-visible
+    // state transition before asserting the network side effect to avoid a race.
     await page.locator('.pulse2-empty').waitFor();
+    assert.equal(feedback.length,1);
     await page.screenshot({path:'artifacts/experience/pulse-snoozed-'+width+'.png',fullPage:true});
     await page.locator(width<=980?'.bottom-nav button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
     await page.locator('.privacy-center').waitFor();

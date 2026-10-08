@@ -2,7 +2,7 @@
 // No auth, tenant lookup, cookies, localStorage, Firestore writes or provider calls.
 const EL=document.getElementById('experienceRoot');
 const LANG=document.getElementById('language');
-const state={language:'pt',sector:null,step:0,slot:null,completed:false};
+const state={language:'pt',sector:null,step:0,slot:null,completed:false,entry:'whatsapp',view:'business'};
 const labels={
 pt:{demo:'Demonstração fictícia',eyebrow:'Viva a experiência antes de cadastrar',welcome:'O próximo serviço já começa organizado.',welcomeText:'Escolha seu setor e experimente como um pedido vira orçamento, agenda, execução e oportunidade de retorno. Sem conta, telefone, WhatsApp ou cartão.',sectorTitle:'Qual é o seu negócio?',sectorHelp:'Tudo aqui é simulado. Nenhum dado de cliente é acessado ou criado.',start:'Experimentar este setor',step1:'Pedido recebido',step2:'Orçamento preparado',step3:'Aprovação do cliente',step4:'Agendamento',step5:'Execução',step6:'Próximo serviço',request:'Solicitação',customer:'Cliente fictício',service:'Serviço',context:'O que aconteceu',source:'Origem',sourceValue:'Formulário fictício',action1:'Analisar pedido e preparar orçamento',quote:'Orçamento',scope:'Escopo do serviço',estimate:'Valor fictício calculado para o cenário',method:'Nesta demonstração, o valor vem de uma regra fixa do cenário, não de IA.',action2:'Preparar aprovação simulada',approval:'Aprovação',approvalHelp:'Agora você está no papel do cliente fictício. Escolha aprovar este orçamento.',approve:'Simular aprovação',schedule:'Agenda',scheduleHelp:'Estes horários são exemplos fictícios, não disponibilidade real.',chooseSlot:'Escolha um horário de exemplo',morning:'Próximo dia · 09:00',afternoon:'Próximo dia · 14:00',action4:'Confirmar agenda fictícia',execution:'Serviço em execução',executionHelp:'O cliente fictício aprovou e o agendamento foi simulado. Agora registre a conclusão.',action5:'Marcar execução simulada como concluída',return:'Retorno inteligente',returnHelp:'O serviço foi concluído. O NestLocal identifica uma próxima ação com base na regra de recorrência cadastrada neste exemplo. Nenhuma mensagem será enviada.',why:'Por que esta sugestão apareceu?',whyValue:'O cenário registra um serviço concluído e uma regra fictícia de retorno. Não é previsão de nova venda.',action6:'Preparar lembrete fictício',completeTitle:'Você acabou de organizar um ciclo completo.',completeText:'Da solicitação até o próximo contato, sem conectar canal algum. Estes resultados foram apenas uma simulação.',cta:'Quero usar no meu negócio',secondary:'Voltar ao início',back:'Voltar',reset:'Reiniciar experiência',progress:'Progresso',disclaimer:'Ambiente 100% fictício. Nenhuma ação real, envio, cobrança ou reserva é executada.',phase:'Etapa',of:'de',approved:'Aprovado no cenário',scheduled:'Agendado no cenário',done:'Concluído no cenário',draft:'Rascunho revisável',returnNote:'Sugestão apenas. Você decide se e quando entrar em contato.',time:'Tempo estimado',next:'Próxima etapa',price:'Valor do cenário'},
 en:{demo:'Fictional demonstration',eyebrow:'Experience the value before signing up',welcome:'Your next service, already organized.',welcomeText:'Choose your trade and explore how a request turns into a quote, schedule, execution and repeat opportunity. No account, phone, WhatsApp or card.',sectorTitle:'What type of business?',sectorHelp:'Everything here is simulated. No actual customer record is accessed or created.',start:'Try this sector',step1:'New request',step2:'Quote prepared',step3:'Customer approval',step4:'Scheduling',step5:'Execution',step6:'Next service',request:'Request',customer:'Fictional customer',service:'Service',context:'What happened',source:'Source',sourceValue:'Fictional form',action1:'Review request and prepare quote',quote:'Quote',scope:'Service scope',estimate:'Fictional price calculated for this scenario',method:'The demo price follows a fixed scenario rule, not AI.',action2:'Prepare simulated approval',approval:'Approval',approvalHelp:'You are now the fictional customer. Approve this quote to continue.',approve:'Simulate approval',schedule:'Schedule',scheduleHelp:'These are example slots, not real availability.',chooseSlot:'Choose an example slot',morning:'Next day · 9:00 AM',afternoon:'Next day · 2:00 PM',action4:'Confirm fictional booking',execution:'Service in progress',executionHelp:'The fictional customer approved and the booking was simulated. Now record completion.',action5:'Mark simulated work complete',return:'Smart follow-up',returnHelp:'Work is complete. NestLocal suggests a next action using a recurrence rule in this sample. No message will be sent.',why:'Why am I seeing this?',whyValue:'This scenario records completed work and a fictional return rule. No future sale is predicted.',action6:'Prepare fictional reminder',completeTitle:'You organized a complete service cycle.',completeText:'From first request to next contact, without connecting any channel. Every outcome was simulated.',cta:'Use it for my business',secondary:'Start over',back:'Back',reset:'Reset demo',progress:'Progress',disclaimer:'100% fictional environment. No real action, message, charge or booking occurs.',phase:'Step',of:'of',approved:'Approved in simulation',scheduled:'Booked in simulation',done:'Completed in simulation',draft:'Reviewable draft',returnNote:'Suggestion only. You decide if and when to contact a customer.',time:'Estimated duration',next:'Next step',price:'Scenario price'},
@@ -67,6 +67,93 @@ es:{
 }};
 const u=k=>explain[state.language]?.[k]||explain.pt[k]||k;
 
+
+const paths={
+ pt:{
+ question:'Como seu cliente chega até você?',hint:'Escolha um caminho. O NestLocal entra na sua rotina sem obrigar você a trocar de canal.',
+ whatsapp:'Pelo meu WhatsApp',whatsappDesc:'Você continua conversando no seu número. O pedido só entra no NestLocal quando você o registra ou compartilha o link de solicitação.',
+ instagram:'Pelo Instagram e redes',instagramDesc:'Você coloca o link da sua página de serviços na bio, Stories ou anúncio. Mensagens diretas não são importadas automaticamente.',
+ website:'Pelo meu próprio site',websiteDesc:'Um botão Solicitar orçamento leva à sua página de serviços do NestLocal. Seu site e sua marca continuam sendo seus.',
+ result:'O que acontece neste caminho',whatsappFlow:'Conversa no seu WhatsApp → você registra o pedido no painel → orçamento e agenda ficam organizados.',
+ instagramFlow:'Instagram / anúncio → link da sua página → cliente preenche pedido → aparece em Pedidos no NestLocal.',
+ websiteFlow:'Seu site → botão Solicitar orçamento → página da sua empresa → pedido aparece no NestLocal.',
+ customerChannel:'De onde veio',msgWhatsapp:'Oi, preciso de uma higienização. Você tem horário?',msgInstagram:'A pessoa acessou o link de serviços divulgado nas redes.',msgWebsite:'A pessoa clicou em Solicitar orçamento no site da empresa.',
+ originWhatsapp:'WhatsApp pessoal (fora do NestLocal)',originInstagram:'Link divulgado nas redes sociais',originWebsite:'Link incorporado ao seu site',
+ ownerActionWhatsapp:'Você registra manualmente os dados do pedido. O NestLocal não lê conversas pessoais.',
+ ownerActionInstagram:'O formulário da sua página cria o pedido automaticamente no painel.',
+ ownerActionWebsite:'O formulário da sua página cria o pedido automaticamente no painel.',
+ visualCustomer:'Celular do seu cliente',visualOwner:'Painel da sua empresa',clientCard:'EXEMPLO · VISÃO DO CLIENTE',ownerCard:'EXEMPLO · VISÃO DA EMPRESA',
+ who:'Quem faz o próximo movimento?',system:'O NestLocal organiza',human:'Você decide e confirma',
+ jobIntro:'Agora acompanhe um serviço realista, do primeiro contato até o retorno.',preview:'Prévia do caminho',start:'Escolha um serviço para simular',dashboard:'Pedidos / Hoje',pending:'Ação pendente',account:'Empresa fictícia',accountClient:'Cliente de exemplo',pageLink:'nestlocal.millionsnest.com/suaempresa (exemplo)',
+ stage1Owner:'Pedido salvo na área Pedidos',stage2Owner:'Orçamento ligado ao pedido',stage3Owner:'Aprovado pelo cliente',stage4Owner:'Visita na agenda interna',stage5Owner:'Execução e pagamento registrados',stage6Owner:'Sugestão de retorno na tela Hoje',stage7Owner:'Histórico completo, sem mensagens enviadas',
+ stage1Client:'Pedido enviado ou anotado',stage2Client:'Orçamento disponível no link',stage3Client:'Aprovação pelo link',stage4Client:'Data combinada com a empresa',stage5Client:'Serviço executado',stage6Client:'Contato futuro ainda não enviado',stage7Client:'Acompanhamento do serviço por link',
+ statusLabel:'STATUS DO PEDIDO',pathLabel:'CAMINHO DO CLIENTE',day:'NO DIA DA VISITA',dayDesc:'O compromisso fica na agenda interna e aparece na gestão do serviço. A versão atual não garante uma notificação automática no seu WhatsApp ou celular.',
+ truth:'O que funciona sem WhatsApp conectado',truthText:'Página de serviços, cadastro de pedidos, orçamento por regras, aceite pelo link, agenda, execução, pagamento registrado e acompanhamento no painel.',
+ notIncluded:'O que NÃO acontece por padrão',notIncludedText:'Captura de conversas pessoais, resposta automática no WhatsApp, lembrete push/SMS na data ou prospecção de clientes pelo NestLocal.',
+ endHeader:'Seu negócio continua sendo seu. Sua operação fica organizada.',
+ endExplain:'O cliente continua encontrando sua empresa onde sempre encontrou. O NestLocal é a central que acompanha cada serviço do pedido ao pós-venda — não uma rede social, não um robô de conversa e não só uma agenda.',
+ agendaTitle:'Agenda interna + próximas ações', agendaDesc:'Você vê os compromissos e as pendências no NestLocal. Envio externo de lembretes depende de canal autorizado e funcionalidade habilitada.',
+ release:'VISITA GUIADA · SEM DADOS REAIS',counter:'Passo',routing:'Entrada',organization:'Depois da entrada',communication:'Como a empresa conversa',communicationText:'Você pode manter o WhatsApp pessoal. Use o link quando quiser que o cliente preencha tudo. Você não precisa conectar suas conversas privadas.',
+ completed:'Histórico do serviço',nothingSent:'Nenhum lembrete ou mensagem foi enviado nesta simulação.',
+ startWhatsApp:'Registrar pedido manualmente no NestLocal',startLink:'Ver pedido aparecer em Pedidos',viewFirst:'Recomeçar com outro canal',visit:'Ver fluxo completo',days:'dias',punch:'Clientes continuam chegando pelos seus canais. O NestLocal organiza o que acontece depois.',
+ badge:'Sem conectar WhatsApp',length:'Leva cerca de 2 minutos',
+ },
+ en:{
+ question:'Where do your customers find you?',hint:'Pick a route. NestLocal fits your workflow without forcing you to switch channels.',
+ whatsapp:'My own WhatsApp',whatsappDesc:'Keep chatting on your number. A request only enters NestLocal if you record it or share your request-page link.',
+ instagram:'Instagram and social media',instagramDesc:'Share your service-page link in your bio, Stories, or ads. Direct messages are not imported automatically.',
+ website:'My existing website',websiteDesc:'A Request a Quote button leads to your NestLocal-branded service page. Your existing website stays yours.',
+ result:'What happens on this route',whatsappFlow:'Your WhatsApp chat → you add a request to the dashboard → quoting and scheduling are organized.',
+ instagramFlow:'Instagram / ad → your business page link → customer submits a request → it appears in NestLocal Requests.',
+ websiteFlow:'Your website → Request a Quote → your business page → the request appears in NestLocal.',
+ customerChannel:'Request source',msgWhatsapp:'Hi, can you clean my AC? Do you have an appointment?',msgInstagram:'The customer followed your service-page link from social media.',msgWebsite:'The customer clicked Request a Quote on your site.',
+ originWhatsapp:'Personal WhatsApp (outside NestLocal)',originInstagram:'Link shared on social media',originWebsite:'Link placed on your website',
+ ownerActionWhatsapp:'You manually log the request. NestLocal does not read personal chats.',ownerActionInstagram:'Your online request form creates a dashboard request.',ownerActionWebsite:'Your online request form creates a dashboard request.',
+ visualCustomer:'On your customer’s phone',visualOwner:'Your business dashboard',clientCard:'EXAMPLE · CUSTOMER VIEW',ownerCard:'EXAMPLE · BUSINESS VIEW',
+ who:'Who makes the next move?',system:'NestLocal organizes',human:'You decide and confirm',
+ jobIntro:'Follow one realistic job from first contact to repeat service.',preview:'How it flows',start:'Choose a service to try',dashboard:'Requests / Today',pending:'Action needed',account:'Sample company',accountClient:'Sample customer',pageLink:'nestlocal.millionsnest.com/yourbusiness (sample)',
+ stage1Owner:'Request saved under Requests',stage2Owner:'Quote attached to request',stage3Owner:'Customer approved',stage4Owner:'Visit in the internal calendar',stage5Owner:'Job and payment recorded',stage6Owner:'Follow-up appears in Today',stage7Owner:'Full history, no messages sent',
+ stage1Client:'Request submitted or logged',stage2Client:'Quote available via a link',stage3Client:'Approval on the tracking page',stage4Client:'Date agreed with the business',stage5Client:'Job performed',stage6Client:'Future contact not yet sent',stage7Client:'Track the service by link',
+ statusLabel:'REQUEST STATUS',pathLabel:'CUSTOMER ROUTE',day:'ON THE APPOINTMENT DAY',dayDesc:'The job appears in the internal calendar and management view. The current version does not guarantee automatic phone or WhatsApp notifications.',
+ truth:'Works without connecting WhatsApp',truthText:'Service page, requests, rule-based quotes, approval link, calendar, job/payment records and dashboard tracking.',
+ notIncluded:'NOT automatic by default',notIncludedText:'Reading personal chats, WhatsApp auto-replies, push/SMS reminders or bringing new customers via a marketplace.',
+ endHeader:'Keep your brand and channels. Organize your work.',endExplain:'Your customers still find you where they already do. NestLocal coordinates each job from request through follow-up. It is not a social network, a chat bot or just a calendar.',
+ agendaTitle:'Internal calendar + action queue',agendaDesc:'Appointments and next actions appear in NestLocal. External reminders require an authorized channel and enabled functionality.',
+ release:'GUIDED TOUR · NO REAL DATA',counter:'Step',routing:'Entry',organization:'After contact',communication:'How you communicate',communicationText:'Keep your own WhatsApp. Share the service link when you want customers to fill out the request. You need not connect private chats.',
+ completed:'Service history',nothingSent:'No reminder or message has been sent in this demo.',
+ startWhatsApp:'Record request manually in NestLocal',startLink:'Watch request enter the dashboard',viewFirst:'Start again using another channel',visit:'See the complete flow',days:'days',punch:'Customers still arrive through your channels. NestLocal organizes what happens next.',
+ badge:'No WhatsApp connection',length:'About 2 minutes',
+ },
+ es:{
+ question:'¿Dónde te encuentran tus clientes?',hint:'Elige un camino. NestLocal se adapta a tu rutina sin obligarte a cambiar de canal.',
+ whatsapp:'Mi propio WhatsApp',whatsappDesc:'Sigue conversando en tu número. La solicitud entra en NestLocal al registrarla o compartir tu enlace.',
+ instagram:'Instagram y redes',instagramDesc:'Comparte el enlace de servicios en biografía, Stories o anuncios. Los mensajes directos no se importan solos.',
+ website:'Mi sitio web',websiteDesc:'El botón Solicitar presupuesto lleva a la página de servicios de tu empresa. Conservas tu sitio y tu marca.',
+ result:'Qué sucede en este camino',whatsappFlow:'Chat en tu WhatsApp → registras la solicitud → presupuesto y agenda organizados.',
+ instagramFlow:'Instagram / anuncio → enlace de servicios → cliente envía solicitud → aparece en Solicitudes.',
+ websiteFlow:'Tu web → botón Solicitar presupuesto → página de empresa → solicitud en NestLocal.',
+ customerChannel:'Origen',msgWhatsapp:'Hola, necesito limpieza del aire. ¿Tienes horario?',msgInstagram:'La persona abrió el enlace de servicios compartido en las redes.',msgWebsite:'La persona pulsó Solicitar presupuesto en tu web.',
+ originWhatsapp:'WhatsApp personal (fuera de NestLocal)',originInstagram:'Enlace compartido en redes',originWebsite:'Enlace integrado en tu sitio',
+ ownerActionWhatsapp:'Registras los datos manualmente. NestLocal no lee chats personales.',ownerActionInstagram:'El formulario de solicitud crea el pedido automáticamente.',ownerActionWebsite:'El formulario de solicitud crea el pedido automáticamente.',
+ visualCustomer:'En el teléfono del cliente',visualOwner:'En el panel de tu empresa',clientCard:'EJEMPLO · VISTA DEL CLIENTE',ownerCard:'EJEMPLO · VISTA DEL NEGOCIO',
+ who:'¿Quién realiza el próximo paso?',system:'NestLocal organiza',human:'Tú decides y confirmas',
+ jobIntro:'Acompaña un servicio realista de principio a fin.',preview:'Camino del cliente',start:'Elige un servicio para probar',dashboard:'Solicitudes / Hoy',pending:'Acción pendiente',account:'Empresa ficticia',accountClient:'Cliente de ejemplo',pageLink:'nestlocal.millionsnest.com/tuempresa (ejemplo)',
+ stage1Owner:'Solicitud guardada en el panel',stage2Owner:'Presupuesto unido al pedido',stage3Owner:'Aprobado por el cliente',stage4Owner:'Visita en la agenda interna',stage5Owner:'Trabajo y pago registrados',stage6Owner:'Recordatorio de retorno en Hoy',stage7Owner:'Historial completo, sin mensajes enviados',
+ stage1Client:'Solicitud enviada o registrada',stage2Client:'Presupuesto disponible por enlace',stage3Client:'Aprobación mediante enlace',stage4Client:'Fecha acordada con la empresa',stage5Client:'Servicio realizado',stage6Client:'Contacto futuro todavía no enviado',stage7Client:'Seguimiento mediante enlace',
+ statusLabel:'ESTADO DEL PEDIDO',pathLabel:'CAMINO DEL CLIENTE',day:'EL DÍA DE LA VISITA',dayDesc:'La cita figura en la agenda interna y gestión del servicio. La versión actual no garantiza avisos automáticos al móvil ni WhatsApp.',
+ truth:'Funciona sin conectar WhatsApp',truthText:'Página de servicios, solicitudes, presupuestos por reglas, aceptación, agenda, ejecución, cobros y seguimiento.',
+ notIncluded:'NO sucede automáticamente',notIncludedText:'Leer chats personales, responder por WhatsApp, enviar avisos push/SMS o captar clientes mediante un marketplace.',
+ endHeader:'Tu marca y tus canales. Tu trabajo organizado.',endExplain:'Los clientes te encuentran donde siempre. NestLocal organiza cada servicio de la solicitud al retorno; no es red social, chatbot ni solo agenda.',
+ agendaTitle:'Agenda interna + próximas acciones',agendaDesc:'Ves citas y pendientes en NestLocal. Los avisos externos necesitan un canal autorizado y funciones habilitadas.',
+ release:'VISITA GUIADA · DATOS FICTICIOS',counter:'Paso',routing:'Entrada',organization:'Después del contacto',communication:'Cómo se comunica la empresa',communicationText:'Puedes seguir usando tu WhatsApp. Comparte un enlace para que el cliente complete la solicitud. No hay que conectar los chats privados.',
+ completed:'Historial del servicio',nothingSent:'La demo no envió mensajes ni recordatorios.',
+ startWhatsApp:'Registrar solicitud manualmente',startLink:'Ver solicitud en el panel',viewFirst:'Volver a empezar con otro canal',visit:'Ver todo el proceso',days:'días',punch:'Tus clientes siguen llegando por tus canales. NestLocal organiza lo que viene después.',
+ badge:'Sin conectar WhatsApp',length:'Unos 2 minutos',
+}
+};
+const p=k=>paths[state.language]?.[k]||paths.pt[k]||k;
+const routes=['whatsapp','instagram','website'];
+
 const sectors=[
 {id:'climate',name:{pt:'Climatização',en:'Air conditioning',es:'Climatización'},service:{pt:'Higienização de 2 aparelhos split',en:'Cleaning of 2 split AC units',es:'Limpieza de 2 equipos split'},detail:{pt:'Limpeza preventiva residencial, acesso interno.',en:'Residential preventive cleaning, indoor access.',es:'Limpieza preventiva residencial, acceso interior.'},returnDays:180,amount:32000,duration:120,number:'NL-DEMO-101'},
 {id:'cleaning',name:{pt:'Limpeza especializada',en:'Specialist cleaning',es:'Limpieza especializada'},service:{pt:'Higienização de sofá de 3 lugares',en:'Three-seat sofa deep clean',es:'Limpieza de sofá de 3 plazas'},detail:{pt:'Estofado com manchas leves, avaliação de tecido.',en:'Light stains, fabric assessment.',es:'Manchas leves, revisión del tejido.'},returnDays:180,amount:24000,duration:90,number:'NL-DEMO-102'},
@@ -82,47 +169,54 @@ function track(event){ // Minimal anonymous telemetry; no identifiers, user-ente
   const payload={event,segment:state.sector?.id||'unknown',step:state.step};
   try{fetch('/api/public/demo/events',{method:'POST',credentials:'omit',headers:{'content-type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});}catch{}
 }
-function reset(){state.sector=null;state.step=0;state.slot=null;state.completed=false;render()}
+function reset(){state.sector=null;state.step=0;state.slot=null;state.completed=false;state.view='business';render()}
 const steps=['step1','step2','step3','step4','step5','step6'];
 function layout(content){
-  const progress=state.sector?Math.min(100,Math.round(state.step/6*100)):0;
-  const info='<section class="tour-overview" aria-label="'+u('whereTitle')+'"><h2>'+u('whereTitle')+'</h2><div class="tour-places">'+
-    [['customerPlace','customerDesc'],['businessPlace','businessDesc'],['channelsPlace','channelsDesc']].map(([title,body])=>
-    '<article class="tour-place"><strong>'+u(title)+'</strong><p>'+u(body)+'</p></article>').join('')+'</div></section>';
-  const faq='<section class="tour-faq" aria-label="'+u('faqTitle')+'"><h3>'+u('faqTitle')+'</h3>'+
-    [1,2,3,4,5].map(i=>'<details><summary>'+u('faq'+i)+'</summary><p>'+u('answer'+i)+'</p></details>').join('')+'</section>';
-  return '<div class="experience-wrap"><div class="intro"><span class="eyebrow">'+u('kicker')+'</span><h1>'+u('hero')+'</h1><p>'+u('sub')+'</p><p class="tour-promise">'+u('promise')+'</p></div>'+
-    info+'<div class="tour-guide"><div><span class="eyebrow">'+u('aboveFlow')+'</span><p>'+u('flows')+'</p></div><strong>'+u('bothRoles')+'</strong></div>'+
-    '<section class="experience-layout"><div class="workspace"><div class="workspace-top"><span class="scenario-label">'+t('demo')+'</span>'+
-    (state.sector?'<span class="number">'+state.sector.number+'</span>':'<span class="number">NESTLOCAL 2.0</span>')+'</div>'+
-    (state.sector?'<div class="progress-shell"><div class="progress-caption"><span>'+t('progress')+'</span><strong>'+Math.min(state.step,6)+' / 6</strong></div><div class="progress-track" role="progressbar" aria-label="'+t('progress')+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+progress+'"><i style="width:'+progress+'%"></i></div></div>':'')+
-    content+
-    '<div class="foot-actions">'+(state.sector&&state.step>1&&state.step<7?'<button class="subtle-button" data-action="back">'+t('back')+'</button>':'<span></span>')+'<button class="subtle-button" data-action="reset">'+t('reset')+'</button></div></div>'+
-    '<aside class="side"><span class="eyebrow">NESTLOCAL / EXPERIENCE</span><h2>'+t('progress')+'</h2><ol class="timeline">'+steps.map((k,i)=>'<li class="'+(state.sector&&state.step>i+1?'finished':state.sector&&state.step===i+1?'current':'')+'"><span class="timeline-dot">'+(i+1)+'</span><span>'+t(k)+'</span></li>').join('')+'</ol><p class="tour-aside-hint">'+u('guide')+'</p><p class="disclaimer">'+t('disclaimer')+'</p></aside></section>'+faq+'</div>';
+ const progress=state.sector?Math.min(100,Math.round(state.step/6*100)):0;
+ const routesUi=routes.map(id=>
+   '<button type="button" class="tour-place '+(state.entry===id?'selected':'')+'" data-entry="'+id+'" aria-pressed="'+(state.entry===id)+'">'+
+   '<span class="route-pip" aria-hidden="true"></span><strong>'+p(id)+'</strong><small>'+p(id+'Desc')+'</small></button>').join('');
+ const info=!state.sector?'<section class="tour-overview"><div class="tour-section-heading"><span class="eyebrow">01 / '+p('routing')+'</span><h2>'+p('question')+'</h2><p>'+p('hint')+'</p></div>'+
+   '<div class="tour-places">'+routesUi+'</div>'+
+   '<div class="tour-route"><span>'+p('result')+'</span><strong>'+p(state.entry+'Flow')+'</strong></div></section>':'';
+ const faq='<section class="tour-faq"><h3>'+u('faqTitle')+'</h3>'+
+  [1,2,3,4,5].map(i=>'<details><summary>'+u('faq'+i)+'</summary><p>'+u('answer'+i)+'</p></details>').join('')+'</section>';
+ const intro='<section class="intro"><div class="hero-topline"><span class="eyebrow">'+p('release')+'</span><span class="hero-timing">'+p('badge')+' · '+p('length')+'</span></div><h1>'+p('punch')+'</h1><p>'+p('jobIntro')+'</p>'+
+ '<div class="hero-process"><span>'+t('step1')+'</span><i aria-hidden="true">→</i><span>'+t('step2')+'</span><i aria-hidden="true">→</i><span>'+t('step4')+'</span><i aria-hidden="true">→</i><span>'+t('step6')+'</span></div></section>';
+ const track=state.sector?'<div class="progress-shell"><div class="progress-caption"><span>'+p('counter')+' '+Math.min(state.step,6)+' / 6</span><strong>'+v(state.sector.name)+'</strong></div><div class="progress-track" role="progressbar" aria-label="'+t('progress')+'" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+progress+'"><i style="width:'+progress+'%"></i></div></div>':'';
+ const routeHint=state.sector?'<section class="tour-route compact"><span>'+p('customerChannel')+': '+p(state.entry)+'</span><strong>'+p(state.entry+'Flow')+'</strong></section>':'';
+ const timeline=state.sector?'<aside class="journey-aside"><span class="eyebrow">'+p('organization')+'</span><ol class="timeline">'+steps.map((k,i)=>'<li class="'+(state.step>i+1?'finished':state.step===i+1?'current':'')+'"><span class="timeline-dot">'+(i+1)+'</span><span>'+t(k)+'</span></li>').join('')+'</ol><p>'+t('disclaimer')+'</p></aside>':'';
+ return '<div class="experience-wrap">'+intro+info+'<section class="experience-layout"><div class="workspace">'+
+  '<div class="workspace-top"><span class="scenario-label">'+t('demo')+'</span><span class="number">'+(state.sector?state.sector.number:'NESTLOCAL / EXPERIENCE')+'</span></div>'+
+  track+routeHint+content+'<div class="foot-actions">'+(state.sector&&state.step>1&&state.step<7?'<button class="subtle-button" data-action="back">'+t('back')+'</button>':'<span></span>')+
+  '<button class="subtle-button" data-action="reset">'+(state.sector?p('viewFirst'):t('reset'))+'</button></div></div>'+timeline+'</section>'+faq+'</div>';
 }
 function button(label,action,disabled=false){return '<button type="button" class="primary-button" data-action="'+action+'"'+(disabled?' disabled':'')+'>'+label+'<span aria-hidden="true"> →</span></button>'}
 function fact(name,value){return '<div class="fact"><span>'+name+'</span><strong>'+value+'</strong></div>'}
 function scene(){
-  const step=state.step,sector=state.sector;
-  if(!sector||step<1)return '';
-  const n=step>6?7:step;
-  const sceneCard=(role,name,text,side)=>'<article class="tour-scene-card '+side+'">'+
-    '<div class="tour-role-tag">'+role+'</div><div class="tour-screen"><div class="tour-screen-chrome">'+
-    '<span class="tour-screen-dots" aria-hidden="true">● ● ●</span><strong>'+name+'</strong></div>'+
-    '<div class="tour-screen-content"><span class="tour-screen-id">'+sector.number+'</span>'+
-    '<strong>'+v(sector.service)+'</strong><p>'+text+'</p>'+
-    (n===2?'<div class="tour-screen-price">'+money(sector.amount)+'</div>':'')+
-    (n===4&&state.slot?'<div class="tour-screen-slot">'+t(state.slot)+'</div>':'')+
-    '</div></div></article>';
-  const label='<p class="tour-example-label">'+u('appLabel')+'</p>';
-  const sides='<div class="tour-scene-grid">'+
-    sceneCard(u('customerRole'),u('customerMock'),u('scene'+n+'c'),'customer')+
-    sceneCard(u('ownerRole'),u('businessMock'),u('scene'+n+'b'),'business')+'</div>';
-  const truth='<div class="tour-responsibility"><div><span>'+u('automated')+'</span><strong>'+u('auto'+n)+'</strong></div>'+
-    '<div><span>'+u('human')+'</span><strong>'+u('human'+n)+'</strong></div></div>';
-  const closing=n===7?'<div class="tour-summary"><strong>'+u('checklist')+'</strong><ul>'+
-    [1,2,3,4,5].map(i=>'<li>'+u('check'+i)+'</li>').join('')+'</ul></div>':'';
-  return '<div class="tour-scene">'+label+sides+truth+closing+'</div>';
+ const n=Math.min(state.step,7),sector=state.sector;
+ if(!sector||!n)return '';
+ const start=n===1,link=state.entry!=='whatsapp';
+ const customerText=start?p('msg'+(state.entry==='instagram'?'Instagram':state.entry==='website'?'Website':'Whatsapp')):p('stage'+n+'Client');
+ const ownerText=start?p('ownerAction'+(state.entry==='instagram'?'Instagram':state.entry==='website'?'Website':'Whatsapp')):p('stage'+n+'Owner');
+ const customerChrome=start&&!link?'WhatsApp — '+p('accountClient'):link&&start?p('pageLink'):p('visualCustomer');
+ const make=(role,chrome,title,body,which)=>
+   '<article class="tour-scene-card '+which+'"><span class="tour-role-tag">'+role+'</span>'+
+   '<div class="tour-screen"><div class="tour-screen-chrome"><span class="tour-screen-dots" aria-hidden="true">•••</span><strong>'+chrome+'</strong></div>'+
+   '<div class="tour-screen-content"><span class="tour-screen-id">'+sector.number+'</span><strong>'+title+'</strong><p>'+body+'</p>'+
+   (n===2?'<div class="tour-screen-price">'+money(sector.amount)+'</div>':'')+
+   (n===4&&state.slot?'<div class="tour-screen-slot">'+t(state.slot)+'</div>':'')+
+   '</div></div></article>';
+ const left=make(p('visualCustomer'),customerChrome,start?p('origin'+(state.entry==='instagram'?'Instagram':state.entry==='website'?'Website':'Whatsapp')):v(sector.service),customerText,'customer');
+ const right=make(p('visualOwner'),p('dashboard'),p('stage'+n+'Owner'),ownerText,'business');
+ const switcher='<div class="tour-view-toggle"><button type="button" data-view="business" aria-pressed="'+(state.view==='business')+'">'+p('visualOwner')+'</button><button type="button" data-view="customer" aria-pressed="'+(state.view==='customer')+'">'+p('visualCustomer')+'</button></div>';
+ const scenes=switcher+'<div class="tour-scene-grid" data-mobile-view="'+state.view+'">'+left+right+'</div>';
+ const automatic=['','auto1','auto2','auto3','auto4','auto5','auto6','auto7'];
+ const manual=['','human1','human2','human3','human4','human5','human6','human7'];
+ const roles='<div class="tour-responsibility"><div><span>'+p('system')+'</span><strong>'+u(automatic[n])+'</strong></div><div><span>'+p('human')+'</span><strong>'+u(manual[n])+'</strong></div></div>';
+ const appointment=n===4?'<div class="tour-appointment"><strong>'+p('day')+'</strong><p>'+p('dayDesc')+'</p></div>':'';
+ const closing=n===7?'<div class="tour-summary"><strong>'+p('endHeader')+'</strong><p>'+p('endExplain')+'</p><div class="summary-cols"><div><b>'+p('truth')+'</b><p>'+p('truthText')+'</p></div><div><b>'+p('notIncluded')+'</b><p>'+p('notIncludedText')+'</p></div></div><p>'+p('agendaTitle')+' — '+p('agendaDesc')+'</p><small>'+p('nothingSent')+'</small></div>':'';
+ return '<div class="tour-scene"><p class="tour-example-label">'+p('release')+'</p>'+scenes+roles+appointment+closing+'</div>';
 }
 function panel(title,body){return '<section class="step-panel"><span class="step-overline">'+t('demo')+'</span><h2>'+title+'</h2>'+scene()+body+'</section>'}
 
@@ -135,7 +229,7 @@ function render(){
   if(!sector){
     content=panel(t('sectorTitle'),'<p class="subcopy">'+t('sectorHelp')+'</p><div class="sectors">'+sectors.map((s,i)=>'<button class="sector" data-sector="'+s.id+'"><span class="sector-numeral">0'+(i+1)+'</span><strong>'+v(s.name)+'</strong><span class="sector-cta">'+t('start')+' ↗</span></button>').join('')+'</div>');
   }else if(state.step===1){
-    content=panel(t('step1'),'<p class="subcopy">'+t('context')+': '+v(sector.detail)+'</p><div class="facts">'+fact(t('request'),sector.number)+fact(t('service'),v(sector.service))+fact(t('customer'),state.language==='en'?'Sample customer':state.language==='es'?'Cliente de ejemplo':'Cliente de exemplo')+fact(t('source'),t('sourceValue'))+'</div>'+button(t('action1'),'next'));
+    content=panel(t('step1'),'<p class="subcopy">'+p('ownerAction'+(state.entry==='whatsapp'?'Whatsapp':state.entry==='instagram'?'Instagram':'Website'))+'</p><p class="subcopy">'+t('context')+': '+v(sector.detail)+'</p><div class="facts">'+fact(t('request'),sector.number)+fact(t('service'),v(sector.service))+fact(t('customer'),state.language==='en'?'Sample customer':state.language==='es'?'Cliente de ejemplo':'Cliente de exemplo')+fact(t('source'),p('origin'+(state.entry==='whatsapp'?'Whatsapp':state.entry==='instagram'?'Instagram':'Website')))+'</div>'+button(state.entry==='whatsapp'?p('startWhatsApp'):p('startLink'),'next'));
   }else if(state.step===2){
     content=panel(t('step2'),'<div class="big-price"><span>'+t('price')+'</span><strong>'+money(sector.amount)+'</strong></div><div class="facts">'+fact(t('scope'),v(sector.service))+fact(t('time'),sector.duration+' min')+'</div><p class="subcopy">'+t('method')+'</p>'+button(t('action2'),'next'));
   }else if(state.step===3){
@@ -155,7 +249,11 @@ LANG.addEventListener('change',e=>{if(['pt','en','es'].includes(e.target.value))
 EL.addEventListener('change',e=>{if(e.target?.name==='slot'&&['morning','afternoon'].includes(e.target.value)){state.slot=e.target.value;render()}});
 EL.addEventListener('click',e=>{
   const sectorButton=e.target.closest('[data-sector]');
-  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;track('demo_started');render();return}
+  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;state.view='business';track('demo_started');render();return}
+  const switchButton=e.target.closest('[data-view]');
+  if(switchButton&&['customer','business'].includes(switchButton.dataset.view)){state.view=switchButton.dataset.view;render();return}
+  const entryButton=e.target.closest('[data-entry]');
+  if(entryButton&&!state.sector&&routes.includes(entryButton.dataset.entry)){state.entry=entryButton.dataset.entry;render();return}
   const action=e.target.closest('[data-action]')?.dataset.action;
   if(action==='reset')return reset();
   if(action==='back'&&state.step>1){state.step--;render();return}
