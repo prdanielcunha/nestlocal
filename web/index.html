@@ -25,7 +25,7 @@
       const launchUrl = () => {
         const target = new URL('https://www.millionsnest.com/apps/nestlocal/launch');
         const params = new URLSearchParams(location.search);
-        const allowedViews = new Set(['today','requests','customers','agenda','services','automation','page','growth']);
+        const allowedViews = new Set(['today','requests','customers','agenda','services','automation','page','growth','privacy']);
         const view = params.get('view');
         target.searchParams.set('returnTo', view && allowedViews.has(view) ? '/?view=' + encodeURIComponent(view) : '/');
         return target.toString();
