@@ -8,7 +8,7 @@ import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-l
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
-import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup } from './src/nestai.mjs';
+import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup, explainNestLocalPulse, assistNestLocalSetup, suggestNestLocalReturn } from './src/nestai.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -638,10 +638,10 @@ function diagnosticProjection(body={}){
   };
   return {monthlyQuotes,averageTicketCents:Math.round(averageTicket*100),followUpRate,whatsappShare,teamSize,needsScheduling,repeatable,manualOperation,unfollowedQuotes,recoveryAssumption,monthlyOpportunityCents,fitSignals,painSignals,fitScore:growthFitScore(fitSignals),painScore:growthPainScore(painSignals)};
 }
-async function publicGrowthRateLimit(req,key){
+async function publicGrowthRateLimit(req,key,maxPerMinute=8){
   const window=Math.floor(Date.now()/60000),ip=clean(req.headers['x-forwarded-for']||req.ip).split(',')[0];
   const ref=db.doc(`nestlocal_public_rate_limits/${hash(`${key}:${ip}:${window}`).slice(0,32)}`);
-  return db.runTransaction(async tx=>{const snap=await tx.get(ref),count=(snap.data()?.count||0)+1;if(count>8)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
+  return db.runTransaction(async tx=>{const snap=await tx.get(ref),count=(snap.data()?.count||0)+1;if(count>maxPerMinute)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
 }
 async function requireGrowthAdmin(req,res,next){
   try{const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists||inactive(user.data())||!globalRoles.has(user.data()?.systemRole))return sendError(res,403,'ACCESS_DENIED');req.growthAdmin={uid:req.identity.uid,systemRole:user.data()?.systemRole};next()}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
@@ -793,6 +793,22 @@ app.post('/api/public/growth/diagnostic/lead',async(req,res)=>{
     try{await ref.create(record)}catch(e){if(e?.code!==6&&e?.code!=='already-exists')throw e;return res.json({leadId:ref.id,created:false})}
     return res.status(201).json({leadId:ref.id,created:true});
   }catch(e){console.error('XRAY_CONSENT_FAILED',e?.code||e?.name);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Anonymous Experience metrics are coarse daily counters, never operational tenant records.
+app.post('/api/public/demo/events',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+    const {event,segment,step}=req.body||{};
+    const events=new Set(['demo_started','demo_step_completed','demo_completed','demo_to_signup']);
+    const segments=new Set(['climate','cleaning','pest','electrical','general']);
+    if(!events.has(event)||!segments.has(segment)||!Number.isSafeInteger(step)||step<1||step>7)return sendError(res,400,'INVALID_DEMO_EVENT');
+    if(Object.keys(req.body||{}).some(key=>!['event','segment','step'].includes(key)))return sendError(res,400,'DEMO_PII_NOT_ALLOWED');
+    if(!(await publicGrowthRateLimit(req,'demo_event',20)))return sendError(res,429,'RATE_LIMITED');
+    const day=new Date().toISOString().slice(0,10),ref=db.doc('nestlocal_demo_metrics/'+day+'_'+segment);
+    await ref.set({day,segment,updatedAt:admin.firestore.FieldValue.serverTimestamp(),[event]:admin.firestore.FieldValue.increment(1)},{merge:true});
+    return res.status(204).end();
+  }catch(e){console.error('DEMO_METRICS_FAILED',e?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/public/growth/diagnostic',async(req,res)=>{
@@ -1137,8 +1153,56 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId)},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Deployment-controlled staged rollout. OFF by default; never trust client-provided flags.
+function pulseFeatureEnabled(orgId){
+  if(process.env.NESTLOCAL_PULSE_V2_ENABLED==='true')return true;
+  const allowed=String(process.env.NESTLOCAL_PULSE_V2_PILOT_ORGS||'').split(',').map(x=>x.trim()).filter(Boolean);
+  return allowed.includes(orgId);
+}
+
+// Pulse feedback is tenant-scoped, audit-trailed and never executes the suggested action.
+app.get('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!pulseFeatureEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+    const snap=await db.collection(`organizations/${req.access.orgId}/nestlocal_pulse_feedback`).orderBy('updatedAt','desc').limit(100).get();
+    res.set('Cache-Control','no-store');
+    return res.json({items:snap.docs.map(d=>({actionId:d.data().actionId,outcome:d.data().outcome,until:d.data().until||'',updatedAt:d.data().updatedAt?.toDate?.().toISOString?.()||''}))});
+  }catch(e){console.error('PULSE_FEEDBACK_READ_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!pulseFeatureEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+    const actionId=clean(req.body?.actionId).slice(0,160),outcome=clean(req.body?.outcome);
+    if(!['dismiss','snooze'].includes(outcome)||! /^(finish|schedule|reschedule|execute|review|followup|collect|reactivate):[A-Za-z0-9_-]{1,128}$/.test(actionId))return sendError(res,400,'INVALID_PULSE_FEEDBACK');
+    const [type,id]=actionId.split(':'),root=`organizations/${req.access.orgId}`;
+    const kind=type==='reactivate'?'nestlocal_customers':'nestlocal_requests';
+    const source=await db.doc(root+'/'+kind+'/'+id).get();
+    if(!source.exists)return sendError(res,404,'PULSE_SOURCE_NOT_FOUND');
+    const record=source.data()||{},status=clean(record.status);
+    const valid=type==='reactivate'?Boolean(record.nextServiceDate)
+      :type==='finish'?status==='in_progress'
+      :type==='schedule'?status==='accepted'
+      :type==='reschedule'?status==='no_show'||status==='scheduled'&&record.schedule?.customerConfirmation?.status==='change_requested'
+      :type==='execute'?status==='scheduled'
+      :type==='review'?['new','reviewing'].includes(status)
+      :type==='followup'?status==='quoted'
+      :type==='collect'?status==='completed'&&['pending','partial'].includes(record.commercial?.paymentStatus||'')
+      :false;
+    if(!valid)return sendError(res,409,'PULSE_SOURCE_CHANGED');
+    const settings=await db.doc(root+'/nestlocal_settings/public').get(),timezone=validTimeZone(clean(settings.data()?.timezone))?clean(settings.data().timezone):'UTC';
+    const today=localIsoDate(timezone),until=outcome==='snooze'?addIsoDays(today,1):'';
+    const feedbackRef=db.doc(root+'/nestlocal_pulse_feedback/'+hash(actionId).slice(0,32));
+    const eventRef=db.collection(root+'/nestlocal_pulse_feedback_events').doc(),now=admin.firestore.FieldValue.serverTimestamp();
+    const batch=db.batch();
+    batch.set(feedbackRef,{actionId,outcome,until,actor:req.identity.uid,updatedAt:now},{merge:true});
+    batch.create(eventRef,{actionId,outcome,until,actor:req.identity.uid,source:{kind,id},at:now});
+    await batch.commit();
+    return res.json({ok:true,actionId,outcome,until});
+  }catch(e){console.error('PULSE_FEEDBACK_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
@@ -1376,6 +1440,9 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     const root=`organizations/${req.access.orgId}`,targetType=requestId?'request':'customer',targetId=requestId||customerId,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
     const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
     const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),maxResumeDate=addIsoDays(today,90);if(resumeOn&&(resumeOn<=today||resumeOn>maxResumeDate))return sendError(res,400,'INVALID_RESUME_DATE');const nextEligibleDate=resumeOn||addIsoDays(today,snoozeDays),resurfaceMode=resumeOn?'date':'days',assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
+    const targetEmail=clean(requestId?data.customer?.email:data.email).toLowerCase();
+    if(channel==='email'&&!validContactEmail(targetEmail))return sendError(res,409,'EMAIL_NOT_AVAILABLE');
+    if(channel==='email'&&actionType==='customer_reactivation'&&data.messaging?.consents?.maintenanceEmail?.accepted!==true)return sendError(res,409,'EMAIL_OPT_IN_REQUIRED');
     const targetPhone=requestId?phone(data.customer?.phone):phone(data.phone),whatsappEligible=actionType==='quote_followup'?data.messagingConsent?.serviceUpdates?.accepted===true:data.messaging?.consents?.maintenanceReminders?.accepted===true,experimentTargetEligible=Boolean(targetPhone)&&whatsappEligible;
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
@@ -1432,6 +1499,82 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Setup/return are draft-only assists. These server endpoints remain OFF until authorized F4 canaries pass.
+app.post('/api/organizations/:orgId/nestlocal/ai/setup-assist',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const root=`organizations/${req.access.orgId}`;
+    const [settingsSnap,services]=await Promise.all([
+      db.doc(root+'/nestlocal_settings/public').get(),
+      db.collection(root+'/nestlocal_services').limit(100).get(),
+    ]);
+    if(!settingsSnap.exists)return sendError(res,409,'SETUP_REQUIRED');
+    const settings=settingsSnap.data()||{},mode=clean(settings.communicationMode||'none');
+    const facts={businessType:clean(settings.businessType||'general').slice(0,40),
+      coverageCount:Array.isArray(settings.coverageCodes)?settings.coverageCodes.length:0,
+      serviceDraftCount:services.docs.filter(x=>x.data().published!==true).length,
+      hasReplyChannel:validContactEmail(settings.contactEmail)||phone(settings.contactPhone).length>=10||
+        mode==='manual'&&phone(settings.whatsapp).length>=10};
+    const fallback={ok:true,mode:'manual',authority:'suggestion_only',facts,
+      nextStep:'Revisar os serviços, a região atendida e um canal de resposta antes da publicação.'};
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await assistNestLocalSetup({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),...facts});
+      return res.json({ok:true,mode:'nestai',authority:'suggestion_only',suggestion,facts});
+    }catch(error){console.warn('SETUP_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));return res.json(fallback)}
+  }catch(error){console.error('SETUP_ASSIST_FAILED',error?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/ai/return-suggest',authenticate,authorize,async(req,res)=>{
+  try{
+    const customerId=safeId(req.body?.customerId);
+    if(!customerId)return sendError(res,400,'CUSTOMER_REQUIRED');
+    const customer=await db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`).get();
+    if(!customer.exists)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+    const data=customer.data()||{},dueDate=clean(data.nextServiceDate).slice(0,10);
+    const purposeConsent=data.messaging?.consents?.maintenanceReminders?.accepted===true||
+       data.messaging?.consents?.maintenanceEmail?.accepted===true;
+    if(!purposeConsent)return sendError(res,403,'PURPOSE_CONSENT_REQUIRED');
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))return sendError(res,409,'RETURN_DATE_NOT_SET');
+    const fallback={ok:true,mode:'manual',authority:'draft_only',draft:'Conferir a data de retorno e preparar um contato somente pelo canal autorizado. Nenhuma mensagem foi enviada.',send:false};
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await suggestNestLocalReturn({
+        sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),
+        serviceCategory:clean(data.lastServiceId||'service').slice(0,60),dueDate,purposeConsent,
+      });
+      return res.json({ok:true,mode:'nestai',authority:'draft_only',suggestion,send:false});
+    }catch(error){console.warn('RETURN_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));return res.json(fallback)}
+  }catch(error){console.error('RETURN_SUGGEST_FAILED',error?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/ai/pulse-explain',authenticate,authorize,async(req,res)=>{
+  const locale=clean(req.body?.locale||'pt');
+  const genericExplanation=()=>{
+    if(locale.startsWith('en'))return 'Review the recorded status and date before taking action. No contact or schedule has been changed.';
+    if(locale.startsWith('es'))return 'Revisa el estado y la fecha registrados antes de actuar. No se modificó ningún contacto ni agenda.';
+    return 'Revise o status e a data registrados antes de agir. Nenhum contato ou agendamento foi alterado.';
+  };
+  try{
+    const actionId=clean(req.body?.actionId),parts=/^(finish|schedule|reschedule|execute|review|followup|collect|reactivate):([A-Za-z0-9_-]{1,128})$/.exec(actionId);
+    if(!parts)return sendError(res,400,'INVALID_PULSE_ACTION');
+    const [,type,id]=parts,collection=type==='reactivate'?'nestlocal_customers':'nestlocal_requests';
+    const source=await db.doc(`organizations/${req.access.orgId}/${collection}/${id}`).get();
+    if(!source.exists)return sendError(res,404,'PULSE_SOURCE_NOT_FOUND');
+    const data=source.data()||{},status=clean(data.status||'due_return').slice(0,40),
+      date=clean(type==='reactivate'?data.nextServiceDate:data.schedule?.date||data.preference?.date).slice(0,10);
+    const fallback={ok:true,authority:'suggestion_only',mode:'manual',explanation:genericExplanation(),sourceIds:[id]};
+    // OFF by default: authenticated canaries, free-only router and privacy gates must certify first.
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await explainNestLocalPulse({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale,sourceId:id,status,date});
+      return res.json({ok:true,authority:'suggestion_only',mode:'nestai',suggestion,sourceIds:[id]});
+    }catch(error){
+      console.warn('PULSE_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));
+      return res.json(fallback);
+    }
+  }catch(e){console.error('PULSE_EXPLAIN_FAILED',e?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/ai/request-extract',authenticate,authorize,async(req,res)=>{
@@ -1543,14 +1686,14 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIn
 
 app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
-    if(name.length<2||customerPhone.length<10||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
+    const b=req.body||{},name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),customerEmail=clean(b.email).toLowerCase().slice(0,254),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
     const root=`organizations/${req.access.orgId}`,[settings,service]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${serviceId}`).get()]);
     if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');if(!service.exists)return sendError(res,400,'INVALID_SERVICE');
     const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
     if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
-    const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,status:'new'});
   }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');sendError(res,500,'INTERNAL_ERROR')}
 });

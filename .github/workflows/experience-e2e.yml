@@ -1,0 +1,47 @@
+name: Experience browser E2E and screenshots
+on:
+  pull_request:
+    paths:
+      - "web/experience.*"
+      - "web/entry.css"
+      - "web/live.js"
+      - "firebase.json"
+      - "scripts/e2e-experience.mjs"
+      - "scripts/e2e-public-entry.mjs"
+      - "scripts/e2e-operation-ui.mjs"
+      - ".github/workflows/experience-e2e.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install browser runtime
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Start static test server
+        run: |
+          python3 -m http.server 4173 --directory web >/tmp/nestlocal-http.log 2>&1 &
+          echo $! > /tmp/nestlocal-http.pid
+          sleep 2
+          curl --fail http://127.0.0.1:4173/experience.html >/dev/null
+      - name: Interactive E2E and screenshots
+        run: |
+          node scripts/e2e-experience.mjs
+          node scripts/e2e-public-entry.mjs
+          node scripts/e2e-operation-ui.mjs
+      - name: Archive real browser captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nestlocal-experience-responsive
+          path: artifacts/experience/
+          if-no-files-found: warn
+          retention-days: 10
