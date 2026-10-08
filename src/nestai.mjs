@@ -138,3 +138,41 @@ export async function explainNestLocalPulse(input) {
     uncertainty:result.uncertainty?String(result.uncertainty).slice(0,400):null,
     sourceIds:[sourceId]};
 }
+
+// Tasks registered centrally in NestAI F4. All consumers gate invocation server-side.
+export async function assistNestLocalSetup(input) {
+  const client=createNestLocalAiClient(input);
+  const response=await client.run({
+    task:'nestlocal.setup.assist',
+    input:{
+      businessType:String(input.businessType||'general').slice(0,40),
+      coverageCount:Number(input.coverageCount)||0,
+      serviceDraftCount:Number(input.serviceDraftCount)||0,
+      hasReplyChannel:input.hasReplyChannel===true,
+      authority:{mode:'suggestion_only',publishCatalog:false,changePrices:false,connectChannels:false},
+    },
+  });
+  const raw=typeof response.result==='string'?JSON.parse(response.result):response.result;
+  if(!raw||typeof raw.summary!=='string'||!Array.isArray(raw.suggestions)||!Array.isArray(raw.warnings))throw new Error('AI_SCHEMA_INVALID');
+  return {
+    summary:raw.summary.slice(0,500),
+    suggestions:raw.suggestions.slice(0,5).filter(x=>x&&typeof x.field==='string'&&typeof x.value==='string').map(x=>({field:x.field.slice(0,60),value:x.value.slice(0,160),reason:String(x.reason||'').slice(0,260)})),
+    warnings:raw.warnings.filter(x=>typeof x==='string').slice(0,5).map(x=>x.slice(0,260)),
+  };
+}
+export async function suggestNestLocalReturn(input) {
+  if(input.purposeConsent!==true)throw new Error('PURPOSE_CONSENT_REQUIRED');
+  const client=createNestLocalAiClient(input);
+  const response=await client.run({
+    task:'nestlocal.return.suggest',
+    input:{
+      serviceCategory:String(input.serviceCategory||'service').slice(0,60),
+      dueDate:String(input.dueDate||'').slice(0,10),
+      purposeConsent:true,
+      authority:{mode:'draft_only',sendMessage:false,changeStatus:false,reserveSchedule:false},
+    },
+  });
+  const raw=typeof response.result==='string'?JSON.parse(response.result):response.result;
+  if(!raw||typeof raw.draft!=='string'||typeof raw.consentRequired!=='boolean'||!Array.isArray(raw.warnings))throw new Error('AI_SCHEMA_INVALID');
+  return {draft:raw.draft.slice(0,1200),consentRequired:raw.consentRequired,warnings:raw.warnings.filter(x=>typeof x==='string').slice(0,5).map(x=>x.slice(0,300))};
+}
