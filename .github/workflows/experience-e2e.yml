@@ -8,6 +8,7 @@ on:
       - "firebase.json"
       - "scripts/e2e-experience.mjs"
       - "scripts/e2e-public-entry.mjs"
+      - "scripts/e2e-operation-ui.mjs"
       - ".github/workflows/experience-e2e.yml"
   workflow_dispatch:
 permissions:
@@ -35,6 +36,7 @@ jobs:
         run: |
           node scripts/e2e-experience.mjs
           node scripts/e2e-public-entry.mjs
+          node scripts/e2e-operation-ui.mjs
       - name: Archive real browser captures
         if: always()
         uses: actions/upload-artifact@v4
