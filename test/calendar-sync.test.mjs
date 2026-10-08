@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import express from 'express';
 import {buildNestLocalIcs,safeCalendarEvents,isoDayAdd} from '../src/domain/calendar.mjs';
 import {calendarAddDay,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl,renderCalendarIntro,calendarWords} from '../web/calendar.js';
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
@@ -79,4 +80,9 @@ test('UI exposes calendar subscription, individual event export and notice that 
     assert.ok(ui.includes(action),action);
   assert.match(styles,/\.calendar-connect/);
   assert.match(styles,/\.calendar-today-alert/);
+});
+
+test('Express 5 accepts the public .ics capability path without route boot errors',()=>{
+  const router=express.Router();
+  assert.doesNotThrow(()=>router.get('/api/calendar/feeds/:orgId/:uid.ics',(_req,res)=>res.status(200).end()));
 });
