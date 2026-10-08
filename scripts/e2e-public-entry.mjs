@@ -16,6 +16,9 @@ try{
     await page.route('**/api/session',route=>route.fulfill({status:401,contentType:'application/json',body:'{"error":"AUTH_REQUIRED"}'}));
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
     await page.locator('a[href="/experience"]').waitFor();
+    const promise=await page.locator('.entry-hero').textContent();
+    for(const keyword of ['WhatsApp','Instagram','NestLocal'])assert.ok(promise.includes(keyword),'first-time buyer must see '+keyword);
+    assert.ok((await page.locator('.entry-trust').textContent()).includes('WhatsApp'));
     assert.ok(await page.locator('#login').isVisible());
     assert.ok(await page.locator('a[href="/raio-x"]').isVisible());
     await safeSize(page);
