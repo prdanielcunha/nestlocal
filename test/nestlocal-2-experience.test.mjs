@@ -15,9 +15,11 @@ function fixture(){
   vm.runInContext(source,context,{filename:'experience.js'});
   return {root,lang,badge,calls,context,document:doc};
 }
-function click(root,{action,sector}){
+function click(root,{action,sector,entry,view}){
   root.listeners.click({target:{closest(selector){
     if(selector==='[data-sector]'&&sector)return {dataset:{sector}};
+    if(selector==='[data-entry]'&&entry)return {dataset:{entry}};
+    if(selector==='[data-view]'&&view)return {dataset:{view}};
     if(selector==='[data-action]'&&action)return {dataset:{action}};
     return null;
   }}});
@@ -82,31 +84,49 @@ test('Both Firebase Hosting targets expose /experience without authentication',(
   }
 });
 
-test('Experience clearly identifies customer view, business dashboard and optional messaging in 3 languages',()=>{
+test('Experience opens with a concrete customer source choice in every language',()=>{
   const f=fixture();
   for(const lang of ['pt','en','es']){
     f.lang.listeners.change({target:{value:lang}});
-    const words=vm.runInContext("explain[state.language]",f.context);
-    for(const key of ['kicker','customerPlace','businessPlace','channelsPlace','faq1','faq2','faq3','faq4','faq5','answer1','answer4','answer5']){
-      assert.ok(f.root.innerHTML.includes(words[key]),lang+' lacks '+key);
+    const p=vm.runInContext("paths[state.language]",f.context);
+    for(const key of ['question','whatsapp','instagram','website','whatsappDesc','instagramDesc','websiteDesc','dayDesc','notIncludedText']){
+      assert.ok(p[key],lang+' '+key+' missing');
     }
-    assert.match(f.root.innerHTML,/class="tour-places"/);
-    assert.match(f.root.innerHTML,/class="tour-faq"/);
+    assert.ok(f.root.innerHTML.includes(p.question));
+    for(const channel of ['whatsapp','instagram','website']){
+      assert.ok(f.root.innerHTML.includes('data-entry="'+channel+'"'));
+      click(f.root,{entry:channel});
+      assert.equal(vm.runInContext('state.entry',f.context),channel);
+      assert.ok(f.root.innerHTML.includes(p[channel+'Flow']));
+    }
+    assert.equal((f.root.innerHTML.match(/class="tour-place /g)||[]).length,3);
+    assert.equal((f.root.innerHTML.match(/<details>/g)||[]).length,5);
+  }
+});
+test('All entry channels display accurate customer/owner handoff and follow-up limitations',()=>{
+  const f=fixture();const words=vm.runInContext('paths.pt',f.context);
+  for(const channel of ['whatsapp','instagram','website']){
+    click(f.root,{entry:channel});
     click(f.root,{sector:'climate'});
+    assert.equal(vm.runInContext('state.step',f.context),1);
+    assert.ok(f.root.innerHTML.includes(words['origin'+(channel==='whatsapp'?'Whatsapp':channel==='instagram'?'Instagram':'Website')]));
     assert.equal((f.root.innerHTML.match(/tour-scene-card /g)||[]).length,2);
-    assert.ok(f.root.innerHTML.includes(words.customerRole));
-    assert.ok(f.root.innerHTML.includes(words.ownerRole));
-    assert.ok(f.root.innerHTML.includes(words.human));
-    assert.ok(f.root.innerHTML.includes(words.automated));
-    for(let step=1;step<=6;step++){
-      assert.ok(f.root.innerHTML.includes(words['scene'+step+'c']),lang+' missing customer step '+step);
-      assert.ok(f.root.innerHTML.includes(words['scene'+step+'b']),lang+' missing owner step '+step);
-      if(step===4)f.root.listeners.change({target:{name:'slot',value:'morning'}});
+    assert.ok(f.root.innerHTML.includes(words.visualOwner));
+    assert.ok(f.root.innerHTML.includes(words.visualCustomer));
+    assert.equal(vm.runInContext('state.view',f.context),'business');
+    click(f.root,{view:'customer'});
+    assert.equal(vm.runInContext('state.view',f.context),'customer');
+    assert.ok(f.root.innerHTML.includes('data-mobile-view="customer"'));
+    for(let i=1;i<=6;i++){
+      if(i===4){
+        assert.ok(f.root.innerHTML.includes(words.dayDesc),'appointment date must tell truth about notifications');
+        f.root.listeners.change({target:{name:'slot',value:'morning'}});
+      }
       click(f.root,{action:'next'});
     }
-    assert.ok(f.root.innerHTML.includes(words.scene7b));
-    assert.ok(f.root.innerHTML.includes(words.checklist));
-    for(let i=1;i<=5;i++)assert.ok(f.root.innerHTML.includes(words['check'+i]));
+    assert.ok(f.root.innerHTML.includes(words.notIncludedText),'no overclaiming automation');
+    assert.ok(f.root.innerHTML.includes(words.endHeader));
+    assert.ok(f.root.innerHTML.includes(words.nothingSent));
     click(f.root,{action:'reset'});
   }
 });
