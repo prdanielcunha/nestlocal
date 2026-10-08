@@ -169,7 +169,7 @@ function track(event){ // Minimal anonymous telemetry; no identifiers, user-ente
   const payload={event,segment:state.sector?.id||'unknown',step:state.step};
   try{fetch('/api/public/demo/events',{method:'POST',credentials:'omit',headers:{'content-type':'application/json'},body:JSON.stringify(payload),keepalive:true}).catch(()=>{});}catch{}
 }
-function reset(){state.sector=null;state.step=0;state.slot=null;state.completed=false;render()}
+function reset(){state.sector=null;state.step=0;state.slot=null;state.completed=false;state.view='business';render()}
 const steps=['step1','step2','step3','step4','step5','step6'];
 function layout(content){
  const progress=state.sector?Math.min(100,Math.round(state.step/6*100)):0;
@@ -249,7 +249,7 @@ LANG.addEventListener('change',e=>{if(['pt','en','es'].includes(e.target.value))
 EL.addEventListener('change',e=>{if(e.target?.name==='slot'&&['morning','afternoon'].includes(e.target.value)){state.slot=e.target.value;render()}});
 EL.addEventListener('click',e=>{
   const sectorButton=e.target.closest('[data-sector]');
-  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;track('demo_started');render();return}
+  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;state.view='business';track('demo_started');render();return}
   const switchButton=e.target.closest('[data-view]');
   if(switchButton&&['customer','business'].includes(switchButton.dataset.view)){state.view=switchButton.dataset.view;render();return}
   const entryButton=e.target.closest('[data-entry]');
