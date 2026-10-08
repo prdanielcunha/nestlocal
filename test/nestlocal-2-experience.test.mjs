@@ -81,3 +81,45 @@ test('Both Firebase Hosting targets expose /experience without authentication',(
     assert.ok(host.rewrites.findIndex(x=>x.source==='/experience')<host.rewrites.findIndex(x=>x.source==='**'));
   }
 });
+
+test('Experience clearly identifies customer view, business dashboard and optional messaging in 3 languages',()=>{
+  const f=fixture();
+  for(const lang of ['pt','en','es']){
+    f.lang.listeners.change({target:{value:lang}});
+    const words=vm.runInContext("explain[state.language]",f.context);
+    for(const key of ['kicker','customerPlace','businessPlace','channelsPlace','faq1','faq2','faq3','faq4','faq5','answer1','answer4','answer5']){
+      assert.ok(f.root.innerHTML.includes(words[key]),lang+' lacks '+key);
+    }
+    assert.match(f.root.innerHTML,/class="tour-places"/);
+    assert.match(f.root.innerHTML,/class="tour-faq"/);
+    click(f.root,{sector:'climate'});
+    assert.equal((f.root.innerHTML.match(/tour-scene-card /g)||[]).length,2);
+    assert.ok(f.root.innerHTML.includes(words.customerRole));
+    assert.ok(f.root.innerHTML.includes(words.ownerRole));
+    assert.ok(f.root.innerHTML.includes(words.human));
+    assert.ok(f.root.innerHTML.includes(words.automated));
+    for(let step=1;step<=6;step++){
+      assert.ok(f.root.innerHTML.includes(words['scene'+step+'c']),lang+' missing customer step '+step);
+      assert.ok(f.root.innerHTML.includes(words['scene'+step+'b']),lang+' missing owner step '+step);
+      if(step===4)f.root.listeners.change({target:{name:'slot',value:'morning'}});
+      click(f.root,{action:'next'});
+    }
+    assert.ok(f.root.innerHTML.includes(words.scene7b));
+    assert.ok(f.root.innerHTML.includes(words.checklist));
+    for(let i=1;i<=5;i++)assert.ok(f.root.innerHTML.includes(words['check'+i]));
+    click(f.root,{action:'reset'});
+  }
+});
+test('Experience shows where the request lives without pretending to read WhatsApp or to send messages',()=>{
+  const f=fixture();
+  const text=vm.runInContext("explain.pt",f.context);
+  assert.match(text.answer2,/Pedidos/);
+  assert.match(text.answer1,/não envia nada/);
+  assert.match(text.answer4,/consentimento/);
+  assert.match(text.answer5,/pagamento/);
+  assert.equal(f.calls.length,0,'no telemetry until demo starts');
+  click(f.root,{sector:'general'});
+  assert.equal(f.calls.length,1,'one anonymous event after user interaction');
+  assert.equal(JSON.parse(f.calls[0].options.body).segment,'general');
+  assert.equal(f.calls.every(x=>x.options.credentials==='omit'),true);
+});

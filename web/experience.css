@@ -80,3 +80,55 @@ button:focus-visible,a:focus-visible,select:focus-visible,input:focus-visible{ou
 @media(max-width:480px){.site-head{padding:12px 16px}.brand{font-size:18px;gap:8px}.brand-icon{width:38px;height:38px}.demo-pill{font-size:10px;padding:5px 8px}.top-right{gap:7px}.top-right select{min-width:58px;padding:0 6px}.experience-wrap{padding:28px 14px 60px}.intro h1{margin:11px 0 14px}.workspace,.side{border-radius:16px}.workspace-top{padding:12px 16px;min-height:65px}.sectors,.facts,.slot-picker{grid-template-columns:minmax(0,1fr)}.sector{min-height:105px;padding:15px 17px}.step-panel{min-height:340px;padding:26px 19px}.progress-shell{padding:16px 19px 0}.fact{padding:13px 15px}.number{font-size:10px}.site-foot{padding:20px 16px}}
 @media(max-width:350px){.brand small{display:none}.site-head .demo-pill{display:none}.brand{font-size:17px}.brand-icon{width:34px;height:34px}.timeline li{flex-basis:90px}.intro h1{font-size:2rem}}
 @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* Experience 3 — teach the actual product instead of presenting an abstract wizard */
+.experience-wrap .intro{max-width:1080px}
+.experience-wrap .intro h1{max-width:18ch;font-size:clamp(2.25rem,5.2vw,4.9rem)}
+.experience-wrap .intro>p{max-width:76ch}
+.tour-promise{font-size:14px!important;font-weight:700;color:#155b45!important;margin-top:20px!important;border-left:3px solid #3c9d73;padding-left:14px}
+.tour-overview{margin:0 0 22px;background:#fff;border:1px solid var(--line);border-radius:20px;padding:clamp(19px,3vw,29px)}
+.tour-overview h2{letter-spacing:-.045em;line-height:1.2;font-size:clamp(1.3rem,2.6vw,2rem);margin:0 0 19px}
+.tour-places{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.tour-place{background:#f8fbf9;border:1px solid #dde9e1;border-radius:13px;padding:20px;min-width:0}
+.tour-place strong{font-size:15px;letter-spacing:-.015em;line-height:1.3;display:block;color:#103b2f}
+.tour-place p{font-size:13px;line-height:1.65;color:#50635a;margin:10px 0 0}
+.tour-guide{display:flex;justify-content:space-between;align-items:center;gap:24px;border-radius:16px;background:#ebf3ee;border:1px solid #c9dfd2;padding:17px 22px;margin-bottom:19px}
+.tour-guide p{margin:3px 0 0;font-weight:750;font-size:14px;letter-spacing:-.012em;color:#0f3a2a}
+.tour-guide>strong{font-size:13px;color:#245a47;font-weight:650;max-width:25ch}
+.tour-scene{width:100%;max-width:100%;margin:16px 0 22px}
+.tour-example-label{font-size:10px;font-weight:750;letter-spacing:.11em;color:#547b68;margin:0 0 10px;text-transform:uppercase}
+.tour-scene-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:stretch}
+.tour-scene-card{min-width:0;border-radius:13px;padding:13px;background:#f6f9f7;border:1px solid #d6e6dd}
+.tour-scene-card.business{background:#f0f8f4;border-color:#bcdcc9}
+.tour-role-tag{font-size:11px;font-weight:800;letter-spacing:.09em;color:#246e51;margin:0 0 10px;line-height:1.4}
+.tour-screen{border:1px solid #d3dfd8;border-radius:10px;background:#fff;box-shadow:0 3px 13px rgba(13,51,35,.035);overflow:hidden;height:calc(100% - 25px);min-height:177px}
+.tour-screen-chrome{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;background:#edf3ef;border-bottom:1px solid #dce7df}
+.tour-scene-card.business .tour-screen-chrome{background:#153f32;color:#fff;border-color:#153f32}
+.tour-screen-chrome strong{font-size:10px;text-align:right;line-height:1.25;overflow-wrap:anywhere}
+.tour-screen-dots{font-size:8px;white-space:nowrap;letter-spacing:.08em;color:#73a18a}
+.tour-screen-content{display:flex;flex-direction:column;gap:9px;padding:14px}
+.tour-screen-id{font-size:10px;color:#527568;letter-spacing:.04em;font-weight:700}
+.tour-screen-content strong{font-size:13px;line-height:1.35;overflow-wrap:anywhere}
+.tour-screen-content p{font-size:12px;line-height:1.65;color:#53665e;margin:0;overflow-wrap:anywhere}
+.tour-screen-price{font-weight:800;color:#145640;font-size:19px;letter-spacing:-.04em}
+.tour-screen-slot{font-size:12px;font-weight:700;color:#145640;border-radius:8px;background:#dff1e6;padding:8px 11px}
+.tour-responsibility{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:11px}
+.tour-responsibility>div{padding:11px 14px;border-radius:10px;border:1px solid #dce8e0;display:grid;gap:4px;min-width:0}
+.tour-responsibility span{font-size:10px;color:#416e55;letter-spacing:.06em;font-weight:800}
+.tour-responsibility strong{font-size:12px;line-height:1.5;font-weight:650;overflow-wrap:anywhere}
+.tour-responsibility>div:last-child{background:#fffcf5;border-color:#ece2c9}
+.tour-responsibility>div:last-child span{color:#836433}
+.tour-summary{border:1px solid #bddcca;background:#f2f9f3;border-radius:13px;padding:17px 21px;margin-top:14px}
+.tour-summary>strong{font-size:12px;letter-spacing:.07em;color:#1b5a42}
+.tour-summary ul{padding-left:20px;margin:12px 0 0;display:grid;gap:5px}
+.tour-summary li{font-size:13px;color:#214837;line-height:1.55}
+.tour-aside-hint{font-size:12px;color:#3b6252;line-height:1.65;padding-top:14px;border-top:1px solid #d9e6df}
+.tour-faq{margin:34px 0 0;padding:clamp(20px,3vw,30px);border-radius:18px;background:#fff;border:1px solid #dae6de}
+.tour-faq h3{font-size:clamp(1.4rem,2.7vw,2rem);letter-spacing:-.04em;margin:0 0 20px}
+.tour-faq details{border-top:1px solid #dce7e1;padding:0 2px}
+.tour-faq summary{font-size:15px;font-weight:700;cursor:pointer;padding:17px 6px;min-height:55px;color:#163d2f}
+.tour-faq details p{font-size:14px;color:#53675d;line-height:1.75;margin:0 0 18px;padding:0 25px 0 6px;max-width:85ch}
+@media(max-width:1050px){.tour-places{grid-template-columns:repeat(2,minmax(0,1fr))}.tour-place:last-child{grid-column:1/-1}}
+@media(max-width:920px){.tour-aside-hint{display:none}.tour-guide{flex-direction:column;align-items:flex-start;gap:8px}.tour-guide>strong{max-width:unset}}
+@media(max-width:600px){.tour-overview{border-radius:15px}.tour-places{display:flex;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:thin;padding-bottom:8px}.tour-place{flex:0 0 87%;scroll-snap-align:start;padding:15px}.tour-place:last-child{grid-column:auto}.tour-guide{padding:16px}.tour-scene-grid{grid-template-columns:1fr}.tour-responsibility{grid-template-columns:1fr}.tour-scene-card{padding:12px}.tour-screen{min-height:0;height:auto}.tour-screen-content{padding:12px}.tour-faq{margin-top:20px}.tour-faq summary{line-height:1.45}}
+@media(max-width:350px){.tour-screen-content strong{font-size:12px}.tour-guide p{font-size:12px}.tour-role-tag{font-size:10px}}
