@@ -1080,6 +1080,45 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+// Pulse feedback is tenant-scoped, audit-trailed and never executes the suggested action.
+app.get('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
+  try{
+    const snap=await db.collection(`organizations/${req.access.orgId}/nestlocal_pulse_feedback`).orderBy('updatedAt','desc').limit(100).get();
+    res.set('Cache-Control','no-store');
+    return res.json({items:snap.docs.map(d=>({actionId:d.data().actionId,outcome:d.data().outcome,until:d.data().until||'',updatedAt:d.data().updatedAt?.toDate?.().toISOString?.()||''}))});
+  }catch(e){console.error('PULSE_FEEDBACK_READ_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
+  try{
+    const actionId=clean(req.body?.actionId).slice(0,160),outcome=clean(req.body?.outcome);
+    if(!['dismiss','snooze'].includes(outcome)||! /^(finish|schedule|reschedule|execute|review|followup|collect|reactivate):[A-Za-z0-9_-]{1,128}$/.test(actionId))return sendError(res,400,'INVALID_PULSE_FEEDBACK');
+    const [type,id]=actionId.split(':'),root=`organizations/${req.access.orgId}`;
+    const kind=type==='reactivate'?'nestlocal_customers':'nestlocal_requests';
+    const source=await db.doc(root+'/'+kind+'/'+id).get();
+    if(!source.exists)return sendError(res,404,'PULSE_SOURCE_NOT_FOUND');
+    const record=source.data()||{},status=clean(record.status);
+    const valid=type==='reactivate'?Boolean(record.nextServiceDate)
+      :type==='finish'?status==='in_progress'
+      :type==='schedule'?status==='accepted'
+      :type==='reschedule'?status==='no_show'||status==='scheduled'&&record.schedule?.customerConfirmation?.status==='change_requested'
+      :type==='execute'?status==='scheduled'
+      :type==='review'?['new','reviewing'].includes(status)
+      :type==='followup'?status==='quoted'
+      :type==='collect'?status==='completed'&&['pending','partial'].includes(record.commercial?.paymentStatus||'')
+      :false;
+    if(!valid)return sendError(res,409,'PULSE_SOURCE_CHANGED');
+    const settings=await db.doc(root+'/nestlocal_settings/public').get(),timezone=validTimeZone(clean(settings.data()?.timezone))?clean(settings.data().timezone):'UTC';
+    const today=localIsoDate(timezone),until=outcome==='snooze'?addIsoDays(today,1):'';
+    const feedbackRef=db.doc(root+'/nestlocal_pulse_feedback/'+hash(actionId).slice(0,32));
+    const eventRef=db.collection(root+'/nestlocal_pulse_feedback_events').doc(),now=admin.firestore.FieldValue.serverTimestamp();
+    const batch=db.batch();
+    batch.set(feedbackRef,{actionId,outcome,until,actor:req.identity.uid,updatedAt:now},{merge:true});
+    batch.create(eventRef,{actionId,outcome,until,actor:req.identity.uid,source:{kind,id},at:now});
+    await batch.commit();
+    return res.json({ok:true,actionId,outcome,until});
+  }catch(e){console.error('PULSE_FEEDBACK_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
