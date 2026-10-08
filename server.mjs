@@ -8,7 +8,7 @@ import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-l
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
 import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
-import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup } from './src/nestai.mjs';
+import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup, explainNestLocalPulse } from './src/nestai.mjs';
 
 admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest',storageBucket:process.env.FIREBASE_STORAGE_BUCKET||'millionsnest.firebasestorage.app'});
 const db=admin.firestore();
@@ -1309,6 +1309,34 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     });
     res.status(response.idempotent?200:201).json(response);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+app.post('/api/organizations/:orgId/nestlocal/ai/pulse-explain',authenticate,authorize,async(req,res)=>{
+  const locale=clean(req.body?.locale||'pt');
+  const genericExplanation=()=>{
+    if(locale.startsWith('en'))return 'Review the recorded status and date before taking action. No contact or schedule has been changed.';
+    if(locale.startsWith('es'))return 'Revisa el estado y la fecha registrados antes de actuar. No se modificó ningún contacto ni agenda.';
+    return 'Revise o status e a data registrados antes de agir. Nenhum contato ou agendamento foi alterado.';
+  };
+  try{
+    const actionId=clean(req.body?.actionId),parts=/^(finish|schedule|reschedule|execute|review|followup|collect|reactivate):([A-Za-z0-9_-]{1,128})$/.exec(actionId);
+    if(!parts)return sendError(res,400,'INVALID_PULSE_ACTION');
+    const [,type,id]=parts,collection=type==='reactivate'?'nestlocal_customers':'nestlocal_requests';
+    const source=await db.doc(`organizations/${req.access.orgId}/${collection}/${id}`).get();
+    if(!source.exists)return sendError(res,404,'PULSE_SOURCE_NOT_FOUND');
+    const data=source.data()||{},status=clean(data.status||'due_return').slice(0,40),
+      date=clean(type==='reactivate'?data.nextServiceDate:data.schedule?.date||data.preference?.date).slice(0,10);
+    const fallback={ok:true,authority:'suggestion_only',mode:'manual',explanation:genericExplanation(),sourceIds:[id]};
+    // OFF by default: authenticated canaries, free-only router and privacy gates must certify first.
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    try{
+      const suggestion=await explainNestLocalPulse({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale,sourceId:id,status,date});
+      return res.json({ok:true,authority:'suggestion_only',mode:'nestai',suggestion,sourceIds:[id]});
+    }catch(error){
+      console.warn('PULSE_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));
+      return res.json(fallback);
+    }
+  }catch(e){console.error('PULSE_EXPLAIN_FAILED',e?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/ai/request-extract',authenticate,authorize,async(req,res)=>{
