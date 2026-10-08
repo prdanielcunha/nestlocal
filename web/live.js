@@ -207,6 +207,27 @@ Object.assign(D.pt,{radarWhyNow:'Por que agora',radarTrendUp:'Subiu',radarTrendD
 Object.assign(D.en,{radarWhyNow:'Why now',radarTrendUp:'Moved up',radarTrendDown:'Moved down',radarTrendStable:'Stable',radarCopyMessage:'Copy message',radarWhatsappLog:'WhatsApp + log',radarContactLogged:'Contact logged',radarContacts:'contacts',radarLastContact:'Last contact',radarLearningFeedback:'Learning feedback',radarLearningFeedbackHelp:'Real conversion data is published to a separate sheet for future Radar rounds without giving the app permission to edit the original source.',radarPublishLearning:'Publish learning',radarPublishing:'Publishing…',radarFeedbackLast:'Last publish',radarFeedbackNever:'Not published yet',attackReason_follow_up_due:'follow-up due',attackReason_very_high_fit:'very high fit',attackReason_high_fit:'high fit',attackReason_confirmed_pain:'confirmed pain',attackReason_pain_hypothesis:'relevant hypothesis',attackReason_recently_verified:'recent data',attackReason_segment_performance:'segment performing better'});
 Object.assign(D.es,{radarWhyNow:'Por qué ahora',radarTrendUp:'Subió',radarTrendDown:'Bajó',radarTrendStable:'Estable',radarCopyMessage:'Copiar mensaje',radarWhatsappLog:'WhatsApp + registrar',radarContactLogged:'Contacto registrado',radarContacts:'contactos',radarLastContact:'Último contacto',radarLearningFeedback:'Feedback de aprendizaje',radarLearningFeedbackHelp:'Las conversiones reales se publican en una hoja separada para alimentar futuras rondas del Radar sin permitir que la app edite la fuente original.',radarPublishLearning:'Publicar aprendizaje',radarPublishing:'Publicando…',radarFeedbackLast:'Última publicación',radarFeedbackNever:'Aún no publicado',attackReason_follow_up_due:'seguimiento vencido',attackReason_very_high_fit:'fit muy alto',attackReason_high_fit:'fit alto',attackReason_confirmed_pain:'dolor confirmado',attackReason_pain_hypothesis:'hipótesis relevante',attackReason_recently_verified:'datos recientes',attackReason_segment_performance:'segmento con mejor desempeño'});
 
+Object.assign(D.pt,{
+  readOnlyTitle:'Seu trabalho continua aqui',
+  readOnlyText:'O período de avaliação terminou. Você pode consultar seus dados; novos pedidos, edições, IA e automações ficam pausados até a assinatura.',
+  readOnlyAction:'Gerenciar assinatura',
+  readOnlyUntil:'Avaliação encerrada',
+  readOnlyRequest:'Operação indisponível no modo consulta. Seus dados foram preservados.',
+});
+Object.assign(D.en,{
+  readOnlyTitle:'Your work is still here',
+  readOnlyText:'The trial has ended. You can review your data; new requests, edits, AI and automations are paused until you subscribe.',
+  readOnlyAction:'Manage subscription',
+  readOnlyUntil:'Trial ended',
+  readOnlyRequest:'This action is unavailable in read-only mode. Your data is preserved.',
+});
+Object.assign(D.es,{
+  readOnlyTitle:'Tu trabajo sigue aquí',
+  readOnlyText:'La prueba terminó. Puedes consultar tus datos; nuevas solicitudes, cambios, IA y automatizaciones están pausados hasta suscribirte.',
+  readOnlyAction:'Gestionar suscripción',
+  readOnlyUntil:'Prueba finalizada',
+  readOnlyRequest:'Esta acción no está disponible en modo consulta. Tus datos se conservan.',
+});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -238,6 +259,11 @@ const toast=m=>{const e=document.createElement('div');e.className='toast';e.text
 function withTimeout(promise,ms,code='TIMEOUT'){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms)})]).finally(()=>clearTimeout(timer))}
 const nestLocalAuthHeaders=()=>S.sessionToken&&/^nl_[A-Za-z0-9_-]{43}$/.test(S.sessionToken)?{Authorization:`Bearer ${S.sessionToken}`}:{};
 async function api(path,opt={}){
+  const method=String(opt.method||'GET').toUpperCase();
+  const isNestLocalBusinessRoute=/^\/api\/organizations\/[^/]+\/nestlocal(?:\/|$)/.test(String(path));
+  const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
+  if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
+     !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
   const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(path,{...request,credentials:'same-origin',cache:request.cache||'no-store',signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...nestLocalAuthHeaders(),...(request.headers||{})}});
@@ -756,7 +782,9 @@ function shell(){
     C=`<article class="card auth-recovery"><span class="eyebrow">NestLocal</span><h2>Operação aberta</h2><p>Uma seção do painel não conseguiu ser exibida. Você pode continuar usando o menu enquanto ela é recuperada.</p></article>`;
   }
   const e=S.data?.entitlement||{},usage=e.usage||{},limit=e.limits?.requestsPerMonth,orgs=Array.isArray(S.session?.organizations)?S.session.organizations:[];
-  return `<div class="shell"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${e.status==='trialing'?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header><section class="page active">${C}</section></main><nav class="bottom-nav">${nav()}</nav>${actionAssistantOverlay()}</div>`;
+  const readOnly=e.readOnly===true;
+  const banner=readOnly?`<aside class="read-only-banner" role="status"><div><span class="eyebrow">${esc(t('readOnlyUntil'))}</span><strong>${esc(t('readOnlyTitle'))}</strong><p>${esc(t('readOnlyText'))}</p></div><a class="button primary" href="https://www.millionsnest.com/dashboard/billing">${esc(t('readOnlyAction'))}</a></aside>`:'';
+  return `<div class="shell${readOnly?' is-readonly':''}"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${['trialing','internal_trial_active'].includes(e.status)?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header>${banner}<section class="page active">${C}</section></main><nav class="bottom-nav">${nav()}</nav>${actionAssistantOverlay()}</div>`;
 }
 function reviewPublicView(){
   if(S.loading)return loading();
@@ -806,6 +834,24 @@ function render(){
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
   document.documentElement.dataset.nlBuild='20260929-render-fix-10';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
+  if(S.data?.entitlement?.readOnly===true){
+    const page=document.querySelector('.shell .page');
+    if(page&&S.page!=='privacy'){
+      // Keep navigation, filtering, exporting and copy controls usable.
+      // Mutating forms are visually disabled; backend remains authoritative.
+      page.querySelectorAll('form').forEach(form=>{
+        form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
+        form.setAttribute('aria-label',t('readOnlyRequest'));
+      });
+      page.querySelectorAll('button').forEach(button=>{
+        const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
+        if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
+          button.disabled=true;
+          button.title=t('readOnlyRequest');
+        }
+      });
+    }
+  }
 }
 async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
 async function syncGrowthRadar(){

@@ -2,6 +2,7 @@ import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import {GoogleAuth} from 'google-auth-library';
+import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
@@ -18,9 +19,10 @@ app.disable('x-powered-by');
 app.use(express.json({limit:'128kb'}));
 
 const globalRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
+const hubTrialV3Enabled=process.env.NESTLOCAL_HUB_ENTITLEMENT_V3_ENABLED==='true';
 const activeSubscriptionStatuses=new Set(['active','trialing']);
 const paymentIssueStatuses=new Set(['past_due','unpaid','incomplete','paused']);
-const planLimits={essential:{users:1,requestsPerMonth:100},growth:{users:3,requestsPerMonth:500},pro:{users:10,requestsPerMonth:5000}};
+const planLimits={essential:{users:1,requestsPerMonth:isUnlimitedRequestsEnabled()?null:100},growth:{users:3,requestsPerMonth:isUnlimitedRequestsEnabled()?null:500},pro:{users:10,requestsPerMonth:isUnlimitedRequestsEnabled()?null:5000}};
 const servicePlaybooks={
   climate:{services:[
     {id:'higienizacao-split',name:'Higienização de split',nameI18n:{pt:'Higienização de split',en:'Split AC cleaning',es:'Limpieza de aire split'},mode:'fixed',unitPriceCents:15000,durationMinutes:60,maxQuantity:4,equipmentTypes:['split'],requiresEquipmentType:true,requiresSafeAccess:true,intakeFields:[{id:'brandModel',labelI18n:{pt:'Marca / modelo',en:'Brand / model',es:'Marca / modelo'},type:'text',required:false,maxLength:120},{id:'capacityBtu',labelI18n:{pt:'Capacidade (BTUs)',en:'Capacity (BTU)',es:'Capacidad (BTU)'},type:'number',required:false,maxLength:8}],inclusions:'Higienização padrão do aparelho',exclusions:'Reparo, peças e acesso especial'},
@@ -117,7 +119,7 @@ function catalogReadiness(settings,services=[]){
   return{ready:issues.length===0,issues:[...new Set(issues)]};
 }
 
-function nestLocalEntitlement(orgData={},subscriptionData={}){
+function nestLocalEntitlement(orgData={},subscriptionData={},internalTrial=null,organizationId=''){
   const appSubscription=subscriptionData?.apps?.nestlocal||null,orgApp=orgData?.apps?.nestlocal||null;
   const subscriptionStatus=clean(appSubscription?.status).toLowerCase(),organizationAppStatus=clean(orgApp?.status).toLowerCase();
   const planValue=clean(appSubscription?.plan||orgApp?.plan).toLowerCase(),plan=['essential','growth','pro'].includes(planValue)?planValue:'essential';
@@ -126,15 +128,21 @@ function nestLocalEntitlement(orgData={},subscriptionData={}){
   else if(paymentIssueStatuses.has(subscriptionStatus))reason='SUBSCRIPTION_PAYMENT_REQUIRED';
   else if(!activeSubscriptionStatuses.has(subscriptionStatus))reason='SUBSCRIPTION_INACTIVE';
   else if(!activeSubscriptionStatuses.has(organizationAppStatus))reason='ENTITLEMENT_INACTIVE';
-  return {active:!reason,reason,subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
+  // Existing paid/Stripe-trial clients retain the exact previous access decision.
+  if(!reason)return {active:true,reason:'',readOnly:false,canWrite:true,canUseAI:true,
+    source:'legacy_stripe',subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
+  // Only server-issued Hub trial documents, explicitly enabled, may grant new rights.
+  const internal=hubTrialV3Enabled?resolveHubNestLocalTrial(internalTrial,orgApp,Date.now(),organizationId):null;
+  if(internal)return {...internal,reason:'',organizationAppStatus,plan,limits:planLimits[plan]};
+  return {active:false,readOnly:false,canWrite:false,canUseAI:false,reason,subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
 }
-function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc}={}){
+function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc,trialDoc,organizationId}={}){
   if(!userDoc?.exists)return{accessible:false,reason:'USER_NOT_FOUND'};
   const userData=userDoc.data()||{};if(inactive(userData))return{accessible:false,reason:'USER_INACTIVE'};
   if(!orgDoc?.exists)return{accessible:false,reason:'ORGANIZATION_NOT_FOUND'};
   const orgData=orgDoc.data()||{};if(inactive(orgData))return{accessible:false,reason:'ORGANIZATION_INACTIVE'};
-  const systemRole=clean(userData.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole),entitlement=nestLocalEntitlement(orgData,subscriptionDoc?.data?.()||{});
-  if(administrative)return{accessible:true,reason:'',systemRole,administrative:true,organizationRole:'',member:null,entitlement:{...entitlement,active:true,reason:'',plan:'pro',limits:planLimits.pro,status:'administrative'}};
+  const systemRole=clean(userData.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole),entitlement=nestLocalEntitlement(orgData,subscriptionDoc?.data?.()||{},trialDoc?.data?.()||null,organizationId);
+  if(administrative)return{accessible:true,reason:'',systemRole,administrative:true,organizationRole:'',member:null,entitlement:{...entitlement,active:true,reason:'',readOnly:false,canWrite:true,canUseAI:true,plan:'pro',limits:planLimits.pro,status:'administrative'}};
   if(!memberDoc?.exists)return{accessible:false,reason:'MEMBERSHIP_NOT_FOUND',systemRole,administrative:false,entitlement};
   const member=memberDoc.data()||{};if(inactive(member))return{accessible:false,reason:'MEMBERSHIP_INACTIVE',systemRole,administrative:false,member,entitlement};
   const organizationRole=clean(member.role||member.organizationRole||'member').toLowerCase(),owner=organizationRole==='owner',memberAccess=member.appAccess?.nestlocal;
@@ -209,27 +217,40 @@ async function authorize(req,res,next){
   const orgId=clean(req.params.orgId);if(!orgId)return sendError(res,400,'ORGANIZATION_REQUIRED');
   if(String(req.identity?.sessionKind||'').startsWith('nestlocal_')&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH');
   try{
-    const [user,org,member,subscription]=await Promise.all([
+    const [user,org,member,subscription,trial]=await Promise.all([
       db.doc(`users/${req.identity.uid}`).get(),
       db.doc(`organizations/${orgId}`).get(),
       db.doc(`organizations/${orgId}/members/${req.identity.uid}`).get(),
-      db.doc(`subscriptions/${orgId}`).get()
+      db.doc(`subscriptions/${orgId}`).get(),
+      hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${orgId}`).get():Promise.resolve(null)
     ]);
-    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription});
+    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial,organizationId:orgId});
     if(!access.accessible){
       const status=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE','ENTITLEMENT_INACTIVE'].includes(access.reason)?402:access.reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?402:403;
       return sendError(res,status,access.reason||'ACCESS_DENIED');
     }
-    req.access={orgId,org:{id:org.id,...org.data()},systemRole:access.systemRole,member:access.member||null,entitlement:{status:access.administrative?'administrative':access.entitlement.subscriptionStatus,plan:access.administrative?'pro':access.entitlement.plan,limits:access.administrative?planLimits.pro:access.entitlement.limits,administrative:access.administrative}};
+    // Consent revocation must remain available even when the commercial
+    // product is read-only; privacy rights are not subscription benefits.
+    const isPrivacyRevoke=req.method==='POST'&&req.path.endsWith('/nestlocal/privacy/revoke');
+    if(access.entitlement?.readOnly && !isPrivacyRevoke &&
+       !canNestLocalMutate(access.entitlement,req.method)) {
+      // Billing and LGPD management live in the Hub; no mutation jobs continue here.
+      return sendError(res,402,'TRIAL_EXPIRED_READ_ONLY');
+    }
+    req.access={orgId,org:{id:org.id,...org.data()},systemRole:access.systemRole,member:access.member||null,entitlement:{status:access.administrative?'administrative':access.entitlement.subscriptionStatus,plan:access.administrative?'pro':access.entitlement.plan,limits:access.administrative?planLimits.pro:access.entitlement.limits,administrative:access.administrative,readOnly:access.entitlement.readOnly===true,canWrite:access.entitlement.canWrite!==false,canUseAI:access.entitlement.canUseAI!==false,source:access.entitlement.source||'legacy_stripe',trialEndsAt:access.entitlement.endsAt||null}};
     next();
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 }
 
 async function getPublicEntitlement(orgId){
-  const [subscription,org]=await Promise.all([db.doc(`subscriptions/${orgId}`).get(),db.doc(`organizations/${orgId}`).get()]);
+  const [subscription,org,trial]=await Promise.all([
+    db.doc(`subscriptions/${orgId}`).get(),db.doc(`organizations/${orgId}`).get(),
+    hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${orgId}`).get():Promise.resolve(null)
+  ]);
   if(!org.exists||inactive(org.data()))return{active:false,status:'inactive',plan:'essential',limits:planLimits.essential};
-  const entitlement=nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{});
-  return{active:entitlement.active,status:entitlement.reason||entitlement.subscriptionStatus,plan:entitlement.plan,limits:entitlement.limits};
+  const entitlement=nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null,orgId);
+  // Public forms must stop accepting new business operations after trial expiration.
+  return{active:entitlement.active&&!entitlement.readOnly,status:entitlement.reason||entitlement.subscriptionStatus,plan:entitlement.plan,limits:entitlement.limits};
 }
 
 async function resolveOrganization(storeSlug){
@@ -812,6 +833,25 @@ const xrayPublicProjection = p => ({
   monthlyOpportunityCents:p.monthlyOpportunityCents,recoveryAssumption:p.recoveryAssumption,
   methodology:'Estimativa indicativa: orçamentos sem acompanhamento × 15% de hipótese de recuperação × ticket médio informado. Não é previsão de receita.'
 });
+
+// Explicitly stop public state-changing work for an expired Hub trial.
+// Marketing demo/growth routes do not belong to any merchant and are unaffected.
+app.use('/api/public',async(req,res,next)=>{
+  if(!hubTrialV3Enabled||['GET','HEAD','OPTIONS'].includes(req.method))return next();
+  const path=String(req.path||'');
+  if(!/^\/(stores|requests|reviews)\//.test(path))return next();
+  try{
+    let orgId='';
+    const match=path.match(/^\/stores\/([^/]+)\/requests$/);
+    if(match){const org=await resolveOrganization(match[1]);orgId=org?.id||'';}
+    else orgId=safeId(clean(req.query?.token).split('.')[0]);
+    if(!orgId)return next(); // Handler rejects invalid tenant/token independently.
+    const entitlement=await getPublicEntitlement(orgId);
+    if(!entitlement.active)return sendError(res,402,'STORE_SUBSCRIPTION_INACTIVE');
+    next();
+  }catch(e){console.error('[PUBLIC_ENTITLEMENT_CHECK]',e);return sendError(res,503,'ENTITLEMENT_CHECK_UNAVAILABLE');}
+});
+
 app.post('/api/public/growth/diagnostic/preview',async(req,res)=>{
   res.set('Cache-Control','no-store');
   try{
@@ -1061,7 +1101,7 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
     const result=quote({catalog:{organizationId:org.id,version:clean(settings.catalogVersion),status:'published',currency:'BRL',validForMinutes:Number(settings.validForMinutes||30),coverageCodes:settings.coverageCodes||[],services},request:{serviceId,quantity,coverageCode,equipmentType:clean(body.equipmentType),safeAccess:body.safeAccess===true},now:new Date()});
     const publicToken=`${org.id}.${token()}`;const requestRef=db.collection(`organizations/${org.id}/nestlocal_requests`).doc();const customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28);
     const record={organizationId:org.id,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city:clean(body.city).slice(0,80),coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType:clean(body.equipmentType).slice(0,40),safeAccess:body.safeAccess===true,intake,note:clean(body.note).slice(0,1000),status:'new',quote:{...result,reasons:[...result.reasons]},trackingTokenHash:hash(publicToken),trackingTokenHashes:[hash(publicToken)],consent:{accepted:true,version:'pilot-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},messagingConsent:{serviceUpdates:{accepted:serviceUpdatesOptIn,businessName:settings.businessName||org.name,version:'whatsapp-service-2026-09',acceptedAt:serviceUpdatesOptIn?admin.firestore.Timestamp.now():null},maintenanceReminders:{accepted:maintenanceOptIn,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:maintenanceOptIn?admin.firestore.Timestamp.now():null}},source:'public_store',createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    const monthId=localIsoDate(orgTimeZone).slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,email:customerEmail,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    const monthId=localIsoDate(orgTimeZone).slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,email:customerEmail,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,trackingToken:publicToken,outcome:result.outcome,quote:{currency:result.currency,totalCents:result.totalCents,expiresAt:result.expiresAt,reasons:[...result.reasons]}});
   }catch(e){console.error(e);sendError(res,e?.message==='PLAN_REQUEST_LIMIT'?429:e instanceof TypeError?409:500,e?.message==='PLAN_REQUEST_LIMIT'?'PLAN_REQUEST_LIMIT':e instanceof TypeError?'QUOTE_UNAVAILABLE':'INTERNAL_ERROR')}
 });
@@ -1072,7 +1112,10 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     const root=`organizations/${orgId}`,[doc,settingsSnap]=await Promise.all([db.doc(`${root}/nestlocal_requests/${id}`).get(),db.doc(`${root}/nestlocal_settings/public`).get()]);
     if(!doc.exists||!trackingTokenValid(doc.data(),t))return sendError(res,404,'NOT_FOUND');
     const d=doc.data(),settings=settingsSnap.data()||{},displayTotalCents=Number.isSafeInteger(Number(d.commercial?.finalAmountCents))?Number(d.commercial.finalAmountCents):Number.isSafeInteger(Number(d.quote?.totalCents))?Number(d.quote.totalCents):null,paidCents=Math.max(0,Number(d.commercial?.amountPaidCents||0)),balanceCents=displayTotalCents===null?null:Math.max(0,displayTotalCents-paidCents);
-    const canDecide=!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    // A customer may still track an old request after a trial expires, but
+    // actions must not be advertised when writes are blocked.
+    const storeEntitlement=await getPublicEntitlement(orgId);
+    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
       id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
@@ -1184,14 +1227,15 @@ app.get('/api/session',authenticate,async(req,res)=>{
       ids=[...new Set(ids)];
     }
     const docs=await Promise.all(ids.map(async id=>{
-      const [org,member,subscription]=await Promise.all([
+      const [org,member,subscription,trial]=await Promise.all([
         db.doc(`organizations/${id}`).get(),
         db.doc(`organizations/${id}/members/${req.identity.uid}`).get(),
-        db.doc(`subscriptions/${id}`).get()
+        db.doc(`subscriptions/${id}`).get(),
+        hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${id}`).get():Promise.resolve(null)
       ]);
       if(!org.exists||inactive(org.data()))return null;
-      const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription}),ent=access.entitlement||nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{});
-      return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:access.accessible,status:access.administrative?'administrative':ent.subscriptionStatus||'',organizationAppStatus:ent.organizationAppStatus||'',plan:access.administrative?'pro':ent.plan,limits:access.administrative?planLimits.pro:ent.limits,reason:access.reason||'',administrative:access.administrative===true,organizationRole:access.organizationRole||''}};
+      const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial,organizationId:id}),ent=access.entitlement||nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null,id);
+      return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:access.accessible,readOnly:ent.readOnly===true,canWrite:ent.canWrite!==false,status:access.administrative?'administrative':ent.subscriptionStatus||'',organizationAppStatus:ent.organizationAppStatus||'',plan:access.administrative?'pro':ent.plan,limits:access.administrative?planLimits.pro:ent.limits,reason:access.reason||'',administrative:access.administrative===true,organizationRole:access.organizationRole||''}};
     }));
     const organizations=docs.filter(Boolean);
     res.json({user:{uid:req.identity.uid,displayName:data.displayName||req.identity.name||'',systemRole:systemRole||'user'},organizations,eligibleOrganizationCount:organizations.filter(x=>x.nestlocal?.access).length});
@@ -1756,7 +1800,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
     const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
     if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
     const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,status:'new'});
   }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');sendError(res,500,'INTERNAL_ERROR')}
 });
