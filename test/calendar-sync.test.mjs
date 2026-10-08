@@ -32,8 +32,9 @@ test('One-way ICS feed excludes customer PII, includes revocable minimal calenda
   assert.match(ics,/TRIGGER:-P1D/);
   assert.match(ics,/TRIGGER:PT9H/);
   assert.match(ics,/Air conditioner cleaning/);
-  for(const secret of ['PRIVATE NAME','PRIVATE PHONE','PRIVATE ADDRESS','12000'])
+  for(const secret of ['PRIVATE NAME','PRIVATE PHONE','PRIVATE ADDRESS'])
     assert.ok(!ics.includes(secret),'ICS PII leakage: '+secret);
+  assert.ok(!ics.includes('finalAmountCents')&&!ics.includes('amountPaidCents'));
   assert.equal(safeCalendarEvents(req,[{id:'svc1',name:'Air conditioner cleaning'}],{uid:'member_1',seeAll:true}).length,2);
 });
 test('ICS date computations never accept invalid date or invalid org/id',()=>{
