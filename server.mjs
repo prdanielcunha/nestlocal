@@ -1153,13 +1153,21 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId)},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
+
+// Deployment-controlled staged rollout. OFF by default; never trust client-provided flags.
+function pulseFeatureEnabled(orgId){
+  if(process.env.NESTLOCAL_PULSE_V2_ENABLED==='true')return true;
+  const allowed=String(process.env.NESTLOCAL_PULSE_V2_PILOT_ORGS||'').split(',').map(x=>x.trim()).filter(Boolean);
+  return allowed.includes(orgId);
+}
 
 // Pulse feedback is tenant-scoped, audit-trailed and never executes the suggested action.
 app.get('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
   try{
+    if(!pulseFeatureEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
     const snap=await db.collection(`organizations/${req.access.orgId}/nestlocal_pulse_feedback`).orderBy('updatedAt','desc').limit(100).get();
     res.set('Cache-Control','no-store');
     return res.json({items:snap.docs.map(d=>({actionId:d.data().actionId,outcome:d.data().outcome,until:d.data().until||'',updatedAt:d.data().updatedAt?.toDate?.().toISOString?.()||''}))});
@@ -1167,6 +1175,7 @@ app.get('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,author
 });
 app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,authorize,async(req,res)=>{
   try{
+    if(!pulseFeatureEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
     const actionId=clean(req.body?.actionId).slice(0,160),outcome=clean(req.body?.outcome);
     if(!['dismiss','snooze'].includes(outcome)||! /^(finish|schedule|reschedule|execute|review|followup|collect|reactivate):[A-Za-z0-9_-]{1,128}$/.test(actionId))return sendError(res,400,'INVALID_PULSE_FEEDBACK');
     const [type,id]=actionId.split(':'),root=`organizations/${req.access.orgId}`;
