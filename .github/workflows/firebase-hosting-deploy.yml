@@ -239,3 +239,31 @@ jobs:
 
           fetch_until_contains https://nestlocal.web.app/guided-experiment.js /tmp/nestlocal-alias-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction'
+
+          # NestLocal 2.0 release attestation. Checks the *live* custom domain, not repository files.
+          fetch_until_contains https://nestlocal.millionsnest.com/experience /tmp/nestlocal-2-experience.html \
+            'id="experienceRoot"' 'src="/experience.js"' 'Demonstração fictícia'
+          fetch_until_contains https://nestlocal.millionsnest.com/experience.js /tmp/nestlocal-2-experience.js \
+            'demo_started' 'demo_step_completed' 'demo_completed' 'credentials:'
+          fetch_until_contains https://nestlocal.millionsnest.com/pulse.js /tmp/nestlocal-2-pulse.js \
+            'buildPulseSnapshot' 'sourceRefs' 'renderPulse'
+          fetch_until_contains https://nestlocal.millionsnest.com/entry.css /tmp/nestlocal-2-entry.css \
+            '.entry-landing' '.entry-hero'
+          fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-2-live.js \
+            'entryCopy' 'pulseTodayCard' 'trustStartFields' 'diagnostic/preview' 'diagnostic/lead'
+          fetch_until_contains https://nestlocal.web.app/experience /tmp/nestlocal-2-alias-experience.html \
+            'id="experienceRoot"' 'src="/experience.js"'
+
+          # Public endpoints must reject personal payloads and not leak tenant data.
+          demo_status="$(curl --silent --show-error -o /tmp/nestlocal-2-demo-rejection.json \
+            -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            --data '{"event":"demo_started","segment":"climate","step":1,"phone":"12345678900"}' \
+            https://nestlocal.millionsnest.com/api/public/demo/events)"
+          test "$demo_status" = "400"
+          jq -e '.error == "DEMO_PII_NOT_ALLOWED"' /tmp/nestlocal-2-demo-rejection.json >/dev/null
+
+          pulse_status="$(curl --silent --show-error -o /tmp/nestlocal-2-pulse-rejection.json \
+            -w '%{http_code}' -X GET \
+            https://nestlocal.millionsnest.com/api/organizations/nestlocal-release-smoke/nestlocal/pulse/feedback)"
+          test "$pulse_status" = "401"
+          echo "NESTLOCAL_2_LIVE_PUBLIC_AND_AUTH_BOUNDARY_OK sha=$GITHUB_SHA"
