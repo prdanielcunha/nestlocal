@@ -31,3 +31,7 @@
 @media(max-width:860px){.entry-hero{grid-template-columns:minmax(0,1fr)}.entry-visual{min-height:0}.entry-hero-copy h1{max-width:18ch}}
 @media(max-width:430px){.entry-header{min-height:72px}.entry-hero{padding-top:25px;gap:32px}.entry-hero-copy h1{font-size:clamp(2.55rem,12vw,4rem)}.entry-actions{flex-direction:column}.entry-actions .button{width:100%;min-height:50px}.entry-visual{border-radius:17px;padding:24px}.entry-trust{align-items:flex-start;flex-direction:column;padding:19px 23px;gap:12px}.entry-footer{font-size:12px}.entry-hero-copy>p{line-height:1.65}}
 @media(prefers-reduced-motion:reduce){.entry-landing *{transition:none!important;animation:none!important}}
+/* Narrow-screen safety: long localized editorial headlines must wrap, never widen viewport. */
+.entry-hero-copy,.entry-visual,.entry-hero{min-width:0}
+.entry-hero-copy h1,.entry-visual h2{overflow-wrap:anywhere;hyphens:auto}
+@media(max-width:350px){.entry-hero-copy h1{font-size:clamp(2.2rem,10vw,2.55rem)}.entry-header{gap:8px;padding-inline:14px}.entry-header .brand{font-size:19px}}
