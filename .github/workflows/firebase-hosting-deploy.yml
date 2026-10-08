@@ -266,4 +266,19 @@ jobs:
             -w '%{http_code}' -X GET \
             https://nestlocal.millionsnest.com/api/organizations/nestlocal-release-smoke/nestlocal/pulse/feedback)"
           test "$pulse_status" = "401"
+
+          # Calendar release: published client module, reject unauthenticated calendar mutation,
+          # reject invalid capability URLs. Never generate live tokens or modify tenant data.
+          fetch_until_contains https://nestlocal.millionsnest.com/calendar.js /tmp/nestlocal-calendar.js \
+            'calendarDigest' 'makeCalendarIcs' 'makeGoogleCalendarUrl' 'renderCalendarIntro'
+          calendar_code="$(curl --silent --show-error -o /tmp/calendar-deny.json \
+            -w '%{http_code}' -X POST -H 'content-type: application/json' --data '{}' \
+            https://nestlocal.millionsnest.com/api/organizations/nestlocal-release-smoke/nestlocal/calendar/feed)"
+          test "$calendar_code" = "401"
+          jq -e '.error == "AUTH_REQUIRED"' /tmp/calendar-deny.json >/dev/null
+          feed_code="$(curl --silent --show-error -o /tmp/calendar-capability-deny.json \
+            -w '%{http_code}' 'https://nestlocal.millionsnest.com/api/calendar/feeds/nestlocal-release-smoke/test-user.ics?key=invalid')"
+          test "$feed_code" = "404"
+          echo "NESTLOCAL_CALENDAR_PUBLIC_SECURITY_SMOKE_OK"
+
           echo "NESTLOCAL_2_LIVE_PUBLIC_AND_AUTH_BOUNDARY_OK sha=$GITHUB_SHA"
