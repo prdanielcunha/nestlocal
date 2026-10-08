@@ -119,7 +119,7 @@ function catalogReadiness(settings,services=[]){
   return{ready:issues.length===0,issues:[...new Set(issues)]};
 }
 
-function nestLocalEntitlement(orgData={},subscriptionData={},internalTrial=null){
+function nestLocalEntitlement(orgData={},subscriptionData={},internalTrial=null,organizationId=''){
   const appSubscription=subscriptionData?.apps?.nestlocal||null,orgApp=orgData?.apps?.nestlocal||null;
   const subscriptionStatus=clean(appSubscription?.status).toLowerCase(),organizationAppStatus=clean(orgApp?.status).toLowerCase();
   const planValue=clean(appSubscription?.plan||orgApp?.plan).toLowerCase(),plan=['essential','growth','pro'].includes(planValue)?planValue:'essential';
@@ -132,17 +132,17 @@ function nestLocalEntitlement(orgData={},subscriptionData={},internalTrial=null)
   if(!reason)return {active:true,reason:'',readOnly:false,canWrite:true,canUseAI:true,
     source:'legacy_stripe',subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
   // Only server-issued Hub trial documents, explicitly enabled, may grant new rights.
-  const internal=hubTrialV3Enabled?resolveHubNestLocalTrial(internalTrial,orgApp):null;
+  const internal=hubTrialV3Enabled?resolveHubNestLocalTrial(internalTrial,orgApp,Date.now(),organizationId):null;
   if(internal)return {...internal,reason:'',organizationAppStatus,plan,limits:planLimits[plan]};
   return {active:false,readOnly:false,canWrite:false,canUseAI:false,reason,subscriptionStatus,organizationAppStatus,plan,limits:planLimits[plan]};
 }
-function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc,trialDoc}={}){
+function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc,trialDoc,organizationId}={}){
   if(!userDoc?.exists)return{accessible:false,reason:'USER_NOT_FOUND'};
   const userData=userDoc.data()||{};if(inactive(userData))return{accessible:false,reason:'USER_INACTIVE'};
   if(!orgDoc?.exists)return{accessible:false,reason:'ORGANIZATION_NOT_FOUND'};
   const orgData=orgDoc.data()||{};if(inactive(orgData))return{accessible:false,reason:'ORGANIZATION_INACTIVE'};
-  const systemRole=clean(userData.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole),entitlement=nestLocalEntitlement(orgData,subscriptionDoc?.data?.()||{},trialDoc?.data?.()||null);
-  if(administrative)return{accessible:true,reason:'',systemRole,administrative:true,organizationRole:'',member:null,entitlement:{...entitlement,active:true,reason:'',plan:'pro',limits:planLimits.pro,status:'administrative'}};
+  const systemRole=clean(userData.systemRole).toLowerCase(),administrative=globalRoles.has(systemRole),entitlement=nestLocalEntitlement(orgData,subscriptionDoc?.data?.()||{},trialDoc?.data?.()||null,organizationId);
+  if(administrative)return{accessible:true,reason:'',systemRole,administrative:true,organizationRole:'',member:null,entitlement:{...entitlement,active:true,reason:'',readOnly:false,canWrite:true,canUseAI:true,plan:'pro',limits:planLimits.pro,status:'administrative'}};
   if(!memberDoc?.exists)return{accessible:false,reason:'MEMBERSHIP_NOT_FOUND',systemRole,administrative:false,entitlement};
   const member=memberDoc.data()||{};if(inactive(member))return{accessible:false,reason:'MEMBERSHIP_INACTIVE',systemRole,administrative:false,member,entitlement};
   const organizationRole=clean(member.role||member.organizationRole||'member').toLowerCase(),owner=organizationRole==='owner',memberAccess=member.appAccess?.nestlocal;
@@ -224,7 +224,7 @@ async function authorize(req,res,next){
       db.doc(`subscriptions/${orgId}`).get(),
       hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${orgId}`).get():Promise.resolve(null)
     ]);
-    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial});
+    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial,organizationId:orgId});
     if(!access.accessible){
       const status=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE','ENTITLEMENT_INACTIVE'].includes(access.reason)?402:access.reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?402:403;
       return sendError(res,status,access.reason||'ACCESS_DENIED');
@@ -244,7 +244,7 @@ async function getPublicEntitlement(orgId){
     hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${orgId}`).get():Promise.resolve(null)
   ]);
   if(!org.exists||inactive(org.data()))return{active:false,status:'inactive',plan:'essential',limits:planLimits.essential};
-  const entitlement=nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null);
+  const entitlement=nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null,orgId);
   // Public forms must stop accepting new business operations after trial expiration.
   return{active:entitlement.active&&!entitlement.readOnly,status:entitlement.reason||entitlement.subscriptionStatus,plan:entitlement.plan,limits:entitlement.limits};
 }
@@ -1227,7 +1227,7 @@ app.get('/api/session',authenticate,async(req,res)=>{
         hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${id}`).get():Promise.resolve(null)
       ]);
       if(!org.exists||inactive(org.data()))return null;
-      const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial}),ent=access.entitlement||nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null);
+      const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription,trialDoc:trial,organizationId:id}),ent=access.entitlement||nestLocalEntitlement(org.data()||{},subscription.exists?subscription.data()||{}:{},trial?.data?.()||null,id);
       return{id:org.id,name:org.data().name||org.id,slug:org.data().slug||'',nestlocal:{access:access.accessible,readOnly:ent.readOnly===true,canWrite:ent.canWrite!==false,status:access.administrative?'administrative':ent.subscriptionStatus||'',organizationAppStatus:ent.organizationAppStatus||'',plan:access.administrative?'pro':ent.plan,limits:access.administrative?planLimits.pro:ent.limits,reason:access.reason||'',administrative:access.administrative===true,organizationRole:access.organizationRole||''}};
     }));
     const organizations=docs.filter(Boolean);
