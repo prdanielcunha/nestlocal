@@ -249,7 +249,24 @@ async function api(path,opt={}){
 }
 async function openPhoto(path){const r=await fetch(path,{credentials:'same-origin',cache:'no-store',headers:nestLocalAuthHeaders()});if(!r.ok)throw Error(`HTTP_${r.status}`);const u=URL.createObjectURL(await r.blob());window.open(u,'_blank','noopener,noreferrer');setTimeout(()=>URL.revokeObjectURL(u),60000)}
 const brand=()=>`<div class="brand"><span class="brandmark">N</span>NestLocal</div>`;
-function login(){return `<main class="login-shell premium-login"><section class="login-card">${brand()}<span class="eyebrow">AI Revenue & Service OS</span><h1>${t('welcome')}</h1><p>${t('loginHelp')}</p><div class="login-proof"><span>Orçamentos em minutos</span><span>Pedidos organizados</span><span>7 dias grátis</span></div><button class="button primary login-button" id="login">${t('login')}</button><a class="button login-button" href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_growth_monthly">${t('loginPricing')}</a><a class="xray-login-link" href="/raio-x">${t('xrayCta')}</a><small class="login-trust">Login seguro pelo Google · cobrança gerenciada no MillionsNest</small>${lang()}</section></main>`}
+const entryCopy={
+pt:{hero:'Menos tempo administrando. Mais serviços acontecendo.',sub:'Pedidos, propostas, agenda e retorno num só fluxo. Comece sem WhatsApp — ou descubra como funciona antes mesmo de criar uma conta.',demo:'Experimentar sem cadastrar',login:'Entrar na minha empresa',xray:'Calcular meu Raio-X',eyebrow:'O sistema operacional para quem presta serviços',trust:'Você controla seus canais',noconnect:'Usar sem WhatsApp',manual:'Usar link manual',later:'Conectar oficialmente depois',flow:'Do primeiro pedido ao próximo serviço',one:'Receba a solicitação',two:'Apresente o orçamento',three:'Organize a execução',four:'Prepare o próximo contato',small:'Sem contato obrigatório para testar. Sem cartão na demonstração. Todos os exemplos são fictícios.',plans:'Ver planos'},
+en:{hero:'Less time on admin. More services delivered.',sub:'Requests, quotes, schedules and follow-ups in one flow. Start without WhatsApp, or see how it works before creating an account.',demo:'Try without signing up',login:'Access my business',xray:'Calculate my business diagnostic',eyebrow:'The operating system for local service businesses',trust:'You control your channels',noconnect:'Use without WhatsApp',manual:'Use a manual link',later:'Connect officially later',flow:'From first request to next service',one:'Receive requests',two:'Prepare quotes',three:'Schedule the work',four:'Prepare your next contact',small:'No contact details needed for the demo. No card. All scenarios are fictional.',plans:'View plans'},
+es:{hero:'Menos tiempo administrando. Más servicios realizados.',sub:'Solicitudes, presupuestos, agenda y retorno en un solo flujo. Empieza sin WhatsApp o comprueba el valor antes de crear una cuenta.',demo:'Probar sin registrarse',login:'Entrar a mi empresa',xray:'Calcular mi diagnóstico',eyebrow:'El sistema operativo para servicios locales',trust:'Tú controlas tus canales',noconnect:'Usar sin WhatsApp',manual:'Usar enlace manual',later:'Conectar oficialmente después',flow:'De la primera solicitud al próximo servicio',one:'Recibir solicitudes',two:'Preparar presupuestos',three:'Programar el trabajo',four:'Preparar el próximo contacto',small:'Sin datos de contacto ni tarjeta para probar. Todos los escenarios son ficticios.',plans:'Ver planes'}
+};
+function login(){
+  const c=entryCopy[S.lang]||entryCopy.pt;
+  return '<main class="entry-landing"><div class="entry-header">'+brand()+'<div class="entry-header-right">'+lang()+'</div></div>'+
+    '<section class="entry-hero"><div class="entry-hero-copy"><span class="eyebrow">'+c.eyebrow+'</span><h1>'+c.hero+'</h1><p>'+c.sub+'</p>'+
+    '<div class="entry-actions"><a class="button primary entry-main-cta" href="/experience">'+c.demo+' ↗</a>'+
+    '<button class="button entry-login-cta" id="login">'+c.login+'</button></div>'+
+    '<a class="entry-xray-link" href="/raio-x">'+c.xray+' ↗</a><small class="entry-trust-line">'+c.small+'</small></div>'+
+    '<aside class="entry-visual"><div class="entry-visual-label">NESTLOCAL <span> / SERVICE OS</span></div>'+
+    '<h2>'+c.flow+'</h2><div class="entry-flow">'+[c.one,c.two,c.three,c.four].map((x,i)=>'<div class="entry-flow-row"><span>0'+(i+1)+'</span><strong>'+x+'</strong><i aria-hidden="true">↗</i></div>').join('')+'</div>'+
+    '<div class="entry-visual-footer"><span>'+c.trust+'</span><strong>TRUSTSTART</strong></div></aside></section>'+
+    '<section class="entry-trust"><span>'+c.noconnect+'</span><span>'+c.manual+'</span><span>'+c.later+'</span></section>'+
+    '<footer class="entry-footer"><span>MillionsNest · NestLocal</span><a href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_growth_monthly">'+c.plans+'</a></footer></main>';
+}
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
 const sessionIssueText=code=>code==='USER_NOT_FOUND'?t('userNotFoundHelp'):t('sessionProblemHelp');
 function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20260929-render-fix-10</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
@@ -868,7 +885,7 @@ async function startAuthBootstrap(){
     }
     const loaded=await loadSession();
     if(loaded)return;
-    if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)){setAuthStage('hub_redirect');redirectToMillionsNest();return}
+    if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)){if(S.error==='AUTH_REQUIRED'&&!storageGet(sessionStorage,'nl_auth_started_at')){setAuthStage('public_landing');S.error='';S.loading=false;render();return}setAuthStage('hub_redirect');redirectToMillionsNest();return}
   }catch(e){
     console.error('[NESTLOCAL_BOOT_FATAL]',e);
     S.loading=false;S.user=null;S.session=null;S.data=null;S.error=e?.message||'AUTH_BOOT_FAILED';setAuthStage('boot_error');render();
