@@ -31,3 +31,23 @@ test('Fair-use feature flag defaults to OFF; never implicitly enables unlimited 
   assert.equal(isUnlimitedRequestsEnabled({NESTLOCAL_FAIR_USE_V2_ENABLED:'true'}),true);
   assert.equal(isUnlimitedRequestsEnabled({NESTLOCAL_FAIR_USE_V2_ENABLED:'false'}),false);
 });
+
+test('Hub manual extension adds at most seven calendar days; expired accounts require paid checkout',()=>{
+  const start=Date.parse('2026-10-08T12:00:00Z'),baseEnd=start+TRIAL_DURATION_MS,day=86_400_000;
+  const grant={appId:'nestlocal',organizationId:'org-A',source:'hub_internal_trial',
+    status:'active',consumed:true,grantVersion:2,
+    beginsAt:{toMillis:()=>start},expiresAt:{toMillis:()=>baseEnd},
+    extensionCount:1,extensionDays:7,extensionEndsAt:{toMillis:()=>baseEnd+7*day}};
+  const extended=resolveHubNestLocalTrial(grant,{status:'trialing'},baseEnd+1,'org-A');
+  assert.equal(extended?.readOnly,false);
+  assert.equal(extended?.endsAt,new Date(baseEnd+7*day).toISOString());
+  assert.equal(canNestLocalMutate(extended,'POST'),true);
+  const expired=resolveHubNestLocalTrial(grant,{status:'trialing'},baseEnd+7*day,'org-A');
+  assert.equal(expired?.readOnly,true);
+  assert.equal(canNestLocalMutate(expired,'POST'),false);
+  assert.equal(canNestLocalMutate(expired,'GET'),true);
+  assert.equal(resolveHubNestLocalTrial({...grant,extensionDays:8},{status:'trialing'},baseEnd+1,'org-A'),null);
+  assert.equal(resolveHubNestLocalTrial({...grant,extensionEndsAt:{toMillis:()=>baseEnd+8*day}},
+    {status:'trialing'},baseEnd+1,'org-A'),null);
+  assert.equal(resolveHubNestLocalTrial({...grant,extensionCount:2},{status:'trialing'},baseEnd+1,'org-A'),null);
+});
