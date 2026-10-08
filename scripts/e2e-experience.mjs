@@ -30,9 +30,11 @@ try{
       await page.locator('[data-sector="'+segment+'"]').click();
       assert.equal(await page.locator('.tour-scene-card').count(),2,'must show customer and business perspectives');
       assert.equal(await page.locator('.tour-responsibility>div').count(),2,'automatic vs human decisions');
-      await page.locator('[data-view="customer"]').click();
-      assert.equal(await page.locator('.tour-scene-grid').getAttribute('data-mobile-view'),'customer');
-      await page.locator('[data-view="business"]').click();
+      if(width<=700){
+        await page.locator('[data-view="customer"]').click();
+        assert.equal(await page.locator('.tour-scene-grid').getAttribute('data-mobile-view'),'customer');
+        await page.locator('[data-view="business"]').click();
+      }
 
       for(let i=0;i<3;i++)await page.locator('[data-action="next"]').click();
       assert.equal(await page.locator('[data-action="next"]').isDisabled(),true,'cannot schedule without slot');
