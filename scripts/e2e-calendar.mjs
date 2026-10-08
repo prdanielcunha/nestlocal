@@ -55,7 +55,7 @@ try{
     await page.locator('[data-calendar-feed-revoke]').waitFor();
     page.once('dialog',dialog=>dialog.accept());
     await page.locator('[data-calendar-feed-revoke]').click();
-    await page.locator('[data-calendar-feed-create]').waitFor();
+    assert.equal(await page.locator('[data-calendar-feed-create]').count(),1);
     assert.deepEqual(calls,['create','revoke']);
     assert.deepEqual(errors,[],JSON.stringify(errors));
     await page.screenshot({path:'artifacts/experience/calendar-'+width+'.png',fullPage:true});
