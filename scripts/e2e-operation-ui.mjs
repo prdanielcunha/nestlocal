@@ -47,7 +47,7 @@ try{
     assert.equal(feedback.length,1);
     await page.locator('.pulse2-empty').waitFor();
     await page.screenshot({path:'artifacts/experience/pulse-snoozed-'+width+'.png',fullPage:true});
-    await page.locator('button[data-nav="privacy"]').first().click();
+    await page.locator(width<=980?'.bottom-nav button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
     await page.locator('.privacy-center').waitFor();
     assert.ok((await page.locator('.privacy-center').textContent()).includes('example')===false,'contact email should not leak into privacy center');
     await page.screenshot({path:'artifacts/experience/privacy-'+width+'.png',fullPage:true});
