@@ -1178,6 +1178,56 @@ app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,as
   if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
 });
 
+// Privacy Center: no provider credentials, no raw contact details in audit records.
+app.get('/api/organizations/:orgId/nestlocal/privacy/permissions',authenticate,authorize,async(req,res)=>{
+  try{
+    const snap=await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get();
+    if(!snap.exists)return sendError(res,404,'SETUP_REQUIRED');
+    const settings=snap.data()||{},mode=clean(settings.communicationMode||'none');
+    res.set('Cache-Control','no-store');
+    return res.json({communicationMode:mode,manualLink:{active:mode==='manual'&&phone(settings.whatsapp).length>=10,canRevoke:true},
+      official:{connected:settings.messaging?.connected===true,managedBy:'MillionsNest Connect',disconnectAvailable:false},
+      responseChannels:{email:validContactEmail(settings.contactEmail),phone:phone(settings.contactPhone).length>=10},
+      trustSetupVersion:Number(settings.trustSetupVersion||0),published:settings.published===true});
+  }catch(e){console.error('PRIVACY_READ_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/privacy/revoke',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const purpose=clean(req.body?.purpose);
+    if(!['manual_link','contact_email','contact_phone'].includes(purpose))return sendError(res,400,'INVALID_REVOCATION_PURPOSE');
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(root+'/nestlocal_settings/public'),eventRef=db.collection(root+'/nestlocal_privacy_events').doc();
+    let changed=false;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists)throw new TypeError('SETUP_REQUIRED');
+      const data=snap.data()||{},currentMode=clean(data.communicationMode||'none');
+      const updated={
+        communicationMode:purpose==='manual_link'?'none':currentMode,
+        contactEmail:purpose==='contact_email'?'':clean(data.contactEmail),
+        contactPhone:purpose==='contact_phone'?'':phone(data.contactPhone),
+        trustSetupVersion:2,
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+      const mode=updated.communicationMode;
+      const responsePossible=validContactEmail(updated.contactEmail)||phone(updated.contactPhone).length>=10||
+        mode==='manual'&&phone(data.whatsapp).length>=10||
+        mode==='official'&&data.messaging?.connected===true;
+      if(data.published===true&&!responsePossible)throw new TypeError('RESPONSE_CHANNEL_REQUIRED');
+      changed=(purpose==='manual_link'&&currentMode==='manual')||
+        (purpose==='contact_email'&&Boolean(data.contactEmail))||
+        (purpose==='contact_phone'&&Boolean(data.contactPhone));
+      if(!changed)return;
+      tx.set(ref,updated,{merge:true});
+      tx.create(eventRef,{purpose,event:'revoked',actor:req.identity.uid,at:admin.firestore.FieldValue.serverTimestamp()});
+    });
+    return res.json({ok:true,purpose,revoked:changed});
+  }catch(e){
+    if(['SETUP_REQUIRED','RESPONSE_CHANNEL_REQUIRED'].includes(e?.message))return sendError(res,e.message==='SETUP_REQUIRED'?404:409,e.message);
+    console.error('PRIVACY_REVOKE_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')
+  }
+});
+
 app.put('/api/organizations/:orgId/nestlocal/payment-settings',authenticate,authorize,async(req,res)=>{
   try{
     if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
