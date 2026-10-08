@@ -10,6 +10,7 @@ try{
     page.on('pageerror',error=>errors.push(error.message));
     const fakeEpoch=Math.floor((Date.now()-72*3600000)/1000);
     const sample={
+      features:{pulseV2:true},
       organization:{id:'demo_org',name:'Prestador de exemplo'},
       entitlement:{plan:'essential',status:'active',limits:{requestsPerMonth:100,users:1},usage:{requests:1},seats:{used:1,limit:1}},
       settings:{businessName:'Prestador de exemplo',slug:'prestador-exemplo',communicationMode:'none',contactEmail:'example@example.test',contactPhone:'',whatsapp:'',published:false,timezone:'America/Sao_Paulo',coverageCodes:['centro'],capacity:{workingDays:[],windows:[]},messaging:{connected:false}},
