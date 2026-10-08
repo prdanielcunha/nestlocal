@@ -1,6 +1,7 @@
 
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {buildPulseSnapshot,renderPulse} from './pulse.js';
+import {renderCalendarIntro,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl,cw} from './calendar.js';
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
@@ -28,7 +29,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -459,9 +460,33 @@ function pulseTodayCard(actions){
   return renderPulse({snapshot,t:key=>x[key]||t(key),esc,money});
 }
 
+function calendarAlertStrip(){
+  if(!S.data?.requests)return '';
+  const d=calendarDigest(S.data.requests,organizationDateIso());
+  const c=key=>cw(S.lang,key);
+  if(!d.today.length&&!d.tomorrow.length)return '';
+  const summary=d.today.length?' '+d.today.length+' '+c('today'):'';
+  const tomorrow=d.tomorrow.length?' '+d.tomorrow.length+' '+c('tomorrow'):'';
+  return '<article class="card calendar-today-alert"><div><span class="eyebrow">NESTLOCAL / AGENDA</span><h2>'+c('title')+'</h2>'+
+    '<p class="help">'+summary+(summary&&tomorrow?' · ':'')+tomorrow+'</p><p class="help">'+c('noPush')+'</p></div>'+
+    '<button class="button primary small" data-action-page="agenda">'+t('agenda')+' →</button></article>';
+}
+function calendarRequest(r){
+  const service=(S.data?.services||[]).find(x=>x.id===r.serviceId);
+  return {service:service?.name||'Serviço'};
+}
+function calendarDownload(r){
+  const txt=makeCalendarIcs(r,calendarRequest(r));if(!txt)return toast(cw(S.lang,'error'));
+  const blob=new Blob([txt],{type:'text/calendar;charset=utf-8'}),
+    url=URL.createObjectURL(blob),link=document.createElement('a');
+  link.href=url;link.download='nestlocal-'+String(r.id||'visita').replace(/[^A-Za-z0-9_-]/g,'')+'.ics';
+  document.body.append(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),10000);
+  toast(cw(S.lang,'saved'));
+}
 function today(){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
-  return `<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+  return `${calendarAlertStrip()}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function newRequestForm(){
   const settings=S.data.settings,services=S.data.services||[];if(!settings||!services.length)return `<article class="card new-request-card"><div class="section-title"><div><h2>${t('newRequest')}</h2><p class="help">${t('newRequestHelp')}</p></div></div><button class="button primary small" data-action-page="services">${t('goToServices')}</button></article>`;
@@ -487,10 +512,11 @@ function customerCard(customer){
 function customerImportPanel(){return `<details class="card customer-import-card"><summary><div><span class="eyebrow">${t('customerImport')}</span><strong>${t('customerImportButton')}</strong><small>${t('customerImportHelp')}</small></div></summary><div class="customer-import-body"><textarea id="customerBatchText" rows="7" placeholder="${esc(t('customerImportPlaceholder'))}"></textarea><button class="button primary small" id="customerBatchImport" type="button">${t('customerImportButton')}</button></div></details>`}
 function customers(){const a=S.data.customers||[];return `<div class="page-stack">${customerImportPanel()}<article class="card"><div class="section-title"><h2>${t('customers')}</h2><span>${esc(S.data.customerCount??a.length)}</span></div><div class="customer-list">${a.length?a.map(customerCard).join(''):emptyAction('noCustomersTitle','noCustomersHelp','createRequest','requests')}</div></article></div>`}
 function agenda(){
+  const intro=renderCalendarIntro({requests:S.data.requests||[],locale:S.lang,today:organizationDateIso(),esc,active:S.calendarFeedActive,hasLink:Boolean(S.calendarFeedUrl)});
   const a=(S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)).sort((x,y)=>String(x.schedule?.date||'').localeCompare(String(y.schedule?.date||'')));
-  if(!a.length)return `<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>0</span></div>${emptyAction('noAgendaTitle','noAgendaHelp','goToRequests','requests')}</article>`;
+  if(!a.length)return intro+`<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>0</span></div>${emptyAction('noAgendaTitle','noAgendaHelp','goToRequests','requests')}</article>`;
   const groups=new Map();for(const item of a){const key=item.schedule?.date||item.preference?.date||'—';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
-  return `<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}</div>`;
+  return intro+`<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button><button type="button" class="button small" data-calendar-google="${esc(r.id)}">${cw(S.lang,'google')}</button><button type="button" class="button small" data-calendar-ics="${esc(r.id)}">${cw(S.lang,'file')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}</div>`;
 }
 
 const trustStartCopy={
@@ -781,7 +807,7 @@ function render(){
   document.documentElement.dataset.nlBuild='20260929-render-fix-10';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[]}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -837,6 +863,43 @@ async function beginGoogleLogin(){
 }
 async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
 function bind(){
+  document.querySelectorAll('[data-calendar-google]').forEach(b=>b.onclick=()=>{
+    const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarGoogle);
+    if(!r)return;
+    const url=makeGoogleCalendarUrl(r,calendarRequest(r));
+    if(url)window.open(url,'_blank','noopener,noreferrer');
+  });
+  document.querySelectorAll('[data-calendar-ics]').forEach(b=>b.onclick=()=>{
+    const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarIcs);
+    if(r)calendarDownload(r);
+  });
+  document.querySelectorAll('[data-calendar-feed-create]').forEach(button=>button.onclick=async()=>{
+    if(S.calendarFeedActive&&!window.confirm(cw(S.lang,'rotate')+'?'))return;
+    button.disabled=true;
+    try{
+      const result=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed',{method:'POST',body:'{}'});
+      S.calendarFeedUrl=result.feedUrl||'';
+      S.calendarFeedActive=true;render();
+      if(S.calendarFeedUrl&&navigator.clipboard?.writeText){await navigator.clipboard.writeText(S.calendarFeedUrl).catch(()=>{});toast(cw(S.lang,'copied'));}
+    }catch(e){button.disabled=false;toast(e.message||cw(S.lang,'error'))}
+  });
+  document.querySelectorAll('[data-calendar-feed-copy]').forEach(button=>button.onclick=async()=>{
+    if(!S.calendarFeedUrl)return;
+    try{await navigator.clipboard.writeText(S.calendarFeedUrl);toast(cw(S.lang,'copied'))}catch{toast(cw(S.lang,'error'))}
+  });
+  document.querySelectorAll('[data-calendar-feed-open]').forEach(button=>button.onclick=()=>{
+    if(!S.calendarFeedUrl)return;
+    const link='webcal://'+S.calendarFeedUrl.replace(/^https?:\/\//,'');
+    window.location.assign(link);
+  });
+  document.querySelectorAll('[data-calendar-feed-revoke]').forEach(button=>button.onclick=async()=>{
+    if(!window.confirm(cw(S.lang,'revoke')+'?'))return;
+    button.disabled=true;
+    try{
+      await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed',{method:'DELETE'});
+      S.calendarFeedActive=false;S.calendarFeedUrl='';render();toast(cw(S.lang,'revoked'));
+    }catch(e){button.disabled=false;toast(e.message||cw(S.lang,'error'))}
+  });
   document.querySelectorAll('[data-nav]').forEach(x=>x.onclick=async()=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.page=x.dataset.nav;if(S.page==='growth'&&isGrowthAdmin()){S.growth=null;render();try{await loadGrowth()}catch(e){toast(e.message)}}render()});
   function returnToAutopilotQueue(){S.page='today';S.focusRequestId='';S.autopilotRequestId='';render();toast(t('nextActionUpdated'))}
   document.querySelectorAll('[data-privacy-revoke]').forEach(button=>button.onclick=async()=>{

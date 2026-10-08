@@ -541,3 +541,28 @@
 .pulse2-disclaimer{font-size:12px;color:#587066;margin:18px 0 0;line-height:1.55;overflow-wrap:anywhere}
 @media(max-width:760px){.pulse2-header{gap:8px}.pulse2-item{align-items:stretch;flex-direction:column}.pulse2-actions{justify-content:flex-start}.pulse2-actions .button{flex:1 1 110px}.pulse2-queue{margin-top:12px}}
 @media(max-width:360px){.pulse2-panel{padding:16px!important}.pulse2-actions .button{width:100%}.pulse2-focus{padding:17px}}
+
+/* NestLocal Calendar — 24h/day-of reminders, export and revocable feed. */
+.calendar-connect{padding:clamp(18px,3vw,27px);display:grid;gap:17px;border:1px solid rgba(53,139,106,.23);background:linear-gradient(125deg,rgba(222,243,232,.3),transparent 60%),var(--surface,#fff)}
+.calendar-intro-top{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.calendar-intro-top h2{font-size:clamp(1.28rem,2.7vw,1.8rem);letter-spacing:-.038em;line-height:1.15;margin:5px 0 10px}
+.calendar-intro-top .help{max-width:58ch;line-height:1.5}
+.calendar-due{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+.calendar-due>div{display:flex;flex-direction:column;gap:7px;border:1px solid rgba(99,151,116,.24);border-radius:14px;padding:18px;background:rgba(219,247,230,.27)}
+.calendar-due strong{font-size:clamp(1.8rem,4.5vw,2.6rem);font-weight:800;line-height:1}
+.calendar-due span{font-size:12px;color:var(--muted,#60736a);font-weight:650}
+.calendar-due-list{display:grid;gap:7px;margin:0;padding:0;list-style:none}
+.calendar-due-list li{display:flex;align-items:center;flex-wrap:wrap;gap:12px;border-bottom:1px solid rgba(118,151,124,.18);padding:10px 0;font-size:12px}
+.calendar-due-list li strong{font-variant-numeric:tabular-nums}
+.calendar-due-list li span{flex:1;min-width:110px}
+.calendar-due-list button{border:1px solid rgba(40,117,82,.25);border-radius:9px;background:rgba(207,243,224,.5);padding:9px 12px;font:inherit;font-weight:650;cursor:pointer;color:inherit}
+.calendar-sync-settings{border:1px solid rgba(68,143,102,.24);border-radius:12px;padding:15px;background:rgba(235,249,240,.5)}
+.calendar-sync-settings summary{font-size:14px;font-weight:750;cursor:pointer;min-height:30px}
+.calendar-sync-settings .help{max-width:80ch;line-height:1.55;margin:10px 0}
+.calendar-sync-actions{display:flex;flex-wrap:wrap;gap:9px;padding:5px 0 10px}
+.calendar-reminder-disclosure{font-size:12px;line-height:1.55;max-width:75ch}
+.calendar-today-alert{display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap;border:1px solid rgba(59,148,108,.25);background:linear-gradient(95deg,rgba(228,247,234,.4),transparent),var(--surface,#fff);margin-bottom:13px}
+.calendar-today-alert h2{margin:4px 0;font-size:clamp(1.2rem,2.7vw,1.65rem);letter-spacing:-.025em}
+.calendar-today-alert .help{margin:5px 0;font-size:12px}
+.agenda-actions{flex-wrap:wrap;row-gap:7px}
+@media(max-width:620px){.calendar-connect{padding:17px;gap:14px}.calendar-due>div{padding:13px}.calendar-due strong{font-size:2rem}.calendar-intro-top .tag{font-size:11px}.calendar-sync-actions .button{min-height:42px}.calendar-today-alert{align-items:flex-start}.agenda-actions{width:100%}.agenda-actions .button{flex:1 1 auto;min-height:41px}}

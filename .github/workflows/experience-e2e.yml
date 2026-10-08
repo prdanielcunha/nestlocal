@@ -5,10 +5,13 @@ on:
       - "web/experience.*"
       - "web/entry.css"
       - "web/live.js"
+      - "web/calendar.js"
+      - "web/operations.css"
       - "firebase.json"
       - "scripts/e2e-experience.mjs"
       - "scripts/e2e-public-entry.mjs"
       - "scripts/e2e-operation-ui.mjs"
+      - "scripts/e2e-calendar.mjs"
       - ".github/workflows/experience-e2e.yml"
   workflow_dispatch:
 permissions:
@@ -37,6 +40,7 @@ jobs:
           node scripts/e2e-experience.mjs
           node scripts/e2e-public-entry.mjs
           node scripts/e2e-operation-ui.mjs
+          node scripts/e2e-calendar.mjs
       - name: Archive real browser captures
         if: always()
         uses: actions/upload-artifact@v4

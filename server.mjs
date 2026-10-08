@@ -4,6 +4,7 @@ import admin from 'firebase-admin';
 import {GoogleAuth} from 'google-auth-library';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
@@ -649,6 +650,68 @@ async function requireGrowthAdmin(req,res,next){
 
 app.get('/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
 app.get('/api/health',(_req,res)=>res.json({ok:true,service:'nestlocal-api'}));
+
+// Consent-based, one-way calendar subscription. The URL is a bearer secret; rotate/revoke from the dashboard.
+// The feed omits customer names, addresses, contact details, notes and financial details.
+const calendarFeedPath=(orgId,uid)=>'organizations/'+orgId+'/nestlocal_calendar_subscriptions/'+uid;
+const calendarUrl=(orgId,uid,secret)=>'https://nestlocal.millionsnest.com/api/calendar/feeds/'+encodeURIComponent(orgId)+'/'+encodeURIComponent(uid)+'.ics?key='+encodeURIComponent(secret);
+app.post('/api/organizations/:orgId/nestlocal/calendar/feed',authenticate,authorize,async(req,res)=>{
+  try{
+    const orgId=req.access.orgId,uid=safeId(req.identity.uid);
+    if(!uid)return sendError(res,403,'CALENDAR_USER_INVALID');
+    const secret=crypto.randomBytes(32).toString('base64url');
+    await db.doc(calendarFeedPath(orgId,uid)).set({keyHash:hash(secret),userId:uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),revoked:false}, {merge:false});
+    res.set('Cache-Control','no-store');
+    res.status(201).json({mode:'one_way_subscription',feedUrl:calendarUrl(orgId,uid,secret),revocable:true,calendarAlarmNote:'24h before and on the appointment date, subject to calendar-app support',limitedToAssignedJobs:!canManageNestLocal(req.access)});
+  }catch(e){console.error('NESTLOCAL_CALENDAR_FEED_CREATE_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.get('/api/organizations/:orgId/nestlocal/calendar/feed/status',authenticate,authorize,async(req,res)=>{
+  try{
+    const uid=safeId(req.identity.uid);if(!uid)return sendError(res,403,'CALENDAR_USER_INVALID');
+    const x=await db.doc(calendarFeedPath(req.access.orgId,uid)).get();
+    res.set('Cache-Control','no-store');
+    res.json({active:x.exists&&x.data()?.revoked!==true,mode:'one_way_subscription',reminders:'calendar_controlled'});
+  }catch(e){console.error('NESTLOCAL_CALENDAR_FEED_STATUS_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.delete('/api/organizations/:orgId/nestlocal/calendar/feed',authenticate,authorize,async(req,res)=>{
+  try{
+    const uid=safeId(req.identity.uid);if(!uid)return sendError(res,403,'CALENDAR_USER_INVALID');
+    await db.doc(calendarFeedPath(req.access.orgId,uid)).delete();
+    res.set('Cache-Control','no-store');
+    res.json({ok:true,revoked:true});
+  }catch(e){console.error('NESTLOCAL_CALENDAR_FEED_REVOKE_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.get('/api/calendar/feeds/:orgId/:uid.ics',async(req,res)=>{
+  const orgId=safeId(req.params.orgId),uid=safeId(req.params.uid),
+    secret=typeof req.query.key==='string'?req.query.key:'';
+  res.set({'Cache-Control':'private, no-store, max-age=0','Referrer-Policy':'no-referrer','X-Robots-Tag':'noindex, nofollow'});
+  if(!orgId||!uid||!/^[A-Za-z0-9_-]{43}$/.test(secret))return sendError(res,404,'NOT_FOUND');
+  try{
+    const [grant,user,org,member,subscription]=await Promise.all([
+      db.doc(calendarFeedPath(orgId,uid)).get(),
+      db.doc('users/'+uid).get(),db.doc('organizations/'+orgId).get(),
+      db.doc('organizations/'+orgId+'/members/'+uid).get(),db.doc('subscriptions/'+orgId).get()
+    ]);
+    const d=grant.data()||{};
+    if(!grant.exists||d.revoked===true||typeof d.keyHash!=='string'||d.keyHash.length!==64
+      ||!crypto.timingSafeEqual(Buffer.from(d.keyHash,'hex'),Buffer.from(hash(secret),'hex')))return sendError(res,404,'NOT_FOUND');
+    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,subscriptionDoc:subscription});
+    if(!access.accessible)return sendError(res,404,'NOT_FOUND');
+    const root='organizations/'+orgId;
+    const [requests,services]=await Promise.all([
+      db.collection(root+'/nestlocal_requests').where('status','in',['scheduled','in_progress']).limit(250).get(),
+      db.collection(root+'/nestlocal_services').limit(100).get()
+    ]);
+    const seeAll=access.administrative===true||['owner','admin'].includes(clean(access.member?.role||access.member?.organizationRole).toLowerCase());
+    const events=safeCalendarEvents(
+      requests.docs.map(x=>({id:x.id,...x.data()})),
+      services.docs.map(x=>({id:x.id,...x.data()})),
+      {uid,seeAll});
+    res.set('Content-Type','text/calendar; charset=utf-8');
+    res.status(200).send(buildNestLocalIcs({organizationId:orgId,events}));
+  }catch(e){console.error('NESTLOCAL_CALENDAR_FEED_FAILED',e?.name||'ERROR');return sendError(res,503,'CALENDAR_FEED_UNAVAILABLE')}
+});
+
 app.get('/api/health/radar',async(_req,res)=>{
   try{
     const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},persistedTotal=Number(data.totalSource||0),lastError=clean(data.lastError),sourceMode=clean(data.sourceMode),lastSyncedAt=radarTimestampIso(data.lastSyncedAt);

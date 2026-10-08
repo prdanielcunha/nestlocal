@@ -16,6 +16,6 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check src/domain/quote.mjs && node --check src/nestai.mjs && node --check server.mjs && node --check web/live.js && node --check web/experience.js && node --check web/opportunity-pulse.js && node --check web/pulse.js && node --check web/action-focus.js && node --check web/action-playbooks.js && node --check web/outcome-learning.js && node --check web/guided-experiment.js && node --test"
+    "check": "node --check src/domain/quote.mjs && node --check src/nestai.mjs && node --check server.mjs && node --check web/live.js && node --check web/calendar.js && node --check src/domain/calendar.mjs && node --check web/experience.js && node --check web/opportunity-pulse.js && node --check web/pulse.js && node --check web/action-focus.js && node --check web/action-playbooks.js && node --check web/outcome-learning.js && node --check web/guided-experiment.js && node --test"
   }
 }
