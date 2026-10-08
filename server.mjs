@@ -1431,6 +1431,9 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
     const root=`organizations/${req.access.orgId}`,targetType=requestId?'request':'customer',targetId=requestId||customerId,targetRef=requestId?db.doc(`${root}/nestlocal_requests/${requestId}`):db.doc(`${root}/nestlocal_customers/${customerId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);
     const [target,settingsSnap]=await Promise.all([targetRef.get(),settingsRef.get()]);if(!target.exists)return sendError(res,404,requestId?'REQUEST_NOT_FOUND':'CUSTOMER_NOT_FOUND');
     const data=target.data(),settings=settingsSnap.data()||{},timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',today=localIsoDate(timeZone),now=Date.now(),maxResumeDate=addIsoDays(today,90);if(resumeOn&&(resumeOn<=today||resumeOn>maxResumeDate))return sendError(res,400,'INVALID_RESUME_DATE');const nextEligibleDate=resumeOn||addIsoDays(today,snoozeDays),resurfaceMode=resumeOn?'date':'days',assistanceCooldowns={...(data.assistanceCooldowns||{}),[actionType]:nextEligibleDate};
+    const targetEmail=clean(requestId?data.customer?.email:data.email).toLowerCase();
+    if(channel==='email'&&!validContactEmail(targetEmail))return sendError(res,409,'EMAIL_NOT_AVAILABLE');
+    if(channel==='email'&&actionType==='customer_reactivation'&&data.messaging?.consents?.maintenanceEmail?.accepted!==true)return sendError(res,409,'EMAIL_OPT_IN_REQUIRED');
     const targetPhone=requestId?phone(data.customer?.phone):phone(data.phone),whatsappEligible=actionType==='quote_followup'?data.messagingConsent?.serviceUpdates?.accepted===true:data.messaging?.consents?.maintenanceReminders?.accepted===true,experimentTargetEligible=Boolean(targetPhone)&&whatsappEligible;
     if(actionType==='quote_followup'){
       const updatedAt=timestampMillis(data.updatedAt)||timestampMillis(data.createdAt);
