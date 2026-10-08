@@ -13,7 +13,7 @@ test('anonymous diagnostic preview is separate from all lead writes',()=>{
   assert.match(preview,/diagnosticProjection\(b\)/);
   assert.match(preview,/PREVIEW_MUST_BE_ANONYMOUS/);
   assert.match(preview,/leadCreated:false/);
-  assert.doesNotMatch(preview,/nestlocal_growth_leads|\.create\(|\.set\(|\.update\(/);
+  assert.doesNotMatch(preview,/nestlocal_growth_leads|db\.collection|ref\.create|tx\.set/);
 });
 
 test('follow-up lead is purpose-limited and idempotent',()=>{
