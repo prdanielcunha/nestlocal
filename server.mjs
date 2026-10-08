@@ -630,10 +630,10 @@ function diagnosticProjection(body={}){
   };
   return {monthlyQuotes,averageTicketCents:Math.round(averageTicket*100),followUpRate,whatsappShare,teamSize,needsScheduling,repeatable,manualOperation,unfollowedQuotes,recoveryAssumption,monthlyOpportunityCents,fitSignals,painSignals,fitScore:growthFitScore(fitSignals),painScore:growthPainScore(painSignals)};
 }
-async function publicGrowthRateLimit(req,key){
+async function publicGrowthRateLimit(req,key,maxPerMinute=8){
   const window=Math.floor(Date.now()/60000),ip=clean(req.headers['x-forwarded-for']||req.ip).split(',')[0];
   const ref=db.doc(`nestlocal_public_rate_limits/${hash(`${key}:${ip}:${window}`).slice(0,32)}`);
-  return db.runTransaction(async tx=>{const snap=await tx.get(ref),count=(snap.data()?.count||0)+1;if(count>8)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
+  return db.runTransaction(async tx=>{const snap=await tx.get(ref),count=(snap.data()?.count||0)+1;if(count>maxPerMinute)return false;tx.set(ref,{count,expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});return true});
 }
 async function requireGrowthAdmin(req,res,next){
   try{const user=await db.doc(`users/${req.identity.uid}`).get();if(!user.exists||inactive(user.data())||!globalRoles.has(user.data()?.systemRole))return sendError(res,403,'ACCESS_DENIED');req.growthAdmin={uid:req.identity.uid,systemRole:user.data()?.systemRole};next()}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
@@ -743,7 +743,7 @@ app.post('/api/public/demo/events',async(req,res)=>{
     const segments=new Set(['climate','cleaning','pest','electrical','general']);
     if(!events.has(event)||!segments.has(segment)||!Number.isSafeInteger(step)||step<1||step>7)return sendError(res,400,'INVALID_DEMO_EVENT');
     if(Object.keys(req.body||{}).some(key=>!['event','segment','step'].includes(key)))return sendError(res,400,'DEMO_PII_NOT_ALLOWED');
-    if(!(await publicGrowthRateLimit(req,'demo_event')))return sendError(res,429,'RATE_LIMITED');
+    if(!(await publicGrowthRateLimit(req,'demo_event',20)))return sendError(res,429,'RATE_LIMITED');
     const day=new Date().toISOString().slice(0,10),ref=db.doc('nestlocal_demo_metrics/'+day+'_'+segment);
     await ref.set({day,segment,updatedAt:admin.firestore.FieldValue.serverTimestamp(),[event]:admin.firestore.FieldValue.increment(1)},{merge:true});
     return res.status(204).end();
