@@ -734,6 +734,59 @@ app.delete('/api/auth/session',async(req,res)=>{
 });
 
 
+// NestLocal 2.0: calculation does not create prospects. Only the explicit second step may do that.
+// The legacy /diagnostic endpoint is retained for existing callers during migration.
+const xrayPublicProjection = p => ({
+  fitScore:p.fitScore,painScore:p.painScore,unfollowedQuotes:p.unfollowedQuotes,
+  monthlyOpportunityCents:p.monthlyOpportunityCents,recoveryAssumption:p.recoveryAssumption,
+  methodology:'Estimativa indicativa: orçamentos sem acompanhamento × 15% de hipótese de recuperação × ticket médio informado. Não é previsão de receita.'
+});
+app.post('/api/public/growth/diagnostic/preview',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+    if(!(await publicGrowthRateLimit(req,'diagnostic_preview')))return sendError(res,429,'RATE_LIMITED');
+    const b=req.body||{};
+    // Reject personal details rather than accidentally retaining them in analytics or error logs.
+    if(['businessName','contactName','phone','email','contactEmail','city'].some(key=>b[key]!==undefined))return sendError(res,400,'PREVIEW_MUST_BE_ANONYMOUS');
+    const projection=diagnosticProjection(b);
+    if(!projection)return sendError(res,400,'INVALID_DIAGNOSTIC');
+    return res.json({projection:xrayPublicProjection(projection),leadCreated:false});
+  }catch(e){console.error('XRAY_PREVIEW_FAILED',e?.code||e?.name);sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/public/growth/diagnostic/lead',async(req,res)=>{
+  res.set('Cache-Control','no-store');
+  try{
+    if(!(await publicGrowthRateLimit(req,'diagnostic_lead')))return sendError(res,429,'RATE_LIMITED');
+    const b=req.body||{},businessName=clean(b.businessName).slice(0,120),
+      contactName=clean(b.contactName).slice(0,100),contactPhone=phone(b.phone),
+      contactEmail=clean(b.email).toLowerCase().slice(0,254),
+      city=clean(b.city).slice(0,100),segment=clean(b.segment).slice(0,100),
+      contactChannel=clean(b.contactChannel).toLowerCase(),projection=diagnosticProjection(b);
+    const emailValid=/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(contactEmail);
+    const channelValid=(contactChannel==='email'&&emailValid)||(contactChannel==='phone'&&contactPhone.length>=10);
+    if(!projection||businessName.length<2||contactName.length<2||city.length<2||segment.length<2||!channelValid||b.acceptedTerms!==true||b.acceptedContact!==true)return sendError(res,400,'INVALID_DIAGNOSTIC_CONSENT');
+    // Deterministic document ID makes retries harmless. Do not overwrite consent evidence.
+    const identityKey=[businessName.toLowerCase(),city.toLowerCase(),contactChannel,contactChannel==='email'?contactEmail:contactPhone].join('|');
+    const ref=db.collection('nestlocal_growth_leads').doc('xray2_'+hash('xray-consent-v2:'+identityKey).slice(0,32));
+    const record={
+      source:'revenue_xray',fingerprint:growthFingerprint({businessName,city,phone:contactChannel==='email'?contactEmail:contactPhone}),
+      status:'new',highestStage:0,stageHistory:[{status:'new',at:admin.firestore.Timestamp.now(),by:'public_xray_consent_v2'}],
+      acquisition:growthAcquisition({channel:'xray',angle:'revenue_visibility',campaign:'revenue_xray'}),
+      businessName,contactName,phone:contactChannel==='phone'?contactPhone:'',email:contactChannel==='email'?contactEmail:'',
+      contactChannel,city,segment,
+      metrics:{monthlyQuotes:projection.monthlyQuotes,averageTicketCents:projection.averageTicketCents,followUpRate:projection.followUpRate,whatsappShare:projection.whatsappShare,teamSize:projection.teamSize,needsScheduling:projection.needsScheduling,repeatable:projection.repeatable,manualOperation:projection.manualOperation},
+      fitSignals:projection.fitSignals,painSignals:projection.painSignals,fitScore:projection.fitScore,painScore:projection.painScore,
+      opportunity:{unfollowedQuotes:projection.unfollowedQuotes,recoveryAssumption:projection.recoveryAssumption,monthlyOpportunityCents:projection.monthlyOpportunityCents},
+      nextAction:'Validar dados do diagnóstico e entrar em contato somente no canal autorizado',
+      nextContactAt:admin.firestore.FieldValue.serverTimestamp(),
+      consent:{accepted:true,version:'revenue-xray-2026-10-opt-in-v2',purpose:'diagnostic_follow_up',channel:contactChannel,acceptedAt:admin.firestore.FieldValue.serverTimestamp()},
+      createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()
+    };
+    try{await ref.create(record)}catch(e){if(e?.code!==6&&e?.code!=='already-exists')throw e;return res.json({leadId:ref.id,created:false})}
+    return res.status(201).json({leadId:ref.id,created:true});
+  }catch(e){console.error('XRAY_CONSENT_FAILED',e?.code||e?.name);sendError(res,500,'INTERNAL_ERROR')}
+});
+
 app.post('/api/public/growth/diagnostic',async(req,res)=>{
   try{
     if(!(await publicGrowthRateLimit(req,'diagnostic')))return sendError(res,429,'RATE_LIMITED');
