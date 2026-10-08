@@ -498,3 +498,21 @@
 .trust-note{line-height:1.55;margin:4px 0 0}
 @media(max-width:430px){.onboarding-form .trust-start-fieldset,.form-grid .trust-start-fieldset{grid-column:1/-1}.trust-option{min-height:48px}}
 @media(prefers-reduced-motion:reduce){.trust-option{transition:none}}
+
+/* TrustStart Privacy Center — clear permissions, no decorative controls */
+.privacy-center{display:grid;gap:16px;min-width:0}
+.privacy-hero{padding:clamp(20px,3vw,32px)!important;background:#f8faf8}
+.privacy-hero h2{font-size:clamp(1.7rem,3vw,2.5rem);line-height:1.18;letter-spacing:-.04em;margin:9px 0}
+.privacy-hero>p{line-height:1.6;max-width:62ch}
+.privacy-channels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.privacy-channel{min-width:0;padding:20px!important;display:flex;flex-direction:column;gap:16px;justify-content:space-between}
+.privacy-channel h3{font-size:17px;letter-spacing:-.02em;margin:0 0 8px}
+.privacy-channel p{line-height:1.58}
+.privacy-channel-actions{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:9px}
+.privacy-channel-actions .button{min-height:44px}
+.privacy-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}
+.privacy-facts>div{border-radius:12px;background:#f3f8f5;padding:16px;display:grid;gap:5px}
+.privacy-facts strong{font-size:25px;font-variant-numeric:tabular-nums}
+.privacy-facts span{font-size:13px;color:#597064}
+@media(max-width:700px){.privacy-channels{grid-template-columns:minmax(0,1fr)}.privacy-facts{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:360px){.privacy-channel{padding:15px!important}.privacy-center .button{min-height:44px}}
