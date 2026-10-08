@@ -8,7 +8,8 @@ function ms(value) {
   if(typeof value==='string'){const parsed=Date.parse(value);return Number.isFinite(parsed)?parsed:null;}
   return null;
 }
-export function resolveHubNestLocalTrial(record, organizationApp, now=Date.now()) {
+export function resolveHubNestLocalTrial(record, organizationApp, now=Date.now(), expectedOrganizationId='') {
+  if(!expectedOrganizationId||record?.organizationId!==expectedOrganizationId)return null;
   if(!record||record.appId!=='nestlocal'||record.source!=='hub_internal_trial'||
      record.status!=='active'||record.revoked===true||record.consumed!==true||
      !Number.isSafeInteger(record.grantVersion)||record.grantVersion<2)return null;
