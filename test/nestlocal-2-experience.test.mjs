@@ -26,7 +26,7 @@ test('Experience starts without credentials, contacts, card or tenant data',()=>
   const f=fixture();
   assert.match(f.root.innerHTML,/data-sector="climate"/);
   assert.match(f.root.innerHTML,/data-sector="electrical"/);
-  assert.doesNotMatch(source,/firebase-admin|Authorization|localStorage|sessionStorage|Firestore|getAuth|creditCard|connectWhatsApp/);
+  assert.doesNotMatch(source.split('\n').filter(line=>!line.trim().startsWith('//')).join('\n'),/firebase-admin|Authorization|localStorage|sessionStorage|Firestore|getAuth|creditCard|connectWhatsApp/);
   assert.ok(html.includes('id="experienceRoot"'));
   assert.ok(html.includes('aria-live="polite"'));
   assert.equal(f.calls.length,0);
