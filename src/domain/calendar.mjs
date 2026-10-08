@@ -56,6 +56,6 @@ export function safeCalendarEvents(requests,services,{uid,seeAll=false}={}){
     .map(r=>({
       id:r.id,date:r.schedule.date,window:r.schedule.window||'flexible',
       serviceName:String(serviceName.get(r.serviceId)||'Serviço').slice(0,100),
-      sequence:0
+      sequence:Number.isSafeInteger(r.updatedAt?.seconds)&&r.updatedAt.seconds>=0?Math.min(2147483647,r.updatedAt.seconds):0
     }));
 }
