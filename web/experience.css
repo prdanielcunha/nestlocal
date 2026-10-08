@@ -274,3 +274,35 @@ body{background:#eef2ef;color:#132720}
 }
 @media(max-width:365px){.step-panel .sectors{grid-template-columns:1fr}.step-panel .sector{min-height:88px}.experience-wrap .intro h1{font-size:1.92rem}.hero-process span{padding:6px;font-size:9px}}
 @media(prefers-reduced-motion:reduce){.tour-places .tour-place,.hero-process *{animation:none;transition:none}}
+
+/* Visual QA fixes from real Chromium screenshots — no blank desktop rail, no repeated massive hero. */
+.experience-layout:not(:has(> .journey-aside)){grid-template-columns:minmax(0,1fr)}
+.experience-wrap .intro:not(.intro-compact){padding:clamp(25px,3.8vw,45px)}
+.experience-wrap .intro:not(.intro-compact) h1{font-size:clamp(2.1rem,4.1vw,3.7rem);max-width:21ch;line-height:1.085;margin:15px 0}
+.experience-wrap .intro-compact{padding:19px 27px;min-height:0;margin-bottom:12px;border-radius:16px;box-shadow:0 10px 29px rgba(2,32,24,.08)}
+.experience-wrap .intro-compact h1{font-size:clamp(1.25rem,2.6vw,2rem);max-width:none;letter-spacing:-.045em;line-height:1.24;margin:6px 0}
+.experience-wrap .intro-compact p{font-size:12px;line-height:1.5;margin:0;color:#d5e8dc}
+.experience-wrap .intro-compact .eyebrow{font-size:9px}
+.experience-layout:not(:has(> .journey-aside)) .step-panel .sectors{grid-template-columns:repeat(5,minmax(0,1fr));gap:9px}
+.experience-layout:not(:has(> .journey-aside)) .step-panel .sector{min-height:102px;padding:15px}
+@media(max-width:1050px){.experience-layout:not(:has(> .journey-aside)) .step-panel .sectors{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:700px){
+ .experience-wrap .intro:not(.intro-compact){padding:22px 17px}
+ .experience-wrap .intro:not(.intro-compact) h1{font-size:clamp(1.84rem,7.8vw,2.7rem);margin:11px 0 9px}
+ .experience-wrap .intro:not(.intro-compact) .hero-process{gap:6px;margin-top:16px}
+ .experience-wrap .intro-compact{padding:14px 16px;border-radius:13px;margin-bottom:9px}
+ .experience-wrap .intro-compact h1{font-size:1.25rem;margin:5px 0}
+ .experience-wrap .intro-compact p{font-size:11px;line-height:1.55}
+ .tour-places .tour-place{padding:11px 12px 11px 42px;min-height:0}
+ .tour-places .tour-place:not(.selected) small{display:none}
+ .tour-places .tour-place:not(.selected){min-height:44px;justify-content:center}
+ .tour-places .tour-place:not(.selected) .route-pip{top:12px}
+ .tour-places .tour-place.selected .route-pip{top:14px}
+ .experience-layout:not(:has(> .journey-aside)) .step-panel .sectors{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+ .experience-layout:not(:has(> .journey-aside)) .step-panel .sector{min-height:80px;padding:11px}
+ .tour-example-label{display:none}
+}
+@media(max-width:340px){
+ .experience-layout:not(:has(> .journey-aside)) .step-panel .sectors{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .experience-layout:not(:has(> .journey-aside)) .step-panel .sector{min-height:83px}
+}
