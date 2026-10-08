@@ -87,6 +87,7 @@ const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','remove
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const sendError=(res,status,code)=>res.status(status).json({error:code});
 const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
+const validContactEmail=value=>/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(clean(value).toLowerCase());
 function catalogReadiness(settings,services=[]){
   const issues=[];
   if(!settings){issues.push('SETUP_REQUIRED');return{ready:false,issues}}
@@ -95,6 +96,13 @@ function catalogReadiness(settings,services=[]){
   const coverage=Array.isArray(settings.coverageCodes)?settings.coverageCodes.map(slug).filter(Boolean):[];
   if(!coverage.length)issues.push('COVERAGE_REQUIRED');
   if(!validTimeZone(clean(settings.timezone||'America/Sao_Paulo')))issues.push('TIMEZONE_INVALID');
+  if(Number(settings.trustSetupVersion||0)>=2){
+    const mode=clean(settings.communicationMode||'none');
+    if(!(validContactEmail(settings.contactEmail)||phone(settings.contactPhone).length>=10||
+      (mode==='manual'&&phone(settings.whatsapp).length>=10)||
+      (mode==='official'&&settings.messaging?.connected===true)))issues.push('RESPONSE_CHANNEL_REQUIRED');
+    if(mode==='manual'&&phone(settings.whatsapp).length<10)issues.push('MANUAL_WHATSAPP_NUMBER_REQUIRED');
+  }
   const list=Array.isArray(services)?services:[];
   if(!list.length)issues.push('SERVICE_REQUIRED');
   for(const service of list){
@@ -959,22 +967,22 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
 });
 
 app.get('/api/public/stores/:storeSlug',async(req,res)=>{
-  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:settings.data().whatsapp||'',currency:'BRL',timezone:settings.data().timezone||'America/Sao_Paulo',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:Number(settings.data().trustSetupVersion||0)<2||settings.data().communicationMode==='manual'||settings.data().communicationMode==='official'&&settings.data()?.messaging?.connected===true?settings.data().whatsapp||'':'',contactEmail:settings.data().contactEmail||'',contactPhone:settings.data().contactPhone||'',communicationMode:settings.data().communicationMode||'none',currency:'BRL',timezone:settings.data().timezone||'America/Sao_Paulo',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
   try{
     const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');
     if(!(await rateLimit(req,'request',org.id)))return sendError(res,429,'RATE_LIMITED');
     const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,402,'STORE_SUBSCRIPTION_INACTIVE');
-    const body=req.body||{};const name=clean(body.name).slice(0,100),customerPhone=phone(body.phone),serviceId=clean(body.serviceId),coverageCode=slug(body.coverageCode),quantity=Number(body.quantity),addressLine=clean(body.addressLine).slice(0,180),preferredDate=clean(body.preferredDate).slice(0,10),preferredWindow=clean(body.preferredWindow).slice(0,30),serviceUpdatesOptIn=body.whatsappServiceOptIn===true,maintenanceOptIn=body.whatsappMaintenanceOptIn===true;
-    if(name.length<2||customerPhone.length<10||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
+    const body=req.body||{};const name=clean(body.name).slice(0,100),customerPhone=phone(body.phone),customerEmail=clean(body.email).toLowerCase().slice(0,254),serviceId=clean(body.serviceId),coverageCode=slug(body.coverageCode),quantity=Number(body.quantity),addressLine=clean(body.addressLine).slice(0,180),preferredDate=clean(body.preferredDate).slice(0,10),preferredWindow=clean(body.preferredWindow).slice(0,30),serviceUpdatesOptIn=body.whatsappServiceOptIn===true,maintenanceOptIn=body.whatsappMaintenanceOptIn===true;
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
     const [settingsSnap,servicesSnap]=await Promise.all([db.doc(`organizations/${org.id}/nestlocal_settings/public`).get(),db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get()]);
     if(!settingsSnap.exists||settingsSnap.data()?.published!==true)return sendError(res,409,'STORE_NOT_READY');
     const settings=settingsSnap.data(),orgTimeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC';if(preferredDate<localIsoDate(orgTimeZone))return sendError(res,400,'INVALID_REQUEST');const services=servicesSnap.docs.map(x=>({id:x.id,...x.data()})),selectedService=services.find(x=>x.id===serviceId);if(!selectedService)return sendError(res,400,'INVALID_REQUEST');let intake={};try{intake=normalizeIntakeValues(selectedService.intakeFields,body.intake)}catch{return sendError(res,400,'INVALID_INTAKE')}
     const result=quote({catalog:{organizationId:org.id,version:clean(settings.catalogVersion),status:'published',currency:'BRL',validForMinutes:Number(settings.validForMinutes||30),coverageCodes:settings.coverageCodes||[],services},request:{serviceId,quantity,coverageCode,equipmentType:clean(body.equipmentType),safeAccess:body.safeAccess===true},now:new Date()});
-    const publicToken=`${org.id}.${token()}`;const requestRef=db.collection(`organizations/${org.id}/nestlocal_requests`).doc();const customerId=hash(customerPhone).slice(0,28);
-    const record={organizationId:org.id,customerId,customer:{name,phone:customerPhone},address:{line:addressLine,city:clean(body.city).slice(0,80),coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType:clean(body.equipmentType).slice(0,40),safeAccess:body.safeAccess===true,intake,note:clean(body.note).slice(0,1000),status:'new',quote:{...result,reasons:[...result.reasons]},trackingTokenHash:hash(publicToken),trackingTokenHashes:[hash(publicToken)],consent:{accepted:true,version:'pilot-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},messagingConsent:{serviceUpdates:{accepted:serviceUpdatesOptIn,businessName:settings.businessName||org.name,version:'whatsapp-service-2026-09',acceptedAt:serviceUpdatesOptIn?admin.firestore.Timestamp.now():null},maintenanceReminders:{accepted:maintenanceOptIn,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:maintenanceOptIn?admin.firestore.Timestamp.now():null}},source:'public_store',createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
-    const monthId=localIsoDate(orgTimeZone).slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    const publicToken=`${org.id}.${token()}`;const requestRef=db.collection(`organizations/${org.id}/nestlocal_requests`).doc();const customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28);
+    const record={organizationId:org.id,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city:clean(body.city).slice(0,80),coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType:clean(body.equipmentType).slice(0,40),safeAccess:body.safeAccess===true,intake,note:clean(body.note).slice(0,1000),status:'new',quote:{...result,reasons:[...result.reasons]},trackingTokenHash:hash(publicToken),trackingTokenHashes:[hash(publicToken)],consent:{accepted:true,version:'pilot-2026-09',acceptedAt:admin.firestore.FieldValue.serverTimestamp()},messagingConsent:{serviceUpdates:{accepted:serviceUpdatesOptIn,businessName:settings.businessName||org.name,version:'whatsapp-service-2026-09',acceptedAt:serviceUpdatesOptIn?admin.firestore.Timestamp.now():null},maintenanceReminders:{accepted:maintenanceOptIn,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:maintenanceOptIn?admin.firestore.Timestamp.now():null}},source:'public_store',createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    const monthId=localIsoDate(orgTimeZone).slice(0,7),usageRef=db.doc(`organizations/${org.id}/nestlocal_usage/${monthId}`),customerRef=db.doc(`organizations/${org.id}/nestlocal_customers/${customerId}`);await db.runTransaction(async tx=>{const [usage,customer]=await Promise.all([tx.get(usageRef),tx.get(customerRef)]),count=Number(usage.data()?.requestCount||0);if(count>=entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');const lastAssistance=customer.data()?.lastAssistance,requestRecord={...record};if(lastAssistance?.actionType==='customer_reactivation'&&freshAssistance(lastAssistance,90))requestRecord.assistedAcquisition={actionEventId:clean(lastAssistance.id),actionType:lastAssistance.actionType,channel:lastAssistance.channel,at:lastAssistance.at};tx.create(requestRef,requestRecord);{const customerData={name,phone:customerPhone,email:customerEmail,lastRequestAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(maintenanceOptIn)customerData['messaging.consents.maintenanceReminders']={accepted:true,businessName:settings.businessName||org.name,version:'whatsapp-maintenance-2026-09',acceptedAt:admin.firestore.Timestamp.now(),source:'public_request'};tx.set(customerRef,customerData,{merge:true})};tx.set(usageRef,{monthId,requestCount:count+1,plan:entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,trackingToken:publicToken,outcome:result.outcome,quote:{currency:result.currency,totalCents:result.totalCents,expiresAt:result.expiresAt,reasons:[...result.reasons]}});
   }catch(e){console.error(e);sendError(res,e?.message==='PLAN_REQUEST_LIMIT'?429:e instanceof TypeError?409:500,e?.message==='PLAN_REQUEST_LIMIT'?'PLAN_REQUEST_LIMIT':e instanceof TypeError?'QUOTE_UNAVAILABLE':'INTERNAL_ERROR')}
 });
@@ -1196,19 +1204,81 @@ app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply',authent
 
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo');
+    const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo'),communicationMode=clean(b.communicationMode||'none'),contactEmail=clean(b.contactEmail).toLowerCase().slice(0,254),contactPhone=phone(b.contactPhone);
+    if(!['none','manual'].includes(communicationMode)||communicationMode==='manual'&&whatsapp.length<10||contactEmail&&!validContactEmail(contactEmail)||contactPhone&&contactPhone.length<10)return sendError(res,400,'INVALID_CONTACT_CHANNEL');
     if(!servicePlaybooks[template])return sendError(res,400,'INVALID_TEMPLATE');
     if(businessName.length<2||!coverageCodes.length||!validTimeZone(timezone))return sendError(res,400,'ONBOARDING_DETAILS_REQUIRED');
     const root=`organizations/${req.access.orgId}`,settings=db.doc(`${root}/nestlocal_settings/public`),existing=await settings.get();if(existing.exists)return res.json({created:false});
     const baseSlug=slug(businessName||req.access.org.slug||req.access.org.name)||'negocio',batch=db.batch();
-    batch.create(settings,{businessName,slug:`${baseSlug}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes,whatsapp,currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone,capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},payments:{pix:{enabled:false,key:'',label:'',instructions:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    batch.create(settings,{businessName,slug:`${baseSlug}-${req.access.orgId.slice(0,6)}`,businessType:template,coverageCodes,whatsapp,communicationMode,contactEmail,contactPhone,trustSetupVersion:2,currency:'BRL',validForMinutes:30,catalogVersion:'draft-1',published:false,timezone,capacity:{workingDays:[],windows:[]},messaging:{provider:'whatsapp_cloud_api',connected:false,templates:{serviceUpdate:'',maintenanceReminder:''}},payments:{pix:{enabled:false,key:'',label:'',instructions:''}},createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     for(const service of servicePlaybooks[template].services)batch.create(db.doc(`${root}/nestlocal_services/${service.id}`),{...service,published:false});
     await batch.commit();res.status(201).json({created:true,template,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
-  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
+  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+  const updatingChannels=b.communicationMode!==undefined||b.contactEmail!==undefined||b.contactPhone!==undefined;
+  if(updatingChannels){
+    const communicationMode=clean(b.communicationMode||'none'),contactEmail=clean(b.contactEmail).toLowerCase().slice(0,254),contactPhone=phone(b.contactPhone);
+    if(!['none','manual','official'].includes(communicationMode)||contactEmail&&!validContactEmail(contactEmail)||contactPhone&&contactPhone.length<10||communicationMode==='manual'&&data.whatsapp.length<10)return sendError(res,400,'INVALID_CONTACT_CHANNEL');
+    if(communicationMode==='official'){
+      const previous=await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get();
+      if(previous.data()?.messaging?.connected!==true)return sendError(res,409,'OFFICIAL_CHANNEL_NOT_CONNECTED');
+    }
+    Object.assign(data,{communicationMode,contactEmail,contactPhone,trustSetupVersion:2});
+  }
+  if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
+});
+
+// Privacy Center: no provider credentials, no raw contact details in audit records.
+app.get('/api/organizations/:orgId/nestlocal/privacy/permissions',authenticate,authorize,async(req,res)=>{
+  try{
+    const snap=await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).get();
+    if(!snap.exists)return sendError(res,404,'SETUP_REQUIRED');
+    const settings=snap.data()||{},mode=clean(settings.communicationMode||'none');
+    res.set('Cache-Control','no-store');
+    return res.json({communicationMode:mode,manualLink:{active:mode==='manual'&&phone(settings.whatsapp).length>=10,canRevoke:true},
+      official:{connected:settings.messaging?.connected===true,managedBy:'MillionsNest Connect',disconnectAvailable:false},
+      responseChannels:{email:validContactEmail(settings.contactEmail),phone:phone(settings.contactPhone).length>=10},
+      trustSetupVersion:Number(settings.trustSetupVersion||0),published:settings.published===true});
+  }catch(e){console.error('PRIVACY_READ_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')}
+});
+app.post('/api/organizations/:orgId/nestlocal/privacy/revoke',authenticate,authorize,async(req,res)=>{
+  try{
+    if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+    const purpose=clean(req.body?.purpose);
+    if(!['manual_link','contact_email','contact_phone'].includes(purpose))return sendError(res,400,'INVALID_REVOCATION_PURPOSE');
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(root+'/nestlocal_settings/public'),eventRef=db.collection(root+'/nestlocal_privacy_events').doc();
+    let changed=false;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists)throw new TypeError('SETUP_REQUIRED');
+      const data=snap.data()||{},currentMode=clean(data.communicationMode||'none');
+      const updated={
+        communicationMode:purpose==='manual_link'?'none':currentMode,
+        contactEmail:purpose==='contact_email'?'':clean(data.contactEmail),
+        contactPhone:purpose==='contact_phone'?'':phone(data.contactPhone),
+        trustSetupVersion:2,
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      };
+      const mode=updated.communicationMode;
+      const responsePossible=validContactEmail(updated.contactEmail)||phone(updated.contactPhone).length>=10||
+        mode==='manual'&&phone(data.whatsapp).length>=10||
+        mode==='official'&&data.messaging?.connected===true;
+      if(data.published===true&&!responsePossible)throw new TypeError('RESPONSE_CHANNEL_REQUIRED');
+      changed=(purpose==='manual_link'&&currentMode==='manual')||
+        (purpose==='contact_email'&&Boolean(data.contactEmail))||
+        (purpose==='contact_phone'&&Boolean(data.contactPhone));
+      if(!changed)return;
+      tx.set(ref,updated,{merge:true});
+      tx.create(eventRef,{purpose,event:'revoked',actor:req.identity.uid,at:admin.firestore.FieldValue.serverTimestamp()});
+    });
+    return res.json({ok:true,purpose,revoked:changed});
+  }catch(e){
+    if(['SETUP_REQUIRED','RESPONSE_CHANNEL_REQUIRED'].includes(e?.message))return sendError(res,e.message==='SETUP_REQUIRED'?404:409,e.message);
+    console.error('PRIVACY_REVOKE_FAILED',e?.name||'ERROR');sendError(res,500,'INTERNAL_ERROR')
+  }
 });
 
 app.put('/api/organizations/:orgId/nestlocal/payment-settings',authenticate,authorize,async(req,res)=>{

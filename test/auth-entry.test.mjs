@@ -298,7 +298,7 @@ test('production workflow deploys backend SSO bundle and validates it on the off
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
   const client=read('../web/live.js');
   for(const token of [
-    "privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth'])",
+    "privateViews=new Set(['today','requests','customers','agenda','services','automation','page','growth','privacy'])",
     "return view&&privateViews.has(view)?",
   ]) assert.ok(client.includes(token),'missing '+token);
 });
