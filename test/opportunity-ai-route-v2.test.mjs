@@ -21,7 +21,8 @@ test('no customer data or payload sent to provider; only redacted record and aut
 });
 test('NestAI call is bounded by atomic org/day quota and has manual fallback',()=>{
  for(const s of ['rateLimit(req','db.runTransaction(async tx=>','maxDailyAiRequests()',
-  'AI_DAILY_BUDGET_REACHED',"reason:'AI_UNAVAILABLE'",'projectNestAiOpportunityExtraction'])
+  'AI_DAILY_BUDGET_REACHED',"reason:'AI_UNAVAILABLE'",'projectNestAiOpportunityExtraction',
+  "opportunity_ai.operator_consent","source:'authenticated_explicit_confirmation'",'piiRedacted:true'])
   assert.ok(route.includes(s),'missing '+s);
  assert.doesNotMatch(route,/nestlocal_requests\//);
 });
