@@ -10,6 +10,7 @@ Date: 2026-10-09. Source: audit and plan dated 2026-10-08.
 - **LGPD-sensitive audit:** logs in `organizations/{orgId}/nestlocal_audit` contain only action, draft identifier, actor UID, timestamp and schema version, no customer message or contact.
 - **Product truth:** manual WhatsApp/Instagram/telephone input only; no WhatsApp connection, auto-send, automatic quote, purchase, or conversion. Partial information is never inserted into `nestlocal_requests`.
 - **UI:** PT/EN/ES first-action capture; four primary mobile tabs and a contextual More menu; three-question Today layout with older operations retained behind full dashboard; opportunity drafts visible in Opportunities.
+- **Explicit conversion:** an operator can choose *Complete request*, fill the existing validated order form, and atomically promote an open draft to one service order, preserving usage counters, financial validation and an audit event. A deterministic destination ID prevents a duplicate request on retries. No automatic promotion from imported text.
 - **Isolation:** new UX/API is disabled by default, tenant-scoped and reversible.
 
 ## Flags and release procedure
@@ -26,7 +27,7 @@ The global boolean is an explicit alternative to the organization allowlist. Do 
 **Manual pilot checks:**
 1. Existing MusicScale paid accounts: unchanged Stripe customer/subscription IDs, roles/functions, fixed-band schedules, invitations, and ability to open MusicScale.
 2. NestLocal direct/Hub login, wrong-account handling, organization switching, all client forms and published pages.
-3. Pilot org: save partial WhatsApp text, list, edit via API, archive, retry same idempotency key, reject stale version; confirm second org cannot access its draft.
+3. Pilot org: save partial WhatsApp text, list, edit via API, archive, retry same idempotency key, reject stale version; complete a draft into exactly one request; verify that invalid incomplete request fields cannot convert; confirm second org cannot access its draft.
 4. Nonpilot org: existing Home, requests and performance are unchanged; the opportunity draft API returns 404.
 5. Expired trial: GET draft allowed while mutation is rejected by `authorize`; no public page accepts operations for an expired trial once the Hub flag is certified.
 6. 390px iPhone / Android / desktop and PT/EN/ES; no modal or menu clipping, no loading loop; manual text remains private.
