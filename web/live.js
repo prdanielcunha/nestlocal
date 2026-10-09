@@ -29,7 +29,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -267,6 +267,9 @@ Object.assign(D.es,{
   draftError:'No se pudieron cargar los borradores. Tus demás datos siguen disponibles.',manualOnly:'Modo manual: nada se envía al cliente.',
   moreNav:'Más',register:'Registrar',noAutomaticCapture:'Pegar una conversación no conecta WhatsApp ni confirma entrega.'
 });
+Object.assign(D.pt,{copilotPreview:'Revisar conversa',previewTitle:'Entendi isto da conversa',previewHelp:'Prévia por regras, sem IA externa. Confira as informações antes de agir.',previewFacts:'Trecho original',previewUnknown:'Ainda precisamos confirmar',previewReply:'Resposta sugerida (não enviada)',previewCopy:'Copiar resposta',followupSchedule:'Agendar retorno',followupTitle:'O que devo lembrar?',followupWhen:'Em qual dia?',followupTime:'Horário (opcional)',followupSaved:'Retorno salvo no NestLocal.',taskDone:'Concluir',taskSaved:'Retorno concluído',taskDue:'Acompanhar hoje',taskFuture:'Próximos retornos',taskOnlyApp:'Aviso apenas dentro do aplicativo. Não existe push automático nesta etapa.',taskLoadError:'Não foi possível carregar os retornos.',previewError:'Não foi possível preparar a prévia.'});
+Object.assign(D.en,{copilotPreview:'Review conversation',previewTitle:'From the conversation',previewHelp:'Rule-based preview; no external AI. Confirm before taking action.',previewFacts:'Original excerpt',previewUnknown:'Details to confirm',previewReply:'Suggested reply (not sent)',previewCopy:'Copy reply',followupSchedule:'Schedule follow-up',followupTitle:'What should I remember?',followupWhen:'On which date?',followupTime:'Time (optional)',followupSaved:'Follow-up saved in NestLocal.',taskDone:'Complete',taskSaved:'Follow-up completed',taskDue:'Follow up today',taskFuture:'Upcoming follow-ups',taskOnlyApp:'In-app only. No automatic push notification is enabled.',taskLoadError:'Could not load follow-ups.',previewError:'Could not load the preview.'});
+Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendido de la conversación',previewHelp:'Vista previa basada en reglas, sin IA externa. Confirma antes de actuar.',previewFacts:'Fragmento original',previewUnknown:'Detalles por confirmar',previewReply:'Respuesta sugerida (no enviada)',previewCopy:'Copiar respuesta',followupSchedule:'Programar seguimiento',followupTitle:'¿Qué debo recordar?',followupWhen:'¿Qué día?',followupTime:'Hora (opcional)',followupSaved:'Seguimiento guardado en NestLocal.',taskDone:'Completar',taskSaved:'Seguimiento completado',taskDue:'Seguimientos de hoy',taskFuture:'Próximos seguimientos',taskOnlyApp:'Solo dentro de la aplicación. No hay notificaciones push automáticas.',taskLoadError:'No se pudieron cargar los seguimientos.',previewError:'No se pudo cargar la vista previa.'});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -565,22 +568,62 @@ function captureQuickCard(){
     <label>${t('captureMessage')}<textarea name="message" id="quick-message" maxlength="6000" rows="3" required placeholder="${esc(t('capturePlaceholder'))}"></textarea></label>
     <button class="button primary" type="submit">${t('saveOpportunity')}</button><small class="help">${t('manualOnly')}</small></form></article>`;
 }
+function opportunityPreviewPanel(draftId){
+  const p=S.copilotPreview;
+  if(!p||p.draftId!==draftId)return '';
+  return `<section class="opportunity-preview"><h3>${t('previewTitle')}</h3><p class="help">${t('previewHelp')}</p>
+   ${p.facts?.length?`<div class="preview-evidence"><strong>${t('previewFacts')}</strong><p>${esc(p.facts[0].evidence)}</p></div>`:''}
+   <strong>${t('previewUnknown')}</strong><ul>${(p.questions||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+   <label class="draft-reply-label">${t('previewReply')}<textarea data-preview-reply="${esc(draftId)}" rows="3" maxlength="1200">${esc(p.replyDraft||'')}</textarea></label>
+   <button class="button small" data-copy-preview="${esc(draftId)}">${t('previewCopy')}</button>
+   <p class="help">${t('manualOnly')}</p></section>`;
+}
+function taskScheduleForm(d){
+  const tz=S.data?.settings?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'America/Sao_Paulo';
+  const name=d.customerName||t('draftWithoutName');
+  return `<details class="followup-task"><summary>${t('followupSchedule')}</summary>
+    <form data-task-create="${esc(d.id)}" class="quick-capture-form">
+      <label>${t('followupTitle')}<input name="title" maxlength="140" minlength="3" required value="${esc(t('followupSchedule')+' · '+name)}"></label>
+      <label>${t('followupWhen')}<input name="dueDate" type="date" min="${esc(organizationDateIso())}" required></label>
+      <label>${t('followupTime')}<input name="dueTime" type="time"></label>
+      <input type="hidden" name="timezone" value="${esc(tz)}">
+      <button type="submit" class="button primary small">${t('followupSchedule')}</button>
+      <small class="help">${t('taskOnlyApp')}</small>
+    </form></details>`;
+}
+function tasksPanel(dueOnly=false){
+  if(S.data?.tasksLoadError)return `<p class="help">${t('taskLoadError')}</p>`;
+  const today=organizationDateIso(),tomorrow=addIsoCalendarDays(today,1);
+  const tasks=(S.data?.actionTasks||[]).filter(x=>x.status==='open'&&(!dueOnly||x.dueDate<=tomorrow))
+    .sort((a,b)=>String(a.dueDate+' '+(a.dueTime||'99:99')).localeCompare(String(b.dueDate+' '+(b.dueTime||'99:99'))).slice(0,dueOnly?6:20);
+  if(!tasks.length)return '';
+  return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${tasks.map(x=>`
+    <div class="followup-item"><div><strong>${esc(x.title)}</strong><small>${esc(x.dueDate)}${x.dueTime?' · '+esc(x.dueTime):''}</small></div>
+      <button class="button small" data-task-done="${esc(x.id)}" data-task-version="${Number(x.version)||1}">${t('taskDone')}</button></div>`).join('')}
+    <p class="help">${t('taskOnlyApp')}</p></section>`;
+}
 function draftsPanel(limit=50){
   if(S.data?.draftLoadError)return `<article class="card"><p class="help">${t('draftError')}</p></article>`;
   const all=(S.data?.opportunityDrafts||[]).filter(x=>x.state==='open').slice(0,limit);
   if(!all.length)return '';
-  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>${all.map(d=>`<div class="draft-item"><div><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span><strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p></div><div class="draft-controls"><button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button><button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
+  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>
+    ${all.map(d=>`<div class="draft-item"><div class="draft-main"><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span>
+      <strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p>
+      ${taskScheduleForm(d)}${opportunityPreviewPanel(d.id)}</div>
+      <div class="draft-controls"><button class="button small" data-draft-preview="${esc(d.id)}">${t('copilotPreview')}</button>
+        <button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button>
+        <button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
 }
 function today(){
   if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
   const actions=nextBestActions().slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
-  const visits=[...(digest.today||[]),...(digest.tomorrow||[])];
+  const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
   return `<div class="page-stack nestlocal-today-v2">${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
       ${draftsPanel(3)}</article>
     <article class="card"><div class="section-title"><h2>${t('taskQuestion')}</h2><button class="button small" data-action-page="agenda">${t('agenda')}</button></div>
-      ${visits.length?`<p class="help">${visits.length} ${t('agenda')} · ${esc(organizationDateIso())}</p>`:`<p class="help">${t('taskEmpty')}</p>`}</article>
+      ${visits.length?`<p class="help">${visits.length} ${t('agenda')} · ${esc(organizationDateIso())}</p>`:!followups?`<p class="help">${t('taskEmpty')}</p>`:''}${followups}</article>
     <details class="today-advanced"><summary>${t('detailsMore')}</summary>${todayLegacy()}</details></div>`;
 }
 function newRequestForm(){
@@ -589,7 +632,7 @@ function newRequestForm(){
   return `<details class="card new-request-card"><summary><div><span class="eyebrow">${t('newRequest')}</span><strong>${t('createRequest')}</strong><small>${t('newRequestHelp')}</small></div></summary><form id="internal-request" class="form-grid request-intake"><label>${t('customerName')}<input name="name" required maxlength="100" autocomplete="name"></label><label>${(trustStartCopy[S.lang]||trustStartCopy.pt).phone}<input name="phone" inputmode="tel" autocomplete="tel"></label><label>E-mail / Email / Correo<input name="email" type="email" autocomplete="email" maxlength="254"></label><p class="help wide">${(trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone}</p><label>${t('service')}<select name="serviceId" required>${services.map(s=>`<option value="${esc(s.id)}">${esc(serviceName(s))}</option>`).join('')}</select></label><label>${t('cityOrArea')}<select name="coverageCode" required>${coverage.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label><label class="wide">${t('address')}<input name="addressLine" required minlength="5" autocomplete="street-address"></label><label>${t('city')}<input name="city" maxlength="80"></label><label>${t('preferredDate')}<input name="preferredDate" type="date" min="${esc(today)}"></label><label>${t('preferredWindow')}<select name="preferredWindow">${['morning','afternoon','evening','flexible'].map(x=>`<option value="${x}">${t(x)}</option>`).join('')}</select></label><label class="wide">${t('note')}<textarea name="note" rows="3"></textarea></label><button class="button primary wide" type="submit">${t('createRequest')}</button></form></details>`;
 }
 function emptyAction(title,help,button,page){return `<div class="empty actionable-empty"><strong>${t(title)}</strong><span>${t(help)}</span><button class="button small" data-action-page="${page}">${t(button)}</button></div>`}
-function requests(){const a=S.data.requests||[];return `<div class="page-stack">${S.data?.features?.opportunityDrafts?captureQuickCard()+draftsPanel():''}${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
+function requests(){const a=S.data.requests||[];return `<div class="page-stack">${S.data?.features?.opportunityDrafts?captureQuickCard()+draftsPanel()+tasksPanel(false):''}${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
 const routeUrl=address=>{const value=String(address||'').trim();return value?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`:''};
 function maintenancePlanForm(customer){
   const p=customer.maintenancePlan||{},active=p.active===true;
@@ -914,7 +957,7 @@ function render(){
         form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
         form.setAttribute('aria-label',t('readOnlyRequest'));
       });
-      page.querySelectorAll('[data-prepare-draft],[data-archive-draft]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
+      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
       page.querySelectorAll('button').forEach(button=>{
         const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
         if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
@@ -925,7 +968,10 @@ function render(){
     }
   }
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}}S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
+    try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
+    catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
+  }S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -981,6 +1027,39 @@ async function beginGoogleLogin(){
 }
 async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
 function bind(){
+  document.querySelectorAll('[data-draft-preview]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      const id=button.dataset.draftPreview;
+      const response=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(id)}/preview?lang=${encodeURIComponent(S.lang)}`);
+      S.copilotPreview={...response,draftId:id};render();
+    }catch(error){button.disabled=false;toast(t('previewError'))}
+  });
+  document.querySelectorAll('[data-copy-preview]').forEach(button=>button.onclick=async()=>{
+    const text=document.querySelector('[data-preview-reply="'+CSS.escape(button.dataset.copyPreview)+'"]')?.value||'';
+    if(!text)return;
+    try{await navigator.clipboard.writeText(text);toast(t('copied'))}catch{toast(t('previewError'))}
+  });
+  document.querySelectorAll('[data-task-create]').forEach(form=>form.addEventListener('submit',async e=>{
+    e.preventDefault();const button=form.querySelector('[type="submit"]'),values=new FormData(form);button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,
+        {method:'POST',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({
+          sourceDraftId:form.dataset.taskCreate,title:values.get('title'),dueDate:values.get('dueDate'),
+          dueTime:values.get('dueTime')||'',timezone:values.get('timezone')})});
+      await loadData();render();toast(t('followupSaved'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  }));
+  document.querySelectorAll('[data-task-done]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks/${encodeURIComponent(button.dataset.taskDone)}`,
+        {method:'PATCH',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},
+          body:JSON.stringify({expectedVersion:Number(button.dataset.taskVersion),status:'done'})});
+      await loadData();render();toast(t('taskSaved'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+
   document.querySelectorAll('[data-open-draft]').forEach(button=>button.onclick=()=>{S.page='today';render();document.querySelector('#quick-message')?.focus()});
   document.querySelector('#opportunity-draft')?.addEventListener('submit',async e=>{
     e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type="submit"]'),f=new FormData(form);
@@ -994,7 +1073,7 @@ function bind(){
   document.querySelectorAll('[data-prepare-draft]').forEach(button=>button.onclick=()=>{
     const draft=(S.data?.opportunityDrafts||[]).find(x=>x.id===button.dataset.prepareDraft&&x.state==='open');
     if(!draft)return;
-    S.pendingDraftId=draft.id;S.page='requests';render();
+    S.pendingDraftId=draft.id;S.page='requests';S.copilotPreview=null;render();
     const form=document.querySelector('#internal-request');
     if(!form){toast(t('goToServices'));return}
     const wrap=form.closest('details');if(wrap)wrap.open=true;
@@ -1096,7 +1175,7 @@ function bind(){
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',communicationMode:f.get('communicationMode')||'none',contactEmail:f.get('contactEmail')||'',contactPhone:f.get('contactPhone')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),communicationMode:f.get('communicationMode'),contactEmail:f.get('contactEmail'),contactPhone:f.get('contactPhone'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#payment-settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={enabled:f.get('enabled')==='on',key:f.get('key')||'',label:f.get('label')||'',instructions:f.get('instructions')||''};button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/payment-settings`,{method:'PUT',body:JSON.stringify(payload)});await loadData();render();toast(t('pixSaved'))}catch(err){button.disabled=false;toast(err.message)}});
