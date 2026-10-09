@@ -1896,6 +1896,14 @@ app.post('/api/organizations/:orgId/nestlocal/action-events',authenticate,author
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+// Dedicated F4 canaries; enabling the global NestAI router must NOT activate
+// setup, returns or Pulse for all tenants when an F3 Copilot pilot is started.
+function pilotNestAiV2Enabled(organizationId){
+  if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return false;
+  if(!/^[A-Za-z0-9_-]{1,128}$/.test(organizationId||''))return false;
+  return String(process.env.NESTLOCAL_AI_V2_PILOT_ORGS||'')
+    .split(',').map(value=>value.trim()).filter(Boolean).includes(organizationId);
+}
 // Setup/return are draft-only assists. These server endpoints remain OFF until authorized F4 canaries pass.
 app.post('/api/organizations/:orgId/nestlocal/ai/setup-assist',authenticate,authorize,async(req,res)=>{
   try{
@@ -1914,7 +1922,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/setup-assist',authenticate,auth
         mode==='manual'&&phone(settings.whatsapp).length>=10};
     const fallback={ok:true,mode:'manual',authority:'suggestion_only',facts,
       nextStep:'Revisar os serviços, a região atendida e um canal de resposta antes da publicação.'};
-    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
       const suggestion=await assistNestLocalSetup({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),...facts});
       return res.json({ok:true,mode:'nestai',authority:'suggestion_only',suggestion,facts});
@@ -1933,7 +1941,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/return-suggest',authenticate,au
     if(!purposeConsent)return sendError(res,403,'PURPOSE_CONSENT_REQUIRED');
     if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate))return sendError(res,409,'RETURN_DATE_NOT_SET');
     const fallback={ok:true,mode:'manual',authority:'draft_only',draft:'Conferir a data de retorno e preparar um contato somente pelo canal autorizado. Nenhuma mensagem foi enviada.',send:false};
-    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
       const suggestion=await suggestNestLocalReturn({
         sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),
@@ -1961,7 +1969,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/pulse-explain',authenticate,aut
       date=clean(type==='reactivate'?data.nextServiceDate:data.schedule?.date||data.preference?.date).slice(0,10);
     const fallback={ok:true,authority:'suggestion_only',mode:'manual',explanation:genericExplanation(),sourceIds:[id]};
     // OFF by default: authenticated canaries, free-only router and privacy gates must certify first.
-    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true')return res.json(fallback);
+    if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
       const suggestion=await explainNestLocalPulse({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale,sourceId:id,status,date});
       return res.json({ok:true,authority:'suggestion_only',mode:'nestai',suggestion,sourceIds:[id]});
