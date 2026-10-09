@@ -41,6 +41,9 @@ The global boolean is an explicit alternative to the organization allowlist. Do 
 - **F1 data portability:** authenticated managing members can page through scoped requests, customers, services, drafts and tasks, including when the existing Hub internal trial is read-only. Public tracking/review token hashes are omitted. The read-only banner offers a user-triggered JSON export with an explicit safety warning. Export is bounded at 100 records/page, with a browser fail-closed limit of 5,000 records per dataset.
 - All additional features are additive. The same **opportunity pilot flag remains OFF** unless explicitly enabled by server-side allowlist. Data export is read-only, protected by the existing organization authorization and manager rights.
 
+- **F0 read-only release guard:** operator-only `scripts/nestlocal-release-snapshot.mjs` captures salted HMAC summaries of protected paid MusicScale projections, canonical/legacy memberships and fixed-band scale collections. The comparison tool uses read-only Firebase Admin ADC, needs explicit org selection and secret salt, and **has not run against production**. See `docs/NESTLOCAL_2_0_RELEASE_SAFETY_SNAPSHOT.md`. It is not a Firestore backup or a complete user workflow test.
+- **Delivery safety:** the new UI module and stylesheet have a fresh build asset version to avoid PWA cache staleness. CI cancels obsolete PR runs to reduce cost.
+
 **Security/release clarifications:** In-app tasks are not durable scheduled push delivery. All Copilot text is rule-generated. The pre-existing Hub internal trial/credit-outbox pipeline was inspected in source only; it was not enabled or live-tested. This does not complete F0/F1/F3/F5 until their infrastructure and product gates pass.
 
 ## Not delivered / blocked by proof
