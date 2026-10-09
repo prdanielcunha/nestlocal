@@ -1095,6 +1095,7 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
     if(!(await rateLimit(req,'request',org.id)))return sendError(res,429,'RATE_LIMITED');
     const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,402,'STORE_SUBSCRIPTION_INACTIVE');
     const body=req.body||{};const name=clean(body.name).slice(0,100),customerPhone=phone(body.phone),customerEmail=clean(body.email).toLowerCase().slice(0,254),serviceId=clean(body.serviceId),coverageCode=slug(body.coverageCode),quantity=Number(body.quantity),addressLine=clean(body.addressLine).slice(0,180),preferredDate=clean(body.preferredDate).slice(0,10),preferredWindow=clean(body.preferredWindow).slice(0,30),serviceUpdatesOptIn=body.whatsappServiceOptIn===true,maintenanceOptIn=body.whatsappMaintenanceOptIn===true;
+    if(sourceDraftId&&!safeId(sourceDraftId))return sendError(res,400,'INVALID_SOURCE_DRAFT');
     if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
     const [settingsSnap,servicesSnap]=await Promise.all([db.doc(`organizations/${org.id}/nestlocal_settings/public`).get(),db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get()]);
     if(!settingsSnap.exists||settingsSnap.data()?.published!==true)return sendError(res,409,'STORE_NOT_READY');
@@ -1875,16 +1876,53 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIn
 
 app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
   try{
-    const b=req.body||{},name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),customerEmail=clean(b.email).toLowerCase().slice(0,254),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
+    const b=req.body||{},sourceDraftId=clean(b.sourceDraftId),name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),customerEmail=clean(b.email).toLowerCase().slice(0,254),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
     if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
     const root=`organizations/${req.access.orgId}`,[settings,service]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${serviceId}`).get()]);
     if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');if(!service.exists)return sendError(res,400,'INVALID_SERVICE');
     const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
     if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
     const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    // Explicit promotion happens only after the operator completes the existing
+    // strict request form; retries link at most one request to each opportunity.
+    if(sourceDraftId){
+      if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+      const draftRef=db.doc(`${root}/nestlocal_opportunity_drafts/${sourceDraftId}`);
+      const convertedRef=db.collection(`${root}/nestlocal_requests`)
+        .doc('from_'+hash(`${req.access.orgId}:${sourceDraftId}`).slice(0,32));
+      let created=false;
+      await db.runTransaction(async tx=>{
+        const [draft,existing,usage]=await Promise.all([
+          tx.get(draftRef),tx.get(convertedRef),tx.get(usageRef)
+        ]);
+        const previous=draft.data()||{};
+        if(!draft.exists||previous.organizationId!==req.access.orgId)
+          throw new TypeError('DRAFT_NOT_FOUND');
+        if(existing.exists){
+          if(existing.data()?.sourceDraftId!==sourceDraftId)throw new TypeError('DRAFT_ALREADY_CONVERTED');
+          return; // idempotent retry
+        }
+        if(previous.state!=='open'||previous.linkedRequestId)
+          throw new TypeError('DRAFT_ALREADY_CONVERTED');
+        const count=Number(usage.data()?.requestCount||0);
+        if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)
+          throw new TypeError('PLAN_REQUEST_LIMIT');
+        const now=admin.firestore.FieldValue.serverTimestamp();
+        tx.create(convertedRef,{...record,sourceDraftId,source:'manual_opportunity_draft'});
+        tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:now},{merge:true});
+        tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:now},{merge:true});
+        tx.update(draftRef,{state:'converted',linkedRequestId:convertedRef.id,version:(previous.version||1)+1,
+          lastHumanCorrectionAt:now,updatedAt:now});
+        tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+          {action:'opportunity_draft.promoted',draftId:sourceDraftId,requestId:convertedRef.id,
+            actorUid:req.identity.uid,at:now,schemaVersion:2});
+        created=true;
+      });
+      return res.status(created?201:200).json({requestId:convertedRef.id,status:'new',sourceDraftId});
+    }
     await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(201).json({requestId:requestRef.id,status:'new'});
-  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');if(['DRAFT_NOT_FOUND','DRAFT_ALREADY_CONVERTED'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
