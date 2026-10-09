@@ -46,6 +46,16 @@ The global boolean is an explicit alternative to the organization allowlist. Do 
 
 **Security/release clarifications:** In-app tasks are not durable scheduled push delivery. All Copilot text is rule-generated. The pre-existing Hub internal trial/credit-outbox pipeline was inspected in source only; it was not enabled or live-tested. This does not complete F0/F1/F3/F5 until their infrastructure and product gates pass.
 
+## Continuation — consented NestAI and active-app reminders
+
+- **F3 official NestAI extraction:** reuses the already registered `nestlocal.request.extract` task via `@millionsnest/ai` and the Hub-issued scoped token; no provider/model hardcoded in NestLocal. Only tenant-stored manual source text is considered, and the model receives at most 2,500 characters with common direct identifiers redacted. Price/schedule/send authority is always false. Extracted service is shown only if it occurs in the provided source and remains **unverified** until an operator confirms. No automatic write to requests, messages or appointments.
+- **Explicit operator authorization:** the pilot UI requires a per-request checkbox before a NestAI call. Server requires `consentToProcessMessage:true` and persists metadata-only authorization evidence in the existing tenant audit collection, in the same transaction that reserves the AI request budget. No raw messages or identifiers are copied to audit.
+- **Strict rollout gates:** `NESTLOCAL_OPPORTUNITY_AI_V2_ENABLED=true` **and** `NESTLOCAL_AI_V2_ENABLED=true` **and** `NESTLOCAL_OPPORTUNITY_AI_PILOT_ORGS=<org-id>` **and** the opportunity-drafts flag/allowlist. All are OFF unless set server-side. `NESTLOCAL_OPPORTUNITY_AI_DAILY_CAP=8` controls daily UTC calls per organization, capped by code to 1–25. Errors and exhausted quota retain the manual preview; even failed provider attempts use one budget unit to prevent cost amplification. Hub/NestAI quotas are an additional control.
+- **F5 device reminders while open:** tenant-specific, user-opt-in Notification API shows only aggregate counts of overdue/today/tomorrow tasks. Deduplication uses a local device marker and permission can be denied. Triggers happen on app load, returning to visible tab and every 15 minutes while open. **This is NOT background push**, has no guarantee of delivery, and is not a substitute for calendar reminders or server-side scheduled FCM/Push.
+- **Browser tests:** synthetic mobile/desktop flow includes deliberate NestAI consent, mocked task, source-grounded extraction and all previous stages; no real provider, Stripe or Firestore instance is represented by the browser mock.
+
+These improvements are additive to the #113 draft PR and do not constitute activation or rollout. The full F3 certification still needs live AI router permissions, provider quotas, redaction review and sample prompt-injection evaluation. The full F5 requires background push, delivery/receipt audit and opt-in service-worker/app configuration.
+
 ## Not delivered / blocked by proof
 
 - F0: **No live Firestore backup, Stripe webhook certification, Cloud Run/Hosting SHA audit, nor account-by-account MusicScale regression was executed in this code-only change.** These are release prerequisites.
