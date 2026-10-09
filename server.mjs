@@ -5,6 +5,8 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
+import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunityIdempotencyKey,draftPublicView} from './src/domain/opportunity-drafts.mjs';
 import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
@@ -1347,6 +1349,100 @@ app.patch('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId',auth
     const saved=await ref.get();
     res.json({item:draftPublicView(id,saved.data()||{})});
   }catch(error){draftError(res,error)}
+});
+
+// F3 preview: zero-token deterministic source citation. No AI provider or billing.
+app.get('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId/preview',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  const id=safeId(req.params.draftId);
+  if(!id)return sendError(res,404,'DRAFT_NOT_FOUND');
+  try{
+    const snapshot=await db.doc(`organizations/${req.access.orgId}/nestlocal_opportunity_drafts/${id}`).get();
+    if(!snapshot.exists)return sendError(res,404,'DRAFT_NOT_FOUND');
+    const record=snapshot.data()||{};
+    if(record.organizationId!==req.access.orgId)return sendError(res,404,'DRAFT_NOT_FOUND');
+    res.set('Cache-Control','private, no-store');
+    return res.json({draftId:id,...previewOpportunity(record,req.query?.lang||'pt')});
+  }catch(e){console.error('[NESTLOCAL_PREVIEW]',e?.code||'ERROR');return sendError(res,500,'PREVIEW_FAILED')}
+});
+
+// F5 manual task ledger (in-app only). These routes do not queue push/WhatsApp/email.
+function taskWriteError(res,error){
+  const code=String(error?.message||'');
+  if(['TASK_VERSION_CONFLICT','TASK_NOT_EDITABLE','TASK_IDEMPOTENCY_CONFLICT'].includes(code))
+    return sendError(res,409,code);
+  if(code==='TASK_SOURCE_NOT_FOUND')return sendError(res,404,code);
+  if(/^(INVALID_TASK|TASK_TITLE_REQUIRED|IDEMPOTENCY_KEY_REQUIRED)/.test(code))
+    return sendError(res,400,code);
+  console.error('[NESTLOCAL_TASK_WRITE]',error?.code||'ERROR');return sendError(res,500,'TASK_WRITE_FAILED');
+}
+app.get('/api/organizations/:orgId/nestlocal/action-tasks',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  try{
+    const docs=await db.collection(`organizations/${req.access.orgId}/nestlocal_action_tasks`)
+      .orderBy('createdAt','desc').limit(100).get();
+    res.set('Cache-Control','private, no-store');
+    return res.json({items:docs.docs.map(doc=>publicActionTask(doc.id,doc.data()||{})),
+      delivery:'in_app_only',pushEnabled:false});
+  }catch(e){console.error('[NESTLOCAL_TASK_READ]',e?.code||'ERROR');return sendError(res,500,'TASK_READ_FAILED')}
+});
+app.post('/api/organizations/:orgId/nestlocal/action-tasks',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  try{
+    if(!(await rateLimit(req,'action_task_create',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const input=normalizeActionTask(req.body),key=parseOpportunityIdempotencyKey(req.get('Idempotency-Key'));
+    const root=`organizations/${req.access.orgId}`,id='t_'+hash(`${req.access.orgId}:${req.identity.uid}:${key}`).slice(0,40),
+      ref=db.doc(`${root}/nestlocal_action_tasks/${id}`),hashInput=hash(JSON.stringify(input)),
+      sourceRef=input.sourceDraftId?db.doc(`${root}/nestlocal_opportunity_drafts/${input.sourceDraftId}`):null;
+    let created=false;
+    await db.runTransaction(async tx=>{
+      const existing=await tx.get(ref);
+      if(existing.exists){
+        if(existing.data()?.contentHash!==hashInput)throw new TypeError('TASK_IDEMPOTENCY_CONFLICT');
+        return;
+      }
+      if(sourceRef){
+        const source=await tx.get(sourceRef);
+        if(!source.exists||source.data()?.organizationId!==req.access.orgId)throw new TypeError('TASK_SOURCE_NOT_FOUND');
+      }
+      const now=admin.firestore.FieldValue.serverTimestamp();
+      tx.create(ref,{...input,organizationId:req.access.orgId,status:'open',version:1,
+        actorUid:req.identity.uid,contentHash:hashInput,createdAt:now,updatedAt:now,
+        notificationState:'none',consentState:'unverified'});
+      tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+        {action:'action_task.created',taskId:id,actorUid:req.identity.uid,at:now,schemaVersion:2});
+      created=true;
+    });
+    const saved=await ref.get();
+    return res.status(created?201:200).json({item:publicActionTask(id,saved.data()||{})});
+  }catch(e){return taskWriteError(res,e)}
+});
+app.patch('/api/organizations/:orgId/nestlocal/action-tasks/:taskId',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  const taskId=safeId(req.params.taskId);if(!taskId)return sendError(res,404,'TASK_NOT_FOUND');
+  try{
+    if(!(await rateLimit(req,'action_task_update',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const key=parseOpportunityIdempotencyKey(req.get('Idempotency-Key'));
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_action_tasks/${taskId}`),
+      mutationHash=hash(`${req.identity.uid}:${key}`);
+    let missing=false;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists){missing=true;return}
+      const record=snap.data()||{};
+      if(record.organizationId!==req.access.orgId){missing=true;return}
+      if((record.mutationHashes||[]).includes(mutationHash))return;
+      const next=normalizeActionTaskPatch(req.body,record),now=admin.firestore.FieldValue.serverTimestamp();
+      tx.update(ref,{...next,version:record.version+1,updatedAt:now,
+        mutationHashes:[...(record.mutationHashes||[]).slice(-9),mutationHash]});
+      tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+        {action:'action_task.'+(next.status==='done'?'completed':next.status==='canceled'?'canceled':'edited'),
+          taskId,actorUid:req.identity.uid,at:now,schemaVersion:2});
+    });
+    if(missing)return sendError(res,404,'TASK_NOT_FOUND');
+    const saved=await ref.get();
+    return res.json({item:publicActionTask(taskId,saved.data()||{})});
+  }catch(e){return taskWriteError(res,e)}
 });
 
 // Deployment-controlled staged rollout. OFF by default; never trust client-provided flags.
