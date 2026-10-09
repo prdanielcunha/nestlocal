@@ -21,3 +21,10 @@ test('rejects false dates, missing zone, invalid hours and id injection',()=>{
  assert.equal(makeTaskReminderIcs({...base,timezone:'?;INJECT'}),null);
  assert.equal(makeTaskReminderIcs({...base,id:'other\r\nEND:VEVENT'}),null);
 });
+
+test('folds long UTF-8 descriptions without breaking calendar lines',()=>{
+ const x=makeTaskReminderIcs({id:'t_8',dueDate:'2026-10-12',timezone:'America/Sao_Paulo',dueTime:'09:30'}, {locale:'pt'});
+ const lines=x.trim().split('\r\n'),encoder=new TextEncoder();
+ assert.ok(lines.every(line=>encoder.encode(line).length<=75));
+ assert.ok(lines.some(line=>line.startsWith(' ')));
+});
