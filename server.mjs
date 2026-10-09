@@ -7,6 +7,7 @@ import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
+import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
 import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunityIdempotencyKey,draftPublicView} from './src/domain/opportunity-drafts.mjs';
 import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
@@ -1264,7 +1265,7 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId)},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -1398,6 +1399,72 @@ app.get('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId/preview
     res.set('Cache-Control','private, no-store');
     return res.json({draftId:id,...previewOpportunity(record,req.query?.lang||'pt')});
   }catch(e){console.error('[NESTLOCAL_PREVIEW]',e?.code||'ERROR');return sendError(res,500,'PREVIEW_FAILED')}
+});
+
+// F3 NestAI Copilot: operator-approved POST, tenant-specific rollout and bounded quota.
+// Calls the existing registered NestAI task, not a provider/model directly.
+// The external task can never mutate a quote, message, booking or payment.
+app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId/ai-preview',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId)||!pilotOpportunityAiEnabled(req.access.orgId))
+    return sendError(res,404,'FEATURE_DISABLED');
+  if(req.access.entitlement?.canUseAI===false||req.access.entitlement?.readOnly===true)
+    return sendError(res,403,'AI_ENTITLEMENT_REQUIRED');
+  if(req.body?.consentToProcessMessage!==true)
+    return sendError(res,400,'EXPLICIT_AI_CONSENT_REQUIRED');
+  const allowed=new Set(['consentToProcessMessage','lang']);
+  if(!req.body||typeof req.body!=='object'||Array.isArray(req.body)||
+     Object.keys(req.body).some(k=>!allowed.has(k)))
+    return sendError(res,400,'INVALID_AI_PREVIEW_INPUT');
+  const id=safeId(req.params.draftId);
+  if(!id)return sendError(res,404,'DRAFT_NOT_FOUND');
+  try{
+    if(!(await rateLimit(req,'opportunity_ai_preview',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const root=`organizations/${req.access.orgId}`,
+      draft=await db.doc(`${root}/nestlocal_opportunity_drafts/${id}`).get();
+    if(!draft.exists||draft.data()?.organizationId!==req.access.orgId)
+      return sendError(res,404,'DRAFT_NOT_FOUND');
+    const record=draft.data()||{},locale=clean(req.body?.lang||'pt').slice(0,5);
+    if(record.state!=='open')return sendError(res,409,'DRAFT_NOT_EDITABLE');
+    const text=redactOpportunityForAi(String(record.message||''));
+    // If text is too short, there is nothing reliable to extract.
+    if(text.length<5)return res.json({draftId:id,...previewOpportunity(record,locale),reason:'SOURCE_TOO_SHORT'});
+    const dateKey=new Date().toISOString().slice(0,10).replace(/-/g,''),
+      quota=db.doc(`${root}/nestlocal_ai_opportunity_usage/${dateKey}`),
+      maxCalls=maxDailyAiRequests();
+    const admitted=await db.runTransaction(async tx=>{
+      const snapshot=await tx.get(quota),count=Math.max(0,Number(snapshot.data()?.count)||0);
+      if(count>=maxCalls)return false;
+      tx.set(quota,{count:count+1,updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+4*86400000)},{merge:true});
+      return true;
+    });
+    if(!admitted)return res.status(429).json({error:'AI_DAILY_BUDGET_REACHED',dailyLimit:maxCalls,
+      draftId:id,manualAvailable:true});
+    const fallback=previewOpportunity(record,locale);
+    try{
+      const suggestion=await extractNestLocalRequest({
+        sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,
+        locale,text
+      });
+      const projected=projectNestAiOpportunityExtraction(suggestion,text,locale);
+      res.set('Cache-Control','private, no-store');
+      return res.json({draftId:id,...fallback,...projected,
+        facts:projected.claims.map(c=>({evidence:c.evidence,sourceField:'message',verified:false})),
+        aiProcessed:true,dailyLimit:maxCalls,manualReplyOnly:true});
+    }catch(error){
+      // Provider failure never blocks the existing manual journey, logs no message content.
+      console.warn('[NESTLOCAL_OPPORTUNITY_AI_DEGRADED]',String(error?.code||error?.name||'ERROR').slice(0,50));
+      res.set('Cache-Control','private, no-store');
+      return res.json({draftId:id,...fallback,mode:'manual',aiProcessed:false,
+        reason:'AI_UNAVAILABLE',dailyLimit:maxCalls,manualReplyOnly:true});
+    }
+  }catch(error){
+    const code=String(error?.message||'');
+    if(code==='AI_SOURCE_REQUIRED'||code==='INVALID_AI_SOURCE')
+      return sendError(res,400,code);
+    console.error('[NESTLOCAL_OPPORTUNITY_AI_PREVIEW]',error?.code||'ERROR');
+    return sendError(res,500,'AI_PREVIEW_FAILED');
+  }
 });
 
 // F5 manual task ledger (in-app only). These routes do not queue push/WhatsApp/email.
