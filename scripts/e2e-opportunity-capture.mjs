@@ -70,6 +70,13 @@ try {
     assert.equal(orders.length,1);
     assert.equal(stored[0].state,'converted');
     const size=await page.evaluate(()=>({document:document.documentElement.scrollWidth,window:innerWidth}));
+    if(size.document>size.window+1){
+      const offenders=await page.evaluate(()=>[...document.querySelectorAll('body *')].map(el=>{
+        const rect=el.getBoundingClientRect();
+        return {tag:el.tagName,cls:String(el.className||'').slice(0,65),right:Math.round(rect.right),left:Math.round(rect.left),width:Math.round(rect.width)};
+      }).filter(x=>x.right>innerWidth+1&&x.width>0).slice(0,15));
+      console.log('Overflow elements',JSON.stringify(offenders));
+    }
     assert.ok(size.document<=size.window+1,'Overflow '+width+': '+JSON.stringify(size));
     await page.screenshot({path:`artifacts/experience/opportunity-order-${width}.png`,fullPage:true});
     assert.deepEqual(errors,[],'Browser exceptions at '+width);
