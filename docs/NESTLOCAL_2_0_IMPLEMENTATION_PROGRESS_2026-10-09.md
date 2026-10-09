@@ -33,6 +33,16 @@ The global boolean is an explicit alternative to the organization allowlist. Do 
 6. 390px iPhone / Android / desktop and PT/EN/ES; no modal or menu clipping, no loading loop; manual text remains private.
 7. Always test GET before enabling a pilot flag and monitor server error rate.
 
+## Additional increments in this continuation
+
+- **F3 foundation:** `GET /opportunity-drafts/:draftId/preview` returns source-grounded, *deterministic* facts, up to three confirmation questions and an editable/manual reply. There is **no remote NestAI call or credit consumption** in this preliminary feature; no claim of AI reasoning or notification delivery.
+- **F5 manual follow-up tasks:** organization-scoped `nestlocal_action_tasks` with source-draft validation, owner UID, server audit, per-actor idempotency, optimistic update versions and in-app scheduling with operator-selected date/time and IANA timezone. Nothing auto-sends or queues push/email.
+- **F5 opt-in calendar export:** a separate `.ics` for each dated task. Export includes generic NestLocal content only, not customer information, and one-hour pre-event `VALARM`. Calendars/operating systems may ignore alarm instructions. No bidirectional sync or guaranteed phone notifications.
+- **F1 data portability:** authenticated managing members can page through scoped requests, customers, services, drafts and tasks, including when the existing Hub internal trial is read-only. Public tracking/review token hashes are omitted. The read-only banner offers a user-triggered JSON export with an explicit safety warning. Export is bounded at 100 records/page, with a browser fail-closed limit of 5,000 records per dataset.
+- All additional features are additive. The same **opportunity pilot flag remains OFF** unless explicitly enabled by server-side allowlist. Data export is read-only, protected by the existing organization authorization and manager rights.
+
+**Security/release clarifications:** In-app tasks are not durable scheduled push delivery. All Copilot text is rule-generated. The pre-existing Hub internal trial/credit-outbox pipeline was inspected in source only; it was not enabled or live-tested. This does not complete F0/F1/F3/F5 until their infrastructure and product gates pass.
+
 ## Not delivered / blocked by proof
 
 - F0: **No live Firestore backup, Stripe webhook certification, Cloud Run/Hosting SHA audit, nor account-by-account MusicScale regression was executed in this code-only change.** These are release prerequisites.
