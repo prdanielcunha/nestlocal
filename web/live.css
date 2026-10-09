@@ -105,3 +105,7 @@
 .is-opportunity-v2 .ai-opt-in input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0;accent-color:#9becbf;cursor:pointer}
 .is-opportunity-v2 [data-ai-draft-preview]{white-space:normal;min-height:40px}
 @media(max-width:640px){.is-opportunity-v2 .draft-controls>button{flex:1 1 44%;white-space:normal}.is-opportunity-v2 .ai-opt-in{font-size:12px}}
+
+/* Local notifications are user activated and remain honest about background limits. */
+.is-opportunity-v2 [data-enable-task-alerts]{min-height:42px;margin:8px 0 4px}
+.is-opportunity-v2 .followup-tasks>.help{margin-top:6px}
