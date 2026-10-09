@@ -5,6 +5,7 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunityIdempotencyKey,draftPublicView} from './src/domain/opportunity-drafts.mjs';
 import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
@@ -1260,8 +1261,89 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId)},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId)},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Additive opportunity drafts: incomplete conversation != order or invoice.
+// Release flag may allow selected organization IDs, never a client-supplied toggle.
+function opportunityDraftsEnabled(orgId) {
+  if(process.env.NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED==='true')return true;
+  return String(process.env.NESTLOCAL_OPPORTUNITY_DRAFTS_V2_PILOT_ORGS||'')
+    .split(',').map(x=>x.trim()).filter(Boolean).includes(orgId);
+}
+function draftError(res,error) {
+  const code=String(error?.message||'');
+  if(code==='DRAFT_VERSION_CONFLICT')return sendError(res,409,code);
+  if(code==='DRAFT_NOT_EDITABLE')return sendError(res,409,code);
+  if(code==='IDEMPOTENCY_CONFLICT')return sendError(res,409,code);
+  if(/^(INVALID_DRAFT|DRAFT_CONTENT_REQUIRED|IDEMPOTENCY_KEY_REQUIRED)/.test(code))return sendError(res,400,code);
+  console.error('[NESTLOCAL_DRAFT_WRITE]',error?.code||'ERROR');
+  return sendError(res,500,'DRAFT_WRITE_FAILED');
+}
+app.get('/api/organizations/:orgId/nestlocal/opportunity-drafts',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  try{
+    const docs=await db.collection(`organizations/${req.access.orgId}/nestlocal_opportunity_drafts`)
+      .orderBy('createdAt','desc').limit(50).get();
+    res.set('Cache-Control','private, no-store');
+    res.json({items:docs.docs.map(doc=>draftPublicView(doc.id,doc.data()||{}))});
+  }catch(error){console.error('[NESTLOCAL_DRAFT_READ]',error?.code||'ERROR');sendError(res,500,'DRAFT_READ_FAILED')}
+});
+app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  try{
+    const input=normalizeOpportunityDraft(req.body),key=parseOpportunityIdempotencyKey(req.get('Idempotency-Key'));
+    const root=`organizations/${req.access.orgId}`,collection=db.collection(`${root}/nestlocal_opportunity_drafts`);
+    const id='d_'+hash(`${req.access.orgId}:${req.identity.uid}:${key}`).slice(0,40);
+    const ref=collection.doc(id),contentHash=hash(JSON.stringify(input));
+    let created=false,record=null;
+    await db.runTransaction(async tx=>{
+      const existing=await tx.get(ref);
+      if(existing.exists){
+        record=existing.data()||{};
+        if(record.contentHash!==contentHash)throw new TypeError('IDEMPOTENCY_CONFLICT');
+        return;
+      }
+      const now=admin.firestore.FieldValue.serverTimestamp();
+      record={...input,organizationId:req.access.orgId,ownerUid:req.identity.uid,
+        state:'open',version:1,source:'manual',sourceVerifiedBy:req.identity.uid,
+        contentHash,createdAt:now,updatedAt:now,linkedRequestId:null};
+      tx.create(ref,record);
+      tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+        {action:'opportunity_draft.created',draftId:id,actorUid:req.identity.uid,at:now,schemaVersion:2});
+      created=true;
+    });
+    const saved=await ref.get();
+    res.status(created?201:200).json({item:draftPublicView(id,saved.data()||record)});
+  }catch(error){draftError(res,error)}
+});
+app.patch('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId',authenticate,authorize,async(req,res)=>{
+  if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  const id=safeId(req.params.draftId);
+  if(!id)return sendError(res,404,'DRAFT_NOT_FOUND');
+  try{
+    const key=parseOpportunityIdempotencyKey(req.get('Idempotency-Key'));
+    const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_opportunity_drafts/${id}`);
+    const mutationHash=hash(`${req.identity.uid}:${key}`);
+    let missing=false;
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists){missing=true;return}
+      const previous=snap.data()||{};
+      if((previous.mutationHashes||[]).includes(mutationHash))return;
+      const updated=normalizeOpportunityDraftPatch(req.body,previous);
+      const now=admin.firestore.FieldValue.serverTimestamp();
+      tx.update(ref,{...updated,version:previous.version+1,mutationHashes:[...(previous.mutationHashes||[]).slice(-9),mutationHash],
+        lastHumanCorrectionAt:now,updatedAt:now});
+      tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+        {action:updated.state==='archived'?'opportunity_draft.archived':'opportunity_draft.edited',
+          draftId:id,actorUid:req.identity.uid,at:now,schemaVersion:2});
+    });
+    if(missing)return sendError(res,404,'DRAFT_NOT_FOUND');
+    const saved=await ref.get();
+    res.json({item:draftPublicView(id,saved.data()||{})});
+  }catch(error){draftError(res,error)}
 });
 
 // Deployment-controlled staged rollout. OFF by default; never trust client-provided flags.
