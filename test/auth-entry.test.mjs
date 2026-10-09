@@ -198,8 +198,8 @@ test('auth recovery states have responsive premium styling',()=>{
 
 test('root document cache-busts the backend SSO bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20261009-nestlocal-v2-staged-01'));
-  assert.ok(html.includes('20261009-nestlocal-v2-staged-01'));
+  assert.ok(html.includes('/live.js?v=20261009-nestlocal-v2-staged-02'));
+  assert.ok(html.includes('20261009-nestlocal-v2-staged-02'));
 });
 
 test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
@@ -226,7 +226,7 @@ test('independent boot guard stays armed through handoff and clears only after l
   const renderBlock=client.slice(renderStart,renderEnd);
   assert.ok(renderBlock.includes("if(!S.loading&&window.__nestLocalBootGuard)"));
   assert.ok(renderBlock.includes('clearTimeout(window.__nestLocalBootGuard)'));
-  assert.ok(client.includes("dataset.nlBuild='20261009-nestlocal-v2-staged-01'"));
+  assert.ok(client.includes("dataset.nlBuild='20261009-nestlocal-v2-staged-02'"));
 });
 
 test('inline boot recovery script is valid JavaScript and contains no literal escaped newlines',()=>{
@@ -291,8 +291,8 @@ test('production workflow deploys backend SSO bundle and validates it on the off
   const custom=workflow.indexOf('Connect official custom domain');
   const smoke=workflow.indexOf('Smoke production endpoints');
   assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
-  assert.ok(workflow.includes('/live.js?v=20261009-nestlocal-v2-staged-01'));
-  assert.ok(workflow.includes('20261009-nestlocal-v2-staged-01'));
+  assert.ok(workflow.includes('/live.js?v=20261009-nestlocal-v2-staged-02'));
+  assert.ok(workflow.includes('20261009-nestlocal-v2-staged-02'));
 });
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
