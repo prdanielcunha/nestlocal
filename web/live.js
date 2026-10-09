@@ -5,6 +5,8 @@ import {renderCalendarIntro,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
+import {makeTaskReminderIcs} from './task-calendar.js';
+import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
 
 const millionsNestHubOrigin='https://www.millionsnest.com';
@@ -29,7 +31,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -228,6 +230,54 @@ Object.assign(D.es,{
   readOnlyUntil:'Prueba finalizada',
   readOnlyRequest:'Esta acción no está disponible en modo consulta. Tus datos se conservan.',
 });
+Object.assign(D.pt,{
+  opportunities:'Oportunidades', quickCapture:'O que aconteceu hoje?',quickHelp:'Cole uma mensagem ou descreva o contato. Sem conectar seu WhatsApp, sem orçamento automático.',
+  captureOrigin:'De onde veio?',captureMessage:'Mensagem ou anotação',capturePlaceholder:'Ex.: A cliente perguntou sobre limpeza do sofá para a próxima semana.',
+  prepareDraft:'Completar pedido',draftPrepared:'Complete os dados para criar o pedido.',saveOpportunity:'Salvar rascunho',savedOpportunity:'Oportunidade guardada para continuar depois.',
+  salesQuestion:'Onde posso vender?',salesEmpty:'Seus próximos contatos aparecerão aqui conforme você registrar atendimentos.',
+  taskQuestion:'O que tenho para fazer?',taskEmpty:'Sem compromissos para hoje ou amanhã.',
+  detailsMore:'Ver painel completo',draftsOpen:'Conversas que ainda precisam de detalhes',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / redes',draftOrigin_website:'Meu site',
+  draftOrigin_telephone:'Telefone',draftOrigin_referral:'Indicação',draftOrigin_other:'Outro',
+  draftWithoutName:'Contato sem nome',draftUnknown:'Ainda sem detalhes',draftArchive:'Arquivar',draftArchived:'Rascunho arquivado.',
+  draftError:'Não foi possível carregar os rascunhos. Seus outros dados continuam disponíveis.',manualOnly:'Modo manual: nada é enviado ao cliente.',
+  moreNav:'Mais',register:'Registrar',noAutomaticCapture:'Copiar uma conversa não conecta o WhatsApp nem comprova envio.'
+});
+Object.assign(D.en,{
+  opportunities:'Opportunities',quickCapture:'What happened today?',quickHelp:'Paste a message or describe an interaction. No WhatsApp connection or automatic quote.',
+  captureOrigin:'Where did it come from?',captureMessage:'Message or note',capturePlaceholder:'E.g. Customer asked about sofa cleaning next week.',
+  prepareDraft:'Complete request',draftPrepared:'Complete the required fields to create the request.',saveOpportunity:'Save draft',savedOpportunity:'Opportunity saved for later.',
+  salesQuestion:'Where can I make a sale?',salesEmpty:'Your follow-ups appear here as you register interactions.',
+  taskQuestion:'What do I need to do?',taskEmpty:'No appointments today or tomorrow.',
+  detailsMore:'View full dashboard',draftsOpen:'Conversations that need more details',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / social',draftOrigin_website:'My website',
+  draftOrigin_telephone:'Phone',draftOrigin_referral:'Referral',draftOrigin_other:'Other',
+  draftWithoutName:'Unnamed contact',draftUnknown:'More details needed',draftArchive:'Archive',draftArchived:'Draft archived.',
+  draftError:'Could not load drafts. Your other data is still available.',manualOnly:'Manual mode: nothing is sent to customers.',
+  moreNav:'More',register:'Register',noAutomaticCapture:'Pasting a conversation does not connect WhatsApp or prove delivery.'
+});
+Object.assign(D.es,{
+  opportunities:'Oportunidades',quickCapture:'¿Qué pasó hoy?',quickHelp:'Pega un mensaje o describe un contacto. Sin conectar WhatsApp ni presupuesto automático.',
+  captureOrigin:'¿De dónde llegó?',captureMessage:'Mensaje o nota',capturePlaceholder:'Ej.: Una cliente preguntó por limpieza del sofá la semana próxima.',
+  prepareDraft:'Completar solicitud',draftPrepared:'Completa los datos para crear la solicitud.',saveOpportunity:'Guardar borrador',savedOpportunity:'Oportunidad guardada para después.',
+  salesQuestion:'¿Dónde puedo vender?',salesEmpty:'Tus seguimientos aparecerán aquí cuando registres contactos.',
+  taskQuestion:'¿Qué tengo que hacer?',taskEmpty:'Sin citas para hoy ni mañana.',
+  detailsMore:'Ver panel completo',draftsOpen:'Conversaciones que necesitan más información',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / redes',draftOrigin_website:'Mi sitio web',
+  draftOrigin_telephone:'Teléfono',draftOrigin_referral:'Recomendación',draftOrigin_other:'Otro',
+  draftWithoutName:'Contacto sin nombre',draftUnknown:'Faltan detalles',draftArchive:'Archivar',draftArchived:'Borrador archivado.',
+  draftError:'No se pudieron cargar los borradores. Tus demás datos siguen disponibles.',manualOnly:'Modo manual: nada se envía al cliente.',
+  moreNav:'Más',register:'Registrar',noAutomaticCapture:'Pegar una conversación no conecta WhatsApp ni confirma entrega.'
+});
+Object.assign(D.pt,{copilotPreview:'Revisar conversa',previewTitle:'Entendi isto da conversa',previewHelp:'Prévia por regras, sem IA externa. Confira as informações antes de agir.',previewFacts:'Trecho original',previewUnknown:'Ainda precisamos confirmar',previewReply:'Resposta sugerida (não enviada)',previewCopy:'Copiar resposta',followupSchedule:'Agendar retorno',followupTitle:'O que devo lembrar?',followupWhen:'Em qual dia?',followupTime:'Horário (opcional)',followupSaved:'Retorno salvo no NestLocal.',taskDone:'Concluir',taskSaved:'Retorno concluído',taskDue:'Acompanhar hoje',taskFuture:'Próximos retornos',taskOnlyApp:'Aviso apenas dentro do aplicativo. Não existe push automático nesta etapa.',taskLoadError:'Não foi possível carregar os retornos.',previewError:'Não foi possível preparar a prévia.',taskCalendar:'Adicionar ao calendário',taskCalendarHint:'O calendário pode exibir avisos, dependendo das configurações do aparelho. A sincronização é de uma via.',exportData:'Exportar meus dados',exportWarning:'O arquivo contém dados dos clientes. Guarde em local seguro.',exportFailed:'Não foi possível exportar todos os registros. Tente novamente.'});
+Object.assign(D.en,{copilotPreview:'Review conversation',previewTitle:'From the conversation',previewHelp:'Rule-based preview; no external AI. Confirm before taking action.',previewFacts:'Original excerpt',previewUnknown:'Details to confirm',previewReply:'Suggested reply (not sent)',previewCopy:'Copy reply',followupSchedule:'Schedule follow-up',followupTitle:'What should I remember?',followupWhen:'On which date?',followupTime:'Time (optional)',followupSaved:'Follow-up saved in NestLocal.',taskDone:'Complete',taskSaved:'Follow-up completed',taskDue:'Follow up today',taskFuture:'Upcoming follow-ups',taskOnlyApp:'In-app only. No automatic push notification is enabled.',taskLoadError:'Could not load follow-ups.',previewError:'Could not load the preview.',taskCalendar:'Add to calendar',taskCalendarHint:'Calendar reminders depend on your device settings; this is a one-way export.',exportData:'Export my data',exportWarning:'The file contains customer data. Store it securely.',exportFailed:'Could not export all records. Please try again.'});
+Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendido de la conversación',previewHelp:'Vista previa basada en reglas, sin IA externa. Confirma antes de actuar.',previewFacts:'Fragmento original',previewUnknown:'Detalles por confirmar',previewReply:'Respuesta sugerida (no enviada)',previewCopy:'Copiar respuesta',followupSchedule:'Programar seguimiento',followupTitle:'¿Qué debo recordar?',followupWhen:'¿Qué día?',followupTime:'Hora (opcional)',followupSaved:'Seguimiento guardado en NestLocal.',taskDone:'Completar',taskSaved:'Seguimiento completado',taskDue:'Seguimientos de hoy',taskFuture:'Próximos seguimientos',taskOnlyApp:'Solo dentro de la aplicación. No hay notificaciones push automáticas.',taskLoadError:'No se pudieron cargar los seguimientos.',previewError:'No se pudo cargar la vista previa.',taskCalendar:'Agregar al calendario',taskCalendarHint:'Los avisos dependen del dispositivo. La exportación es de una sola vía.',exportData:'Exportar mis datos',exportWarning:'El archivo contiene datos de clientes. Guárdalo de forma segura.',exportFailed:'No se pudieron exportar todos los registros. Vuelve a intentarlo.'});
+Object.assign(D.pt,{aiPreview:'Analisar com NestAI',aiConsent:'Autorizo a análise desta anotação no NestAI. Confira o texto: o sistema tenta ocultar identificadores comuns, mas remova dados sensíveis antes de autorizar.',aiPrivacy:'Sugestão de IA: confirme as informações. Nenhuma mensagem será enviada, nenhuma venda é garantida e nenhum horário será reservado.',aiManualFallback:'NestAI indisponível ou limite atingido: continue com a revisão manual.',aiEvidence:'Serviço mencionado na conversa',aiConsentRequired:'Confirme a autorização antes de usar o NestAI.',aiNoCredits:'Limite diário de consultas de IA atingido. Use a revisão sem IA.'});
+Object.assign(D.en,{aiPreview:'Analyze with NestAI',aiConsent:'I authorize NestAI to analyze this note. Review the text first: common identifiers are filtered, but please remove sensitive details before authorizing.',aiPrivacy:'AI suggestion: verify the facts. No message is sent, sale guaranteed or appointment booked.',aiManualFallback:'NestAI unavailable or quota reached. Continue with manual review.',aiEvidence:'Service mentioned in the source',aiConsentRequired:'Please authorize NestAI processing first.',aiNoCredits:'Daily AI request limit reached. Use manual review.'});
+Object.assign(D.es,{aiPreview:'Analizar con NestAI',aiConsent:'Autorizo el análisis de esta nota con NestAI. Revisa el texto: se intenta ocultar identificadores comunes, pero elimina datos sensibles antes de autorizar.',aiPrivacy:'Sugerencia de IA: verifica los datos. No se envían mensajes, ni se garantizan ventas o reservas.',aiManualFallback:'NestAI no disponible o límite alcanzado. Continúa con la revisión manual.',aiEvidence:'Servicio mencionado en el mensaje',aiConsentRequired:'Autoriza el análisis con NestAI antes de continuar.',aiNoCredits:'Límite diario de consultas de IA alcanzado. Usa la revisión manual.'});
+Object.assign(D.pt,{enableTaskAlerts:'Ativar avisos neste aparelho',alertsUnavailable:'Este navegador não oferece notificações para esta página. Use a opção Calendário.',alertsEnabled:'Avisos permitidos enquanto o NestLocal estiver aberto.',alertsDenied:'O aparelho não autorizou notificações. Você pode usar o calendário.',alertsExplanation:'Opcional: avisos para retornos de hoje e amanhã quando o app estiver aberto. Sem envio de WhatsApp ou notificação garantida em segundo plano.'});
+Object.assign(D.en,{enableTaskAlerts:'Enable alerts on this device',alertsUnavailable:'Notifications are unavailable here. Use the calendar option.',alertsEnabled:'Alerts enabled while NestLocal is open.',alertsDenied:'Device notifications were not permitted. You can use the calendar.',alertsExplanation:'Optional reminders for today and tomorrow while the app is open; no WhatsApp send or background push guarantee.'});
+Object.assign(D.es,{enableTaskAlerts:'Activar avisos en este dispositivo',alertsUnavailable:'Este navegador no admite notificaciones aquí. Usa el calendario.',alertsEnabled:'Avisos activados mientras NestLocal está abierto.',alertsDenied:'El dispositivo no autorizó notificaciones. Puedes usar el calendario.',alertsExplanation:'Avisos opcionales de hoy y mañana mientras la app está abierta; sin WhatsApp ni push garantizado en segundo plano.'});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -246,7 +296,7 @@ function requestIntakeSummary(r){
   return Object.entries(values).map(([key,value])=>{const field=fields.find(x=>x.id===key);return `<p><strong>${esc(field?fieldLabel(field):humanizeOption(key))}:</strong> ${esc(value)}</p>`}).join('');
 }
 const isGrowthAdmin=()=>growthAdminRoles.has(S.session?.user?.systemRole);
-const labels=()=>isGrowthAdmin()?{today:t('today'),growth:t('growth'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')};
+const labels=()=>{const opportunity=S.data?.features?.opportunityDrafts===true,requestLabel=opportunity?t('opportunities'):t('requests');return isGrowthAdmin()?{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),growth:t('growth'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),automation:t('automation'),page:t('page'),privacy:t('privacy')};};
 const pathParts=()=>location.pathname.split('/').filter(Boolean);
 const publicSlug=()=>{const p=pathParts();return p[0]==='s'?p[1]:p[0]};
 const publicReserved=new Set(['track','review','privacy','terms','raio-x','diagnostico']);
@@ -297,12 +347,17 @@ function login(){
 }
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
 const sessionIssueText=code=>code==='USER_NOT_FOUND'?t('userNotFoundHelp'):t('sessionProblemHelp');
-function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20260929-render-fix-10</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
+function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261009-nestlocal-v2-staged-02</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
 function noOrg(){return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<h1>${t('noOrg')}</h1><p>${t('noEligibleOrgHelp')}</p><button class="button primary login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a>${lang()}</section></main>`}
 const accessReasonText=reason=>reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?t('accessPaymentRequired'):reason==='SUBSCRIPTION_NOT_FOUND'||reason==='SUBSCRIPTION_INACTIVE'?t('accessSubscriptionMissing'):reason==='ENTITLEMENT_INACTIVE'?t('accessEntitlementInactive'):reason==='MEMBER_APP_ACCESS_DISABLED'?t('accessMemberDisabled'):reason==='PERMISSION_DENIED'?t('accessPermissionDenied'):reason==='MEMBERSHIP_NOT_FOUND'||reason==='MEMBERSHIP_INACTIVE'?t('accessMembershipMissing'):t('noEligibleOrgHelp');
 function subscriptionGate(){const org=S.session.organizations.find(x=>x.id===S.orgId)||S.session.organizations[0],reason=org?.nestlocal?.reason||'',plans=[['essential',79],['growth',129],['pro',199]],billing=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE'].includes(reason),payment=reason==='SUBSCRIPTION_PAYMENT_REQUIRED';if(!billing&&!payment)return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('accessDeniedTitle')}</h1><p>${esc(accessReasonText(reason))}</p><div class="recovery-actions"><a class="button primary login-button" href="https://www.millionsnest.com">${t('manageInHub')}</a><button class="button login-button" id="switch-account">${t('switchAccount')}</button></div>${lang()}</section></main>`;if(payment)return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('accessDeniedTitle')}</h1><p>${t('accessPaymentRequired')}</p><a class="button primary login-button" href="https://www.millionsnest.com">${t('managePlan')}</a><button class="button login-button" id="switch-account">${t('switchAccount')}</button>${lang()}</section></main>`;return `<main class="login-shell"><section class="login-card subscription-card">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('choosePlan')}</h1><p>${t('choosePlanHelp')}</p><div class="plan-grid">${plans.map(([id,price])=>`<article class="plan-option ${id==='growth'?'featured':''}"><strong>${t(id)}</strong><span>R$ ${price}/mês</span><small>${t(`${id}Desc`)}</small><a class="button ${id==='growth'?'primary':''}" href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_${id}_monthly">${t('subscribe')}</a></article>`).join('')}</div><button class="button login-button" id="switch-account">${t('switchAccount')}</button>${lang()}</section></main>`}
 
 function nav(){return Object.entries(labels()).map(([id,x])=>`<button data-nav="${id}" class="${S.page===id?'active':''}">${x}</button>`).join('')}
+function mobileNav(){
+  const entries=Object.entries(labels()),main=['today','requests','agenda','services'],other=entries.filter(([id])=>!main.includes(id));
+  return main.map(id=>`<button data-nav="${id}" class="${S.page===id?'active':''}">${esc(labels()[id])}</button>`).join('')+
+    `<details class="mobile-more"><summary>${esc(t('moreNav'))}</summary><div class="mobile-more-list">${other.map(([id,name])=>`<button data-nav="${id}">${esc(name)}</button>`).join('')}</div></details>`;
+}
 function quotePanel(r){
   const q=r.quote||{},commercial=r.commercial||{},amount=Number(q.totalCents??commercial.quotedAmountCents??0),quoteReady=Number.isSafeInteger(amount)&&amount>0,editable=['new','reviewing','quoted'].includes(r.status)&&!r.decision?.status;
   if(!editable)return '';
@@ -510,9 +565,76 @@ function calendarDownload(r){
   setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast(cw(S.lang,'saved'));
 }
-function today(){
+function todayLegacy(){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
   return `${calendarAlertStrip()}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+}
+function captureQuickCard(){
+  const origins=['whatsapp_manual','instagram','website','telephone','referral','other'];
+  return `<article class="card quick-capture"><div class="section-title"><div><span class="eyebrow">NESTLOCAL</span><h2>${t('quickCapture')}</h2><p class="help">${t('quickHelp')}</p></div></div>
+    <form id="opportunity-draft" class="quick-capture-form"><label>${t('captureOrigin')}<select name="origin">${origins.map(o=>`<option value="${o}">${esc(t('draftOrigin_'+o))}</option>`).join('')}</select></label>
+    <label>${t('captureMessage')}<textarea name="message" id="quick-message" maxlength="6000" rows="3" required placeholder="${esc(t('capturePlaceholder'))}"></textarea></label>
+    <button class="button primary" type="submit">${t('saveOpportunity')}</button><small class="help">${t('manualOnly')}</small></form></article>`;
+}
+function opportunityPreviewPanel(draftId){
+  const p=S.copilotPreview;
+  if(!p||p.draftId!==draftId)return '';
+  return `<section class="opportunity-preview"><h3>${t('previewTitle')}</h3><p class="help">${p.mode==='nestai'?t('aiPrivacy'):t('previewHelp')}</p>
+   ${p.facts?.length?`<div class="preview-evidence"><strong>${t('previewFacts')}</strong><p>${esc(p.facts[0].evidence)}</p></div>`:''}
+   ${p.mode==='nestai'&&p.claims?.length?`<div class="preview-evidence"><strong>${t('aiEvidence')}</strong><p>${p.claims.map(x=>esc(x.value)).join(', ')}</p></div>`:''}
+   <strong>${t('previewUnknown')}</strong><ul>${(p.questions||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+   <label class="draft-reply-label">${t('previewReply')}<textarea data-preview-reply="${esc(draftId)}" rows="3" maxlength="1200">${esc(p.replyDraft||'')}</textarea></label>
+   <button class="button small" data-copy-preview="${esc(draftId)}">${t('previewCopy')}</button>
+   <p class="help">${t('manualOnly')}</p></section>`;
+}
+function taskScheduleForm(d){
+  const tz=S.data?.settings?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'America/Sao_Paulo';
+  const name=d.customerName||t('draftWithoutName');
+  return `<details class="followup-task"><summary>${t('followupSchedule')}</summary>
+    <form data-task-create="${esc(d.id)}" class="quick-capture-form">
+      <label>${t('followupTitle')}<input name="title" maxlength="140" minlength="3" required value="${esc(t('followupSchedule')+' · '+name)}"></label>
+      <label>${t('followupWhen')}<input name="dueDate" type="date" min="${esc(organizationDateIso())}" required></label>
+      <label>${t('followupTime')}<input name="dueTime" type="time"></label>
+      <input type="hidden" name="timezone" value="${esc(tz)}">
+      <button type="submit" class="button primary small">${t('followupSchedule')}</button>
+      <small class="help">${t('taskOnlyApp')}</small>
+    </form></details>`;
+}
+function tasksPanel(dueOnly=false){
+  if(S.data?.tasksLoadError)return `<p class="help">${t('taskLoadError')}</p>`;
+  const today=organizationDateIso(),tomorrow=addIsoCalendarDays(today,1);
+  const tasks=(S.data?.actionTasks||[]).filter(x=>x.status==='open'&&(!dueOnly||x.dueDate<=tomorrow))
+    .sort((a,b)=>String(a.dueDate+' '+(a.dueTime||'99:99')).localeCompare(String(b.dueDate+' '+(b.dueTime||'99:99')))).slice(0,dueOnly?6:20);
+  if(!tasks.length)return '';
+  return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${dueOnly?`<button class="button small" data-enable-task-alerts>${t('enableTaskAlerts')}</button><p class="help">${t('alertsExplanation')}</p>`:''}${tasks.map(x=>`
+    <div class="followup-item"><div><strong>${esc(x.title)}</strong><small>${esc(x.dueDate)}${x.dueTime?' · '+esc(x.dueTime):''}</small></div>
+      <div class="task-actions"><button class="button small" data-task-calendar="${esc(x.id)}">${t('taskCalendar')}</button><button class="button small" data-task-done="${esc(x.id)}" data-task-version="${Number(x.version)||1}">${t('taskDone')}</button></div></div>`).join('')}
+    <p class="help">${t('taskOnlyApp')} ${t('taskCalendarHint')}</p></section>`;
+}
+function draftsPanel(limit=50){
+  if(S.data?.draftLoadError)return `<article class="card"><p class="help">${t('draftError')}</p></article>`;
+  const all=(S.data?.opportunityDrafts||[]).filter(x=>x.state==='open').slice(0,limit);
+  if(!all.length)return '';
+  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>
+    ${all.map(d=>`<div class="draft-item"><div class="draft-main"><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span>
+      <strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p>
+      ${taskScheduleForm(d)}${S.data?.features?.opportunityAI===true?`<label class="ai-opt-in"><input type="checkbox" data-ai-consent="${esc(d.id)}"><span>${t('aiConsent')}</span></label>`:''}${opportunityPreviewPanel(d.id)}</div>
+      <div class="draft-controls"><button class="button small" data-draft-preview="${esc(d.id)}">${t('copilotPreview')}</button>
+        ${S.data?.features?.opportunityAI===true?`<button class="button small" data-ai-draft-preview="${esc(d.id)}">${t('aiPreview')}</button>`:''}
+        <button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button>
+        <button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
+}
+function today(){
+  if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
+  const actions=nextBestActions().slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
+  const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
+  return `<div class="page-stack nestlocal-today-v2">${captureQuickCard()}
+    <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
+      ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
+      ${draftsPanel(3)}</article>
+    <article class="card"><div class="section-title"><h2>${t('taskQuestion')}</h2><button class="button small" data-action-page="agenda">${t('agenda')}</button></div>
+      ${visits.length?`<p class="help">${visits.length} ${t('agenda')} · ${esc(organizationDateIso())}</p>`:!followups?`<p class="help">${t('taskEmpty')}</p>`:''}${followups}</article>
+    <details class="today-advanced"><summary>${t('detailsMore')}</summary>${todayLegacy()}</details></div>`;
 }
 function newRequestForm(){
   const settings=S.data.settings,services=S.data.services||[];if(!settings||!services.length)return `<article class="card new-request-card"><div class="section-title"><div><h2>${t('newRequest')}</h2><p class="help">${t('newRequestHelp')}</p></div></div><button class="button primary small" data-action-page="services">${t('goToServices')}</button></article>`;
@@ -520,7 +642,7 @@ function newRequestForm(){
   return `<details class="card new-request-card"><summary><div><span class="eyebrow">${t('newRequest')}</span><strong>${t('createRequest')}</strong><small>${t('newRequestHelp')}</small></div></summary><form id="internal-request" class="form-grid request-intake"><label>${t('customerName')}<input name="name" required maxlength="100" autocomplete="name"></label><label>${(trustStartCopy[S.lang]||trustStartCopy.pt).phone}<input name="phone" inputmode="tel" autocomplete="tel"></label><label>E-mail / Email / Correo<input name="email" type="email" autocomplete="email" maxlength="254"></label><p class="help wide">${(trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone}</p><label>${t('service')}<select name="serviceId" required>${services.map(s=>`<option value="${esc(s.id)}">${esc(serviceName(s))}</option>`).join('')}</select></label><label>${t('cityOrArea')}<select name="coverageCode" required>${coverage.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label><label class="wide">${t('address')}<input name="addressLine" required minlength="5" autocomplete="street-address"></label><label>${t('city')}<input name="city" maxlength="80"></label><label>${t('preferredDate')}<input name="preferredDate" type="date" min="${esc(today)}"></label><label>${t('preferredWindow')}<select name="preferredWindow">${['morning','afternoon','evening','flexible'].map(x=>`<option value="${x}">${t(x)}</option>`).join('')}</select></label><label class="wide">${t('note')}<textarea name="note" rows="3"></textarea></label><button class="button primary wide" type="submit">${t('createRequest')}</button></form></details>`;
 }
 function emptyAction(title,help,button,page){return `<div class="empty actionable-empty"><strong>${t(title)}</strong><span>${t(help)}</span><button class="button small" data-action-page="${page}">${t(button)}</button></div>`}
-function requests(){const a=S.data.requests||[];return `<div class="page-stack">${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
+function requests(){const a=S.data.requests||[];return `<div class="page-stack">${S.data?.features?.opportunityDrafts?captureQuickCard()+draftsPanel()+tasksPanel(false):''}${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
 const routeUrl=address=>{const value=String(address||'').trim();return value?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`:''};
 function maintenancePlanForm(customer){
   const p=customer.maintenancePlan||{},active=p.active===true;
@@ -783,8 +905,8 @@ function shell(){
   }
   const e=S.data?.entitlement||{},usage=e.usage||{},limit=e.limits?.requestsPerMonth,orgs=Array.isArray(S.session?.organizations)?S.session.organizations:[];
   const readOnly=e.readOnly===true;
-  const banner=readOnly?`<aside class="read-only-banner" role="status"><div><span class="eyebrow">${esc(t('readOnlyUntil'))}</span><strong>${esc(t('readOnlyTitle'))}</strong><p>${esc(t('readOnlyText'))}</p></div><a class="button primary" href="https://www.millionsnest.com/dashboard/billing">${esc(t('readOnlyAction'))}</a></aside>`:'';
-  return `<div class="shell${readOnly?' is-readonly':''}"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${['trialing','internal_trial_active'].includes(e.status)?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header>${banner}<section class="page active">${C}</section></main><nav class="bottom-nav">${nav()}</nav>${actionAssistantOverlay()}</div>`;
+  const banner=readOnly?`<aside class="read-only-banner" role="status"><div><span class="eyebrow">${esc(t('readOnlyUntil'))}</span><strong>${esc(t('readOnlyTitle'))}</strong><p>${esc(t('readOnlyText'))}</p></div><div class="readonly-actions"><a class="button primary" href="https://www.millionsnest.com/dashboard/billing">${esc(t('readOnlyAction'))}</a>${S.data?.experimentAccess?.canManage===true?`<button class="button" type="button" data-export-all>${esc(t('exportData'))}</button>`:''}</div></aside>`:'';
+  return `<div class="shell${readOnly?' is-readonly':''}${S.data?.features?.opportunityDrafts?' is-opportunity-v2':''}"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${['trialing','internal_trial_active'].includes(e.status)?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header>${banner}<section class="page active">${C}</section></main><nav class="bottom-nav">${S.data?.features?.opportunityDrafts?mobileNav():nav()}</nav>${S.data?.features?.opportunityDrafts?`<button type="button" class="button primary opportunity-fab" data-open-draft>${t('register')}</button>`:''}${actionAssistantOverlay()}</div>`;
 }
 function reviewPublicView(){
   if(S.loading)return loading();
@@ -832,9 +954,11 @@ function render(){
     root.innerHTML=sessionFailure();
   }
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
-  document.documentElement.dataset.nlBuild='20260929-render-fix-10';
+  document.documentElement.dataset.nlBuild='20261009-nestlocal-v2-staged-02';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
   if(S.data?.entitlement?.readOnly===true){
+    const captureButton=document.querySelector('.opportunity-fab');
+    if(captureButton){captureButton.disabled=true;captureButton.title=t('readOnlyRequest')}
     const page=document.querySelector('.shell .page');
     if(page&&S.page!=='privacy'){
       // Keep navigation, filtering, exporting and copy controls usable.
@@ -843,6 +967,7 @@ function render(){
         form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
         form.setAttribute('aria-label',t('readOnlyRequest'));
       });
+      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-ai-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
       page.querySelectorAll('button').forEach(button=>{
         const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
         if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
@@ -853,7 +978,10 @@ function render(){
     }
   }
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
+    try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
+    catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
+  }S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';checkTaskNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -908,7 +1036,156 @@ async function beginGoogleLogin(){
   redirectToMillionsNest();
 }
 async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
+function checkTaskNotifications(){
+  if(!S.orgId||!S.data?.features?.opportunityDrafts||S.data?.entitlement?.readOnly===true||
+     typeof Notification==='undefined'||Notification.permission!=='granted'||document.visibilityState!=='visible')return;
+  const enabled='nl_task_alerts_'+S.orgId;
+  if(storageGet(localStorage,enabled)!=='yes')return;
+  const date=organizationDateIso(),key='nl_task_alerted_'+S.orgId+'_'+date;
+  if(storageGet(localStorage,key)==='yes')return;
+  const digest=dueTaskDigest(S.data?.actionTasks||[],date,addIsoCalendarDays(date,1));
+  const notice=makeTaskNotification(digest,S.lang);
+  if(!notice)return;
+  try{
+    new Notification(notice.title,{body:notice.body,tag:'nestlocal-tasks-'+S.orgId+'-'+date,
+      silent:false,icon:'/favicon.ico'});
+    storageSet(localStorage,key,'yes');
+  }catch{ /* Device denied delivery. No false notification confirmation. */ }
+}
 function bind(){
+  document.querySelectorAll('[data-enable-task-alerts]').forEach(button=>button.onclick=async()=>{
+    if(typeof Notification==='undefined'||!('requestPermission' in Notification)){
+      toast(t('alertsUnavailable'));return;
+    }
+    try{
+      const permission=await Notification.requestPermission();
+      if(permission!=='granted')return toast(t('alertsDenied'));
+      storageSet(localStorage,'nl_task_alerts_'+S.orgId,'yes');
+      checkTaskNotifications();
+      toast(t('alertsEnabled'));
+    }catch{toast(t('alertsUnavailable'))}
+  });
+
+  document.querySelector('[data-export-all]')?.addEventListener('click',async event=>{
+    const button=event.currentTarget;button.disabled=true;
+    try{
+      const result={schemaVersion:2,appId:'nestlocal',organizationId:S.orgId,exportedAt:new Date().toISOString(),data:{}};
+      for(const dataset of ['requests','customers','services','drafts','tasks']){
+        let cursor='',done=false,pages=0,resultRows=[];
+        while(!done){
+          if(++pages>50)throw Error('EXPORT_TOO_LARGE');
+          const path=`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/data-export/${encodeURIComponent(dataset)}?limit=100${cursor?'&cursor='+encodeURIComponent(cursor):''}`;
+          const response=await api(path,{timeoutMs:12000});
+          if(response.organizationId!==S.orgId||response.dataset!==dataset||!Array.isArray(response.items))throw Error('EXPORT_INTEGRITY_FAILED');
+          resultRows.push(...response.items);
+          done=response.complete===true;
+          if(!done){
+            const next=response.nextCursor;
+            if(!next||next===cursor)throw Error('EXPORT_CURSOR_INVALID');
+            cursor=next;
+          }
+        }
+        result.data[dataset]=resultRows;
+      }
+      const blob=new Blob([JSON.stringify(result,null,2)],{type:'application/json;charset=utf-8'}),url=URL.createObjectURL(blob);
+      const link=document.createElement('a');link.href=url;
+      link.download='nestlocal-export-'+String(S.orgId).replace(/[^A-Za-z0-9_-]/g,'')+'-'+new Date().toISOString().slice(0,10)+'.json';
+      document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+      toast(t('exportWarning'));
+    }catch(error){toast(t('exportFailed'));console.warn('[NESTLOCAL_EXPORT_UI]',error?.message||'ERROR')}
+    finally{button.disabled=false}
+  });
+
+  document.querySelectorAll('[data-ai-draft-preview]').forEach(button=>button.onclick=async()=>{
+    const id=button.dataset.aiDraftPreview,consent=document.querySelector('[data-ai-consent="'+CSS.escape(id)+'"]');
+    if(!consent?.checked)return toast(t('aiConsentRequired'));
+    button.disabled=true;
+    try{
+      const response=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(id)}/ai-preview`,
+        {method:'POST',body:JSON.stringify({consentToProcessMessage:true,lang:S.lang}),timeoutMs:20000});
+      S.copilotPreview={...response,draftId:id};render();
+      if(response.aiProcessed!==true)toast(t('aiManualFallback'));
+    }catch(error){
+      button.disabled=false;
+      toast(error.message==='AI_DAILY_BUDGET_REACHED'?t('aiNoCredits'):t('aiManualFallback'));
+    }
+  });
+  document.querySelectorAll('[data-draft-preview]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      const id=button.dataset.draftPreview;
+      const response=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(id)}/preview?lang=${encodeURIComponent(S.lang)}`);
+      S.copilotPreview={...response,draftId:id};render();
+    }catch(error){button.disabled=false;toast(t('previewError'))}
+  });
+  document.querySelectorAll('[data-copy-preview]').forEach(button=>button.onclick=async()=>{
+    const text=document.querySelector('[data-preview-reply="'+CSS.escape(button.dataset.copyPreview)+'"]')?.value||'';
+    if(!text)return;
+    try{await navigator.clipboard.writeText(text);toast(t('copied'))}catch{toast(t('previewError'))}
+  });
+  document.querySelectorAll('[data-task-create]').forEach(form=>form.addEventListener('submit',async e=>{
+    e.preventDefault();const button=form.querySelector('[type="submit"]'),values=new FormData(form);button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,
+        {method:'POST',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({
+          sourceDraftId:form.dataset.taskCreate,title:values.get('title'),dueDate:values.get('dueDate'),
+          dueTime:values.get('dueTime')||'',timezone:values.get('timezone')})});
+      await loadData();render();toast(t('followupSaved'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  }));
+  document.querySelectorAll('[data-task-calendar]').forEach(button=>button.onclick=()=>{
+    const record=(S.data?.actionTasks||[]).find(t=>t.id===button.dataset.taskCalendar&&t.status==='open');
+    if(!record)return;
+    const output=makeTaskReminderIcs(record,{locale:S.lang});
+    if(!output)return toast(t('taskLoadError'));
+    const blob=new Blob([output],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;link.download='nestlocal-retorno-'+String(record.id).replace(/[^A-Za-z0-9_-]/g,'')+'.ics';
+    document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast(t('taskCalendarHint'));
+  });
+  document.querySelectorAll('[data-task-done]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks/${encodeURIComponent(button.dataset.taskDone)}`,
+        {method:'PATCH',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},
+          body:JSON.stringify({expectedVersion:Number(button.dataset.taskVersion),status:'done'})});
+      await loadData();render();toast(t('taskSaved'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+
+  document.querySelectorAll('[data-open-draft]').forEach(button=>button.onclick=()=>{S.page='today';render();document.querySelector('#quick-message')?.focus()});
+  document.querySelector('#opportunity-draft')?.addEventListener('submit',async e=>{
+    e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type="submit"]'),f=new FormData(form);
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,
+        {method:'POST',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({origin:f.get('origin'),message:f.get('message')})});
+      await loadData();render();toast(t('savedOpportunity'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-prepare-draft]').forEach(button=>button.onclick=()=>{
+    const draft=(S.data?.opportunityDrafts||[]).find(x=>x.id===button.dataset.prepareDraft&&x.state==='open');
+    if(!draft)return;
+    S.pendingDraftId=draft.id;S.page='requests';S.copilotPreview=null;render();
+    const form=document.querySelector('#internal-request');
+    if(!form){toast(t('goToServices'));return}
+    const wrap=form.closest('details');if(wrap)wrap.open=true;
+    if(form.elements.name)form.elements.name.value=draft.customerName||'';
+    if(form.elements.phone)form.elements.phone.value=draft.phone||'';
+    if(form.elements.email)form.elements.email.value=draft.email||'';
+    if(form.elements.note)form.elements.note.value=(draft.message||draft.serviceSummary||'').slice(0,1000);
+    form.scrollIntoView({behavior:'smooth',block:'start'});toast(t('draftPrepared'));
+  });
+  document.querySelectorAll('[data-archive-draft]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(button.dataset.archiveDraft)}`,
+        {method:'PATCH',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({state:'archived',expectedVersion:Number(button.dataset.draftVersion)})});
+      await loadData();render();toast(t('draftArchived'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+
   document.querySelectorAll('[data-calendar-google]').forEach(b=>b.onclick=()=>{
     const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarGoogle);
     if(!r)return;
@@ -992,7 +1269,7 @@ function bind(){
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',communicationMode:f.get('communicationMode')||'none',contactEmail:f.get('contactEmail')||'',contactPhone:f.get('contactPhone')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),communicationMode:f.get('communicationMode'),contactEmail:f.get('contactEmail'),contactPhone:f.get('contactPhone'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#payment-settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={enabled:f.get('enabled')==='on',key:f.get('key')||'',label:f.get('label')||'',instructions:f.get('instructions')||''};button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/payment-settings`,{method:'PUT',body:JSON.stringify(payload)});await loadData();render();toast(t('pixSaved'))}catch(err){button.disabled=false;toast(err.message)}});
@@ -1002,7 +1279,7 @@ function bind(){
   document.querySelector('#playbook-add')?.addEventListener('click',async e=>{const button=e.currentTarget,template=document.querySelector('#playbook-add-select')?.value||'general';button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/playbooks/${encodeURIComponent(template)}/apply`,{method:'POST',body:'{}'});await loadData();render();toast(result.addedCount?(`${result.addedCount} ${t('playbookAdded')}`):t('playbookAlreadyPresent'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#publish')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/publish`,{method:'POST',body:'{}'});await loadData();render();toast(t('published'))}catch(err){button.disabled=false;toast(err.message==='PUBLISH_NOT_READY'?t('publishBlocked'):err.message)}});
 
-  document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||''};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',body:JSON.stringify(payload)});await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
+  document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={sourceDraftId:S.pendingDraftId||'',name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||''};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',body:JSON.stringify(payload)});S.pendingDraftId='';await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
 
   document.querySelectorAll('[data-request-quote]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const goNext=e.submitter?.dataset.saveNext==='true',button=e.submitter||form.querySelector('button[type="submit"]'),f=new FormData(form),amountCents=Math.round(Number(f.get('quoteAmount'))*100);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||''})});await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message)}});
 
@@ -1118,4 +1395,6 @@ async function startAuthBootstrap(){
     clearTimeout(hardWatchdog);
   }
 }
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkTaskNotifications()});
+setInterval(checkTaskNotifications,15*60*1000);
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
