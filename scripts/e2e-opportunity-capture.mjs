@@ -1,12 +1,12 @@
 import {chromium} from 'playwright';
-import {mkdirSync} from 'node:fs';
+import {mkdirSync,readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 
 const browser=await chromium.launch({headless:true});
 mkdirSync('artifacts/experience',{recursive:true});
 try {
   for(const width of [390,1440]){
-    const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'});
+    const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce',acceptDownloads:true});
     const errors=[],stored=[],orders=[],tasks=[];
     page.on('pageerror',error=>errors.push(error.message));
     const data={
@@ -28,6 +28,12 @@ try {
       if(path==='/api/session')return json({user:{uid:'synthetic',systemRole:'user'},organizations:[
         {id:'synthetic_org',name:'Oficina de exemplo',nestlocal:{access:true,status:'active',plan:'essential'}}]});
       if(path==='/api/organizations/synthetic_org/nestlocal'&&method==='GET')return json(data);
+      if(path.includes('/data-export/')&&method==='GET'){
+        const dataset=path.split('/').at(-1);
+        assert.ok(['requests','customers','services','drafts','tasks'].includes(dataset));
+        return json({organizationId:'synthetic_org',dataset,items:dataset==='requests'?orders:[],
+          complete:true,nextCursor:null});
+      }
       if(path.endsWith('/opportunity-drafts')&&method==='GET')return json({items:stored});
       if(path.endsWith('/opportunity-drafts')&&method==='POST'){
         const body=route.request().postDataJSON();
@@ -113,10 +119,21 @@ try {
     }
     assert.ok(size.document<=size.window+1,'Overflow '+width+': '+JSON.stringify(size));
     await page.screenshot({path:`artifacts/experience/opportunity-order-${width}.png`,fullPage:true});
+    data.entitlement.readOnly=true;
+    await page.reload({waitUntil:'domcontentloaded'});
+    await page.locator('[data-export-all]').waitFor();
+    assert.ok((await page.locator('.read-only-banner').textContent()).includes('Exportar meus dados'));
+    const downloadPromise=page.waitForEvent('download');
+    await page.locator('[data-export-all]').click();
+    const downloaded=await downloadPromise;
+    const exportData=JSON.parse(readFileSync(await downloaded.path(),'utf8'));
+    assert.equal(exportData.organizationId,'synthetic_org');
+    assert.equal(exportData.data.requests.length,1);
+    assert.deepEqual(Object.keys(exportData.data).sort(),['requests','customers','services','drafts','tasks'].sort());
     assert.deepEqual(errors,[],'Browser exceptions at '+width);
     await page.close();
   }
-  console.log('Synthetic NestLocal 2.0 E2E PASS: draft -> grounded preview -> follow-up completed -> validated order on 390/1440px; no live Firestore/Stripe certification.');
+  console.log('Synthetic NestLocal 2.0 E2E PASS: draft -> grounded preview -> follow-up completed -> validated order on 390/1440px; read-only export; no live Firestore/Stripe certification.');
 } finally {
   await browser.close();
 }
