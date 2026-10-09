@@ -7,10 +7,10 @@ mkdirSync('artifacts/experience',{recursive:true});
 try {
   for(const width of [390,1440]){
     const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce',acceptDownloads:true});
-    const errors=[],stored=[],orders=[],tasks=[];
+    const errors=[],stored=[],orders=[],tasks=[],aiInputs=[];
     page.on('pageerror',error=>errors.push(error.message));
     const data={
-      features:{pulseV2:false,opportunityDrafts:true},
+      features:{pulseV2:false,opportunityDrafts:true,opportunityAI:true},
       organization:{id:'synthetic_org',name:'Oficina de exemplo'},
       entitlement:{plan:'essential',status:'active',limits:{requestsPerMonth:null,users:1},usage:{requests:0},seats:{used:1,limit:1}},
       settings:{businessName:'Oficina de exemplo',slug:'oficina-exemplo',communicationMode:'none',published:false,
@@ -41,6 +41,16 @@ try {
         assert.ok(route.request().headers()['idempotency-key']);
         stored.unshift({id:'synthetic-draft',state:'open',version:1,schemaVersion:2,...body});
         return json({item:stored[0]},201);
+      }
+      if(path.endsWith('/ai-preview')&&method==='POST'){
+        const request=route.request().postDataJSON();
+        aiInputs.push(request);
+        assert.deepEqual(request,{consentToProcessMessage:true,lang:'pt'});
+        return json({draftId:'synthetic-draft',mode:'nestai',aiProcessed:true,
+          facts:[{evidence:'reparo',sourceField:'message',verified:false}],
+          claims:[{field:'service',value:'reparo',evidence:'reparo',sourceField:'message',verified:false}],
+          questions:['Qual é a região de atendimento?'],replyDraft:'Olá, podemos confirmar o serviço?',
+          reviewRequired:true,delivery:false,bookingConfirmed:false,priceCalculated:false});
       }
       if(path.endsWith('/preview')&&method==='GET'){
         return json({draftId:'synthetic-draft',mode:'deterministic',authority:'suggestion_only',
@@ -89,6 +99,14 @@ try {
     await page.locator('.opportunity-preview').waitFor();
     assert.ok((await page.locator('.preview-evidence').textContent()).includes('Cliente pediu orçamento'));
     assert.ok((await page.locator('[data-preview-reply]').inputValue()).includes('Pode confirmar'));
+    await page.locator('[data-ai-draft-preview]').click();
+    assert.equal(aiInputs.length,0,'NestAI cannot run without checked consent');
+    await page.locator('[data-ai-consent]').check();
+    await page.locator('[data-ai-draft-preview]').click();
+    await page.waitForFunction(()=>document.querySelector('.opportunity-preview .preview-evidence')?.textContent?.includes('reparo'));
+    assert.equal(aiInputs.length,1);
+    assert.ok((await page.locator('.opportunity-preview').textContent()).includes('Sugestão de IA'));
+    await page.screenshot({path:`artifacts/experience/opportunity-nestai-${width}.png`,fullPage:true});
     await page.locator('.followup-task summary').first().click();
     await page.locator('[data-task-create] input[name=dueDate]').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
     await page.locator('[data-task-create] input[name=dueTime]').fill('09:30');
