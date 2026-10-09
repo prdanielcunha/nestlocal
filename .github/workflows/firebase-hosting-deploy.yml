@@ -100,7 +100,7 @@ jobs:
           test -s web/live.css
           test -s web/styles.css
           grep -q 'NestLocal' web/index.html
-          grep -q '20261009-nestlocal-v2-staged-01' web/index.html
+          grep -q '20261009-nestlocal-v2-staged-02' web/index.html
           grep -q '/api/auth/handoff/redeem' web/live.js
           grep -q 'nl_session_token' web/live.js
           grep -q "value.startsWith('Bearer nl_')" server.mjs
@@ -204,13 +204,13 @@ jobs:
             exit 1
           fi
 
-          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20261009-nestlocal-v2-staged-01' '20261009-nestlocal-v2-staged-01'
+          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20261009-nestlocal-v2-staged-02' '20261009-nestlocal-v2-staged-02'
           fetch_until_contains https://nestlocal.millionsnest.com/raio-x /tmp/nestlocal-xray.html 'id="app"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
             'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
             'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
-            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261009-nestlocal-v2-staged-01' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
+            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261009-nestlocal-v2-staged-02' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/opportunity-pulse.js /tmp/nestlocal-opportunity-pulse.js \
             'buildOpportunitySnapshot' 'renderOpportunityPulse'
@@ -235,7 +235,7 @@ jobs:
 
           fetch_until_contains https://nestlocal.web.app/live.js /tmp/nestlocal-alias-live.js \
             'revenueXrayView' 'nextBestActions' 'outcomeLearningCard' 'explainableInsights' \
-            'data-start-experiment' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261009-nestlocal-v2-staged-01' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
+            'data-start-experiment' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261009-nestlocal-v2-staged-02' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
 
           fetch_until_contains https://nestlocal.web.app/guided-experiment.js /tmp/nestlocal-alias-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction'
