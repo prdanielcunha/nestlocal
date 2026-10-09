@@ -271,6 +271,9 @@ Object.assign(D.es,{
 Object.assign(D.pt,{copilotPreview:'Revisar conversa',previewTitle:'Entendi isto da conversa',previewHelp:'Prévia por regras, sem IA externa. Confira as informações antes de agir.',previewFacts:'Trecho original',previewUnknown:'Ainda precisamos confirmar',previewReply:'Resposta sugerida (não enviada)',previewCopy:'Copiar resposta',followupSchedule:'Agendar retorno',followupTitle:'O que devo lembrar?',followupWhen:'Em qual dia?',followupTime:'Horário (opcional)',followupSaved:'Retorno salvo no NestLocal.',taskDone:'Concluir',taskSaved:'Retorno concluído',taskDue:'Acompanhar hoje',taskFuture:'Próximos retornos',taskOnlyApp:'Aviso apenas dentro do aplicativo. Não existe push automático nesta etapa.',taskLoadError:'Não foi possível carregar os retornos.',previewError:'Não foi possível preparar a prévia.',taskCalendar:'Adicionar ao calendário',taskCalendarHint:'O calendário pode exibir avisos, dependendo das configurações do aparelho. A sincronização é de uma via.',exportData:'Exportar meus dados',exportWarning:'O arquivo contém dados dos clientes. Guarde em local seguro.',exportFailed:'Não foi possível exportar todos os registros. Tente novamente.'});
 Object.assign(D.en,{copilotPreview:'Review conversation',previewTitle:'From the conversation',previewHelp:'Rule-based preview; no external AI. Confirm before taking action.',previewFacts:'Original excerpt',previewUnknown:'Details to confirm',previewReply:'Suggested reply (not sent)',previewCopy:'Copy reply',followupSchedule:'Schedule follow-up',followupTitle:'What should I remember?',followupWhen:'On which date?',followupTime:'Time (optional)',followupSaved:'Follow-up saved in NestLocal.',taskDone:'Complete',taskSaved:'Follow-up completed',taskDue:'Follow up today',taskFuture:'Upcoming follow-ups',taskOnlyApp:'In-app only. No automatic push notification is enabled.',taskLoadError:'Could not load follow-ups.',previewError:'Could not load the preview.',taskCalendar:'Add to calendar',taskCalendarHint:'Calendar reminders depend on your device settings; this is a one-way export.',exportData:'Export my data',exportWarning:'The file contains customer data. Store it securely.',exportFailed:'Could not export all records. Please try again.'});
 Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendido de la conversación',previewHelp:'Vista previa basada en reglas, sin IA externa. Confirma antes de actuar.',previewFacts:'Fragmento original',previewUnknown:'Detalles por confirmar',previewReply:'Respuesta sugerida (no enviada)',previewCopy:'Copiar respuesta',followupSchedule:'Programar seguimiento',followupTitle:'¿Qué debo recordar?',followupWhen:'¿Qué día?',followupTime:'Hora (opcional)',followupSaved:'Seguimiento guardado en NestLocal.',taskDone:'Completar',taskSaved:'Seguimiento completado',taskDue:'Seguimientos de hoy',taskFuture:'Próximos seguimientos',taskOnlyApp:'Solo dentro de la aplicación. No hay notificaciones push automáticas.',taskLoadError:'No se pudieron cargar los seguimientos.',previewError:'No se pudo cargar la vista previa.',taskCalendar:'Agregar al calendario',taskCalendarHint:'Los avisos dependen del dispositivo. La exportación es de una sola vía.',exportData:'Exportar mis datos',exportWarning:'El archivo contiene datos de clientes. Guárdalo de forma segura.',exportFailed:'No se pudieron exportar todos los registros. Vuelve a intentarlo.'});
+Object.assign(D.pt,{aiPreview:'Analisar com NestAI',aiConsent:'Autorizo a análise pontual desta anotação no NestAI. Telefones, e-mails, documentos e links são ocultados antes do envio.',aiPrivacy:'Sugestão de IA: confirme as informações. Nenhuma mensagem será enviada, nenhuma venda é garantida e nenhum horário será reservado.',aiManualFallback:'NestAI indisponível ou limite atingido: continue com a revisão manual.',aiEvidence:'Serviço mencionado na conversa',aiConsentRequired:'Confirme a autorização antes de usar o NestAI.',aiNoCredits:'Limite diário de consultas de IA atingido. Use a revisão sem IA.'});
+Object.assign(D.en,{aiPreview:'Analyze with NestAI',aiConsent:'I authorize this single note to be analyzed by NestAI. Phone numbers, emails, IDs and URLs will be redacted before processing.',aiPrivacy:'AI suggestion: verify the facts. No message is sent, sale guaranteed or appointment booked.',aiManualFallback:'NestAI unavailable or quota reached. Continue with manual review.',aiEvidence:'Service mentioned in the source',aiConsentRequired:'Please authorize NestAI processing first.',aiNoCredits:'Daily AI request limit reached. Use manual review.'});
+Object.assign(D.es,{aiPreview:'Analizar con NestAI',aiConsent:'Autorizo un análisis de esta nota con NestAI. Se ocultan teléfonos, correos, documentos y enlaces antes del envío.',aiPrivacy:'Sugerencia de IA: verifica los datos. No se envían mensajes, ni se garantizan ventas o reservas.',aiManualFallback:'NestAI no disponible o límite alcanzado. Continúa con la revisión manual.',aiEvidence:'Servicio mencionado en el mensaje',aiConsentRequired:'Autoriza el análisis con NestAI antes de continuar.',aiNoCredits:'Límite diario de consultas de IA alcanzado. Usa la revisión manual.'});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -572,8 +575,9 @@ function captureQuickCard(){
 function opportunityPreviewPanel(draftId){
   const p=S.copilotPreview;
   if(!p||p.draftId!==draftId)return '';
-  return `<section class="opportunity-preview"><h3>${t('previewTitle')}</h3><p class="help">${t('previewHelp')}</p>
+  return `<section class="opportunity-preview"><h3>${t('previewTitle')}</h3><p class="help">${p.mode==='nestai'?t('aiPrivacy'):t('previewHelp')}</p>
    ${p.facts?.length?`<div class="preview-evidence"><strong>${t('previewFacts')}</strong><p>${esc(p.facts[0].evidence)}</p></div>`:''}
+   ${p.mode==='nestai'&&p.claims?.length?`<div class="preview-evidence"><strong>${t('aiEvidence')}</strong><p>${p.claims.map(x=>esc(x.value)).join(', ')}</p></div>`:''}
    <strong>${t('previewUnknown')}</strong><ul>${(p.questions||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
    <label class="draft-reply-label">${t('previewReply')}<textarea data-preview-reply="${esc(draftId)}" rows="3" maxlength="1200">${esc(p.replyDraft||'')}</textarea></label>
    <button class="button small" data-copy-preview="${esc(draftId)}">${t('previewCopy')}</button>
@@ -610,8 +614,9 @@ function draftsPanel(limit=50){
   return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>
     ${all.map(d=>`<div class="draft-item"><div class="draft-main"><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span>
       <strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p>
-      ${taskScheduleForm(d)}${opportunityPreviewPanel(d.id)}</div>
+      ${taskScheduleForm(d)}${S.data?.features?.opportunityAI===true?`<label class="ai-opt-in"><input type="checkbox" data-ai-consent="${esc(d.id)}"><span>${t('aiConsent')}</span></label>`:''}${opportunityPreviewPanel(d.id)}</div>
       <div class="draft-controls"><button class="button small" data-draft-preview="${esc(d.id)}">${t('copilotPreview')}</button>
+        ${S.data?.features?.opportunityAI===true?`<button class="button small" data-ai-draft-preview="${esc(d.id)}">${t('aiPreview')}</button>`:''}
         <button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button>
         <button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
 }
@@ -958,7 +963,7 @@ function render(){
         form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
         form.setAttribute('aria-label',t('readOnlyRequest'));
       });
-      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
+      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-draft-preview],[data-ai-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
       page.querySelectorAll('button').forEach(button=>{
         const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
         if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
@@ -1058,6 +1063,20 @@ function bind(){
     finally{button.disabled=false}
   });
 
+  document.querySelectorAll('[data-ai-draft-preview]').forEach(button=>button.onclick=async()=>{
+    const id=button.dataset.aiDraftPreview,consent=document.querySelector('[data-ai-consent="'+CSS.escape(id)+'"]');
+    if(!consent?.checked)return toast(t('aiConsentRequired'));
+    button.disabled=true;
+    try{
+      const response=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(id)}/ai-preview`,
+        {method:'POST',body:JSON.stringify({consentToProcessMessage:true,lang:S.lang}),timeoutMs:20000});
+      S.copilotPreview={...response,draftId:id};render();
+      if(response.aiProcessed!==true)toast(t('aiManualFallback'));
+    }catch(error){
+      button.disabled=false;
+      toast(error.message==='AI_DAILY_BUDGET_REACHED'?t('aiNoCredits'):t('aiManualFallback'));
+    }
+  });
   document.querySelectorAll('[data-draft-preview]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
     try{
