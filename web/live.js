@@ -967,7 +967,7 @@ function render(){
         form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
         form.setAttribute('aria-label',t('readOnlyRequest'));
       });
-      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-draft-preview],[data-ai-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
+      page.querySelectorAll('[data-prepare-draft],[data-archive-draft],[data-ai-draft-preview],[data-task-done]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
       page.querySelectorAll('button').forEach(button=>{
         const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
         if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
