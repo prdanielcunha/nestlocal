@@ -1268,6 +1268,40 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+// F1: read-only data portability, bounded and tenant-scoped. No billing mutation.
+const exportCollections=Object.freeze({
+  requests:'nestlocal_requests',customers:'nestlocal_customers',services:'nestlocal_services',
+  drafts:'nestlocal_opportunity_drafts',tasks:'nestlocal_action_tasks'
+});
+app.get('/api/organizations/:orgId/nestlocal/data-export/:dataset',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'EXPORT_ACCESS_DENIED');
+  const dataset=safeId(req.params.dataset),collection=exportCollections[dataset];
+  if(!collection)return sendError(res,404,'EXPORT_DATASET_NOT_FOUND');
+  const cursor=clean(req.query?.cursor);
+  if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_EXPORT_CURSOR');
+  const requested=Number(req.query?.limit||100),limit=Number.isSafeInteger(requested)?Math.min(100,Math.max(1,requested)):100;
+  try{
+    const root=`organizations/${req.access.orgId}/${collection}`;
+    let query=db.collection(root).orderBy(admin.firestore.FieldPath.documentId()).limit(limit+1);
+    if(cursor)query=query.startAfter(cursor);
+    const snapshot=await query.get(),pages=snapshot.docs.slice(0,limit);
+    const entries=pages.map(doc=>{
+      const d=doc.data()||{};
+      if(dataset==='drafts')return draftPublicView(doc.id,d);
+      if(dataset==='tasks')return publicActionTask(doc.id,d);
+      // These contain the company's own operational records, not capability tokens.
+      // Never export public tracking/review auth hashes or internal audit ids.
+      const {trackingTokenHash,trackingTokenHashes,reviewTokenHash,reviewTokenHashes,
+        ...payload}=d;
+      return {id:doc.id,...payload};
+    });
+    res.set('Cache-Control','private,no-store');
+    return res.json({schemaVersion:2,organizationId:req.access.orgId,dataset,
+      items:entries,nextCursor:snapshot.docs.length>limit?pages[pages.length-1]?.id:null,
+      complete:snapshot.docs.length<=limit});
+  }catch(error){console.error('[NESTLOCAL_EXPORT]',error?.code||'ERROR');return sendError(res,500,'DATA_EXPORT_FAILED')}
+});
+
 // Additive opportunity drafts: incomplete conversation != order or invoice.
 // Release flag may allow selected organization IDs, never a client-supplied toggle.
 function opportunityDraftsEnabled(orgId) {
