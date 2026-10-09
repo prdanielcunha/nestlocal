@@ -1434,8 +1434,14 @@ app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId/ai-pre
     const admitted=await db.runTransaction(async tx=>{
       const snapshot=await tx.get(quota),count=Math.max(0,Number(snapshot.data()?.count)||0);
       if(count>=maxCalls)return false;
-      tx.set(quota,{count:count+1,updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+      const recordedAt=admin.firestore.FieldValue.serverTimestamp();
+      tx.set(quota,{count:count+1,updatedAt:recordedAt,
         expiresAt:admin.firestore.Timestamp.fromMillis(Date.now()+4*86400000)},{merge:true});
+      // Consent evidence is metadata-only; never duplicate message text, contact details or prompts.
+      tx.create(db.collection(`${root}/nestlocal_audit`).doc(),
+        {action:'opportunity_ai.operator_consent',actorUid:req.identity.uid,draftId:id,
+          purpose:'opportunity_extraction',source:'authenticated_explicit_confirmation',
+          piiRedacted:true,schemaVersion:2,at:recordedAt});
       return true;
     });
     if(!admitted)return res.status(429).json({error:'AI_DAILY_BUDGET_REACHED',dailyLimit:maxCalls,
