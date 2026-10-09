@@ -595,7 +595,7 @@ function tasksPanel(dueOnly=false){
   if(S.data?.tasksLoadError)return `<p class="help">${t('taskLoadError')}</p>`;
   const today=organizationDateIso(),tomorrow=addIsoCalendarDays(today,1);
   const tasks=(S.data?.actionTasks||[]).filter(x=>x.status==='open'&&(!dueOnly||x.dueDate<=tomorrow))
-    .sort((a,b)=>String(a.dueDate+' '+(a.dueTime||'99:99')).localeCompare(String(b.dueDate+' '+(b.dueTime||'99:99'))).slice(0,dueOnly?6:20);
+    .sort((a,b)=>String(a.dueDate+' '+(a.dueTime||'99:99')).localeCompare(String(b.dueDate+' '+(b.dueTime||'99:99')))).slice(0,dueOnly?6:20);
   if(!tasks.length)return '';
   return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${tasks.map(x=>`
     <div class="followup-item"><div><strong>${esc(x.title)}</strong><small>${esc(x.dueDate)}${x.dueTime?' · '+esc(x.dueTime):''}</small></div>
