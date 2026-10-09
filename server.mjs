@@ -1293,6 +1293,7 @@ app.get('/api/organizations/:orgId/nestlocal/opportunity-drafts',authenticate,au
 });
 app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts',authenticate,authorize,async(req,res)=>{
   if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  if(!(await rateLimit(req,'opportunity_draft_create',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
   try{
     const input=normalizeOpportunityDraft(req.body),key=parseOpportunityIdempotencyKey(req.get('Idempotency-Key'));
     const root=`organizations/${req.access.orgId}`,collection=db.collection(`${root}/nestlocal_opportunity_drafts`);
@@ -1321,6 +1322,7 @@ app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts',authenticate,a
 });
 app.patch('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId',authenticate,authorize,async(req,res)=>{
   if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
+  if(!(await rateLimit(req,'opportunity_draft_edit',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
   const id=safeId(req.params.draftId);
   if(!id)return sendError(res,404,'DRAFT_NOT_FOUND');
   try{
