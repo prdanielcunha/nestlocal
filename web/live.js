@@ -5,6 +5,7 @@ import {renderCalendarIntro,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl
 import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-focus.js';
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
+import {makeTaskReminderIcs} from './task-calendar.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
 
 const millionsNestHubOrigin='https://www.millionsnest.com';
@@ -267,9 +268,9 @@ Object.assign(D.es,{
   draftError:'No se pudieron cargar los borradores. Tus demás datos siguen disponibles.',manualOnly:'Modo manual: nada se envía al cliente.',
   moreNav:'Más',register:'Registrar',noAutomaticCapture:'Pegar una conversación no conecta WhatsApp ni confirma entrega.'
 });
-Object.assign(D.pt,{copilotPreview:'Revisar conversa',previewTitle:'Entendi isto da conversa',previewHelp:'Prévia por regras, sem IA externa. Confira as informações antes de agir.',previewFacts:'Trecho original',previewUnknown:'Ainda precisamos confirmar',previewReply:'Resposta sugerida (não enviada)',previewCopy:'Copiar resposta',followupSchedule:'Agendar retorno',followupTitle:'O que devo lembrar?',followupWhen:'Em qual dia?',followupTime:'Horário (opcional)',followupSaved:'Retorno salvo no NestLocal.',taskDone:'Concluir',taskSaved:'Retorno concluído',taskDue:'Acompanhar hoje',taskFuture:'Próximos retornos',taskOnlyApp:'Aviso apenas dentro do aplicativo. Não existe push automático nesta etapa.',taskLoadError:'Não foi possível carregar os retornos.',previewError:'Não foi possível preparar a prévia.'});
-Object.assign(D.en,{copilotPreview:'Review conversation',previewTitle:'From the conversation',previewHelp:'Rule-based preview; no external AI. Confirm before taking action.',previewFacts:'Original excerpt',previewUnknown:'Details to confirm',previewReply:'Suggested reply (not sent)',previewCopy:'Copy reply',followupSchedule:'Schedule follow-up',followupTitle:'What should I remember?',followupWhen:'On which date?',followupTime:'Time (optional)',followupSaved:'Follow-up saved in NestLocal.',taskDone:'Complete',taskSaved:'Follow-up completed',taskDue:'Follow up today',taskFuture:'Upcoming follow-ups',taskOnlyApp:'In-app only. No automatic push notification is enabled.',taskLoadError:'Could not load follow-ups.',previewError:'Could not load the preview.'});
-Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendido de la conversación',previewHelp:'Vista previa basada en reglas, sin IA externa. Confirma antes de actuar.',previewFacts:'Fragmento original',previewUnknown:'Detalles por confirmar',previewReply:'Respuesta sugerida (no enviada)',previewCopy:'Copiar respuesta',followupSchedule:'Programar seguimiento',followupTitle:'¿Qué debo recordar?',followupWhen:'¿Qué día?',followupTime:'Hora (opcional)',followupSaved:'Seguimiento guardado en NestLocal.',taskDone:'Completar',taskSaved:'Seguimiento completado',taskDue:'Seguimientos de hoy',taskFuture:'Próximos seguimientos',taskOnlyApp:'Solo dentro de la aplicación. No hay notificaciones push automáticas.',taskLoadError:'No se pudieron cargar los seguimientos.',previewError:'No se pudo cargar la vista previa.'});
+Object.assign(D.pt,{copilotPreview:'Revisar conversa',previewTitle:'Entendi isto da conversa',previewHelp:'Prévia por regras, sem IA externa. Confira as informações antes de agir.',previewFacts:'Trecho original',previewUnknown:'Ainda precisamos confirmar',previewReply:'Resposta sugerida (não enviada)',previewCopy:'Copiar resposta',followupSchedule:'Agendar retorno',followupTitle:'O que devo lembrar?',followupWhen:'Em qual dia?',followupTime:'Horário (opcional)',followupSaved:'Retorno salvo no NestLocal.',taskDone:'Concluir',taskSaved:'Retorno concluído',taskDue:'Acompanhar hoje',taskFuture:'Próximos retornos',taskOnlyApp:'Aviso apenas dentro do aplicativo. Não existe push automático nesta etapa.',taskLoadError:'Não foi possível carregar os retornos.',previewError:'Não foi possível preparar a prévia.',taskCalendar:'Adicionar ao calendário',taskCalendarHint:'O calendário pode exibir avisos, dependendo das configurações do aparelho. A sincronização é de uma via.'});
+Object.assign(D.en,{copilotPreview:'Review conversation',previewTitle:'From the conversation',previewHelp:'Rule-based preview; no external AI. Confirm before taking action.',previewFacts:'Original excerpt',previewUnknown:'Details to confirm',previewReply:'Suggested reply (not sent)',previewCopy:'Copy reply',followupSchedule:'Schedule follow-up',followupTitle:'What should I remember?',followupWhen:'On which date?',followupTime:'Time (optional)',followupSaved:'Follow-up saved in NestLocal.',taskDone:'Complete',taskSaved:'Follow-up completed',taskDue:'Follow up today',taskFuture:'Upcoming follow-ups',taskOnlyApp:'In-app only. No automatic push notification is enabled.',taskLoadError:'Could not load follow-ups.',previewError:'Could not load the preview.',taskCalendar:'Add to calendar',taskCalendarHint:'Calendar reminders depend on your device settings; this is a one-way export.'});
+Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendido de la conversación',previewHelp:'Vista previa basada en reglas, sin IA externa. Confirma antes de actuar.',previewFacts:'Fragmento original',previewUnknown:'Detalles por confirmar',previewReply:'Respuesta sugerida (no enviada)',previewCopy:'Copiar respuesta',followupSchedule:'Programar seguimiento',followupTitle:'¿Qué debo recordar?',followupWhen:'¿Qué día?',followupTime:'Hora (opcional)',followupSaved:'Seguimiento guardado en NestLocal.',taskDone:'Completar',taskSaved:'Seguimiento completado',taskDue:'Seguimientos de hoy',taskFuture:'Próximos seguimientos',taskOnlyApp:'Solo dentro de la aplicación. No hay notificaciones push automáticas.',taskLoadError:'No se pudieron cargar los seguimientos.',previewError:'No se pudo cargar la vista previa.',taskCalendar:'Agregar al calendario',taskCalendarHint:'Los avisos dependen del dispositivo. La exportación es de una sola vía.'});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -599,8 +600,8 @@ function tasksPanel(dueOnly=false){
   if(!tasks.length)return '';
   return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${tasks.map(x=>`
     <div class="followup-item"><div><strong>${esc(x.title)}</strong><small>${esc(x.dueDate)}${x.dueTime?' · '+esc(x.dueTime):''}</small></div>
-      <button class="button small" data-task-done="${esc(x.id)}" data-task-version="${Number(x.version)||1}">${t('taskDone')}</button></div>`).join('')}
-    <p class="help">${t('taskOnlyApp')}</p></section>`;
+      <div class="task-actions"><button class="button small" data-task-calendar="${esc(x.id)}">${t('taskCalendar')}</button><button class="button small" data-task-done="${esc(x.id)}" data-task-version="${Number(x.version)||1}">${t('taskDone')}</button></div></div>`).join('')}
+    <p class="help">${t('taskOnlyApp')} ${t('taskCalendarHint')}</p></section>`;
 }
 function draftsPanel(limit=50){
   if(S.data?.draftLoadError)return `<article class="card"><p class="help">${t('draftError')}</p></article>`;
@@ -1050,6 +1051,17 @@ function bind(){
       await loadData();render();toast(t('followupSaved'));
     }catch(error){button.disabled=false;toast(error.message)}
   }));
+  document.querySelectorAll('[data-task-calendar]').forEach(button=>button.onclick=()=>{
+    const record=(S.data?.actionTasks||[]).find(t=>t.id===button.dataset.taskCalendar&&t.status==='open');
+    if(!record)return;
+    const output=makeTaskReminderIcs(record,{locale:S.lang});
+    if(!output)return toast(t('taskLoadError'));
+    const blob=new Blob([output],{type:'text/calendar;charset=utf-8'}),url=URL.createObjectURL(blob);
+    const link=document.createElement('a');
+    link.href=url;link.download='nestlocal-retorno-'+String(record.id).replace(/[^A-Za-z0-9_-]/g,'')+'.ics';
+    document.body.append(link);link.click();link.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),10000);toast(t('taskCalendarHint'));
+  });
   document.querySelectorAll('[data-task-done]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
     try{
