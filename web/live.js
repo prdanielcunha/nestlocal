@@ -228,6 +228,45 @@ Object.assign(D.es,{
   readOnlyUntil:'Prueba finalizada',
   readOnlyRequest:'Esta acción no está disponible en modo consulta. Tus datos se conservan.',
 });
+Object.assign(D.pt,{
+  opportunities:'Oportunidades', quickCapture:'O que aconteceu hoje?',quickHelp:'Cole uma mensagem ou descreva o contato. Sem conectar seu WhatsApp, sem orçamento automático.',
+  captureOrigin:'De onde veio?',captureMessage:'Mensagem ou anotação',capturePlaceholder:'Ex.: A cliente perguntou sobre limpeza do sofá para a próxima semana.',
+  saveOpportunity:'Salvar rascunho',savedOpportunity:'Oportunidade guardada para continuar depois.',
+  salesQuestion:'Onde posso vender?',salesEmpty:'Seus próximos contatos aparecerão aqui conforme você registrar atendimentos.',
+  taskQuestion:'O que tenho para fazer?',taskEmpty:'Sem compromissos para hoje ou amanhã.',
+  detailsMore:'Ver painel completo',draftsOpen:'Conversas que ainda precisam de detalhes',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / redes',draftOrigin_website:'Meu site',
+  draftOrigin_telephone:'Telefone',draftOrigin_referral:'Indicação',draftOrigin_other:'Outro',
+  draftWithoutName:'Contato sem nome',draftUnknown:'Ainda sem detalhes',draftArchive:'Arquivar',draftArchived:'Rascunho arquivado.',
+  draftError:'Não foi possível carregar os rascunhos. Seus outros dados continuam disponíveis.',manualOnly:'Modo manual: nada é enviado ao cliente.',
+  moreNav:'Mais',register:'Registrar',noAutomaticCapture:'Copiar uma conversa não conecta o WhatsApp nem comprova envio.'
+});
+Object.assign(D.en,{
+  opportunities:'Opportunities',quickCapture:'What happened today?',quickHelp:'Paste a message or describe an interaction. No WhatsApp connection or automatic quote.',
+  captureOrigin:'Where did it come from?',captureMessage:'Message or note',capturePlaceholder:'E.g. Customer asked about sofa cleaning next week.',
+  saveOpportunity:'Save draft',savedOpportunity:'Opportunity saved for later.',
+  salesQuestion:'Where can I make a sale?',salesEmpty:'Your follow-ups appear here as you register interactions.',
+  taskQuestion:'What do I need to do?',taskEmpty:'No appointments today or tomorrow.',
+  detailsMore:'View full dashboard',draftsOpen:'Conversations that need more details',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / social',draftOrigin_website:'My website',
+  draftOrigin_telephone:'Phone',draftOrigin_referral:'Referral',draftOrigin_other:'Other',
+  draftWithoutName:'Unnamed contact',draftUnknown:'More details needed',draftArchive:'Archive',draftArchived:'Draft archived.',
+  draftError:'Could not load drafts. Your other data is still available.',manualOnly:'Manual mode: nothing is sent to customers.',
+  moreNav:'More',register:'Register',noAutomaticCapture:'Pasting a conversation does not connect WhatsApp or prove delivery.'
+});
+Object.assign(D.es,{
+  opportunities:'Oportunidades',quickCapture:'¿Qué pasó hoy?',quickHelp:'Pega un mensaje o describe un contacto. Sin conectar WhatsApp ni presupuesto automático.',
+  captureOrigin:'¿De dónde llegó?',captureMessage:'Mensaje o nota',capturePlaceholder:'Ej.: Una cliente preguntó por limpieza del sofá la semana próxima.',
+  saveOpportunity:'Guardar borrador',savedOpportunity:'Oportunidad guardada para después.',
+  salesQuestion:'¿Dónde puedo vender?',salesEmpty:'Tus seguimientos aparecerán aquí cuando registres contactos.',
+  taskQuestion:'¿Qué tengo que hacer?',taskEmpty:'Sin citas para hoy ni mañana.',
+  detailsMore:'Ver panel completo',draftsOpen:'Conversaciones que necesitan más información',
+  draftOrigin_whatsapp_manual:'WhatsApp (manual)',draftOrigin_instagram:'Instagram / redes',draftOrigin_website:'Mi sitio web',
+  draftOrigin_telephone:'Teléfono',draftOrigin_referral:'Recomendación',draftOrigin_other:'Otro',
+  draftWithoutName:'Contacto sin nombre',draftUnknown:'Faltan detalles',draftArchive:'Archivar',draftArchived:'Borrador archivado.',
+  draftError:'No se pudieron cargar los borradores. Tus demás datos siguen disponibles.',manualOnly:'Modo manual: nada se envía al cliente.',
+  moreNav:'Más',register:'Registrar',noAutomaticCapture:'Pegar una conversación no conecta WhatsApp ni confirma entrega.'
+});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -246,7 +285,7 @@ function requestIntakeSummary(r){
   return Object.entries(values).map(([key,value])=>{const field=fields.find(x=>x.id===key);return `<p><strong>${esc(field?fieldLabel(field):humanizeOption(key))}:</strong> ${esc(value)}</p>`}).join('');
 }
 const isGrowthAdmin=()=>growthAdminRoles.has(S.session?.user?.systemRole);
-const labels=()=>isGrowthAdmin()?{today:t('today'),growth:t('growth'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:t('requests'),customers:t('customers'),agenda:t('agenda'),services:t('services'),automation:t('automation'),page:t('page'),privacy:t('privacy')};
+const labels=()=>{const opportunity=S.data?.features?.opportunityDrafts===true,requestLabel=opportunity?t('opportunities'):t('requests');return isGrowthAdmin()?{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),growth:t('growth'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),automation:t('automation'),page:t('page'),privacy:t('privacy')};};
 const pathParts=()=>location.pathname.split('/').filter(Boolean);
 const publicSlug=()=>{const p=pathParts();return p[0]==='s'?p[1]:p[0]};
 const publicReserved=new Set(['track','review','privacy','terms','raio-x','diagnostico']);
@@ -303,6 +342,11 @@ const accessReasonText=reason=>reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?t('acces
 function subscriptionGate(){const org=S.session.organizations.find(x=>x.id===S.orgId)||S.session.organizations[0],reason=org?.nestlocal?.reason||'',plans=[['essential',79],['growth',129],['pro',199]],billing=['SUBSCRIPTION_NOT_FOUND','SUBSCRIPTION_INACTIVE'].includes(reason),payment=reason==='SUBSCRIPTION_PAYMENT_REQUIRED';if(!billing&&!payment)return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('accessDeniedTitle')}</h1><p>${esc(accessReasonText(reason))}</p><div class="recovery-actions"><a class="button primary login-button" href="https://www.millionsnest.com">${t('manageInHub')}</a><button class="button login-button" id="switch-account">${t('switchAccount')}</button></div>${lang()}</section></main>`;if(payment)return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('accessDeniedTitle')}</h1><p>${t('accessPaymentRequired')}</p><a class="button primary login-button" href="https://www.millionsnest.com">${t('managePlan')}</a><button class="button login-button" id="switch-account">${t('switchAccount')}</button>${lang()}</section></main>`;return `<main class="login-shell"><section class="login-card subscription-card">${brand()}<span class="eyebrow">${esc(org?.name||'NestLocal')}</span><h1>${t('choosePlan')}</h1><p>${t('choosePlanHelp')}</p><div class="plan-grid">${plans.map(([id,price])=>`<article class="plan-option ${id==='growth'?'featured':''}"><strong>${t(id)}</strong><span>R$ ${price}/mês</span><small>${t(`${id}Desc`)}</small><a class="button ${id==='growth'?'primary':''}" href="https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_${id}_monthly">${t('subscribe')}</a></article>`).join('')}</div><button class="button login-button" id="switch-account">${t('switchAccount')}</button>${lang()}</section></main>`}
 
 function nav(){return Object.entries(labels()).map(([id,x])=>`<button data-nav="${id}" class="${S.page===id?'active':''}">${x}</button>`).join('')}
+function mobileNav(){
+  const entries=Object.entries(labels()),main=['today','requests','agenda','services'],other=entries.filter(([id])=>!main.includes(id));
+  return main.map(id=>`<button data-nav="${id}" class="${S.page===id?'active':''}">${esc(labels()[id])}</button>`).join('')+
+    `<details class="mobile-more"><summary>${esc(t('moreNav'))}</summary><div class="mobile-more-list">${other.map(([id,name])=>`<button data-nav="${id}">${esc(name)}</button>`).join('')}</div></details>`;
+}
 function quotePanel(r){
   const q=r.quote||{},commercial=r.commercial||{},amount=Number(q.totalCents??commercial.quotedAmountCents??0),quoteReady=Number.isSafeInteger(amount)&&amount>0,editable=['new','reviewing','quoted'].includes(r.status)&&!r.decision?.status;
   if(!editable)return '';
@@ -510,9 +554,34 @@ function calendarDownload(r){
   setTimeout(()=>URL.revokeObjectURL(url),10000);
   toast(cw(S.lang,'saved'));
 }
-function today(){
+function todayLegacy(){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
   return `${calendarAlertStrip()}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+}
+function captureQuickCard(){
+  const origins=['whatsapp_manual','instagram','website','telephone','referral','other'];
+  return `<article class="card quick-capture"><div class="section-title"><div><span class="eyebrow">NESTLOCAL</span><h2>${t('quickCapture')}</h2><p class="help">${t('quickHelp')}</p></div></div>
+    <form id="opportunity-draft" class="quick-capture-form"><label>${t('captureOrigin')}<select name="origin">${origins.map(o=>`<option value="${o}">${esc(t('draftOrigin_'+o))}</option>`).join('')}</select></label>
+    <label>${t('captureMessage')}<textarea name="message" id="quick-message" maxlength="6000" rows="3" required placeholder="${esc(t('capturePlaceholder'))}"></textarea></label>
+    <button class="button primary" type="submit">${t('saveOpportunity')}</button><small class="help">${t('manualOnly')}</small></form></article>`;
+}
+function draftsPanel(limit=50){
+  if(S.data?.draftLoadError)return `<article class="card"><p class="help">${t('draftError')}</p></article>`;
+  const all=(S.data?.opportunityDrafts||[]).filter(x=>x.state==='open').slice(0,limit);
+  if(!all.length)return '';
+  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>${all.map(d=>`<div class="draft-item"><div><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span><strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p></div><button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div>`).join('')}</article>`;
+}
+function today(){
+  if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
+  const actions=nextBestActions().slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
+  const visits=[...(digest.today||[]),...(digest.tomorrow||[])];
+  return `<div class="page-stack nestlocal-today-v2">${captureQuickCard()}
+    <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
+      ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
+      ${draftsPanel(3)}</article>
+    <article class="card"><div class="section-title"><h2>${t('taskQuestion')}</h2><button class="button small" data-action-page="agenda">${t('agenda')}</button></div>
+      ${visits.length?`<p class="help">${visits.length} ${t('agenda')} · ${esc(organizationDateIso())}</p>`:`<p class="help">${t('taskEmpty')}</p>`}</article>
+    <details class="today-advanced"><summary>${t('detailsMore')}</summary>${todayLegacy()}</details></div>`;
 }
 function newRequestForm(){
   const settings=S.data.settings,services=S.data.services||[];if(!settings||!services.length)return `<article class="card new-request-card"><div class="section-title"><div><h2>${t('newRequest')}</h2><p class="help">${t('newRequestHelp')}</p></div></div><button class="button primary small" data-action-page="services">${t('goToServices')}</button></article>`;
@@ -520,7 +589,7 @@ function newRequestForm(){
   return `<details class="card new-request-card"><summary><div><span class="eyebrow">${t('newRequest')}</span><strong>${t('createRequest')}</strong><small>${t('newRequestHelp')}</small></div></summary><form id="internal-request" class="form-grid request-intake"><label>${t('customerName')}<input name="name" required maxlength="100" autocomplete="name"></label><label>${(trustStartCopy[S.lang]||trustStartCopy.pt).phone}<input name="phone" inputmode="tel" autocomplete="tel"></label><label>E-mail / Email / Correo<input name="email" type="email" autocomplete="email" maxlength="254"></label><p class="help wide">${(trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone}</p><label>${t('service')}<select name="serviceId" required>${services.map(s=>`<option value="${esc(s.id)}">${esc(serviceName(s))}</option>`).join('')}</select></label><label>${t('cityOrArea')}<select name="coverageCode" required>${coverage.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}</select></label><label class="wide">${t('address')}<input name="addressLine" required minlength="5" autocomplete="street-address"></label><label>${t('city')}<input name="city" maxlength="80"></label><label>${t('preferredDate')}<input name="preferredDate" type="date" min="${esc(today)}"></label><label>${t('preferredWindow')}<select name="preferredWindow">${['morning','afternoon','evening','flexible'].map(x=>`<option value="${x}">${t(x)}</option>`).join('')}</select></label><label class="wide">${t('note')}<textarea name="note" rows="3"></textarea></label><button class="button primary wide" type="submit">${t('createRequest')}</button></form></details>`;
 }
 function emptyAction(title,help,button,page){return `<div class="empty actionable-empty"><strong>${t(title)}</strong><span>${t(help)}</span><button class="button small" data-action-page="${page}">${t(button)}</button></div>`}
-function requests(){const a=S.data.requests||[];return `<div class="page-stack">${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
+function requests(){const a=S.data.requests||[];return `<div class="page-stack">${S.data?.features?.opportunityDrafts?captureQuickCard()+draftsPanel():''}${newRequestForm()}<article class="card"><div class="section-title"><h2>${t('requests')}</h2><span>${a.length}</span></div>${a.length?a.map(row).join(''):emptyAction('noRequestsTitle','noRequestsHelp','createRequest','requests')}</article></div>`}
 const routeUrl=address=>{const value=String(address||'').trim();return value?`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`:''};
 function maintenancePlanForm(customer){
   const p=customer.maintenancePlan||{},active=p.active===true;
@@ -784,7 +853,7 @@ function shell(){
   const e=S.data?.entitlement||{},usage=e.usage||{},limit=e.limits?.requestsPerMonth,orgs=Array.isArray(S.session?.organizations)?S.session.organizations:[];
   const readOnly=e.readOnly===true;
   const banner=readOnly?`<aside class="read-only-banner" role="status"><div><span class="eyebrow">${esc(t('readOnlyUntil'))}</span><strong>${esc(t('readOnlyTitle'))}</strong><p>${esc(t('readOnlyText'))}</p></div><a class="button primary" href="https://www.millionsnest.com/dashboard/billing">${esc(t('readOnlyAction'))}</a></aside>`:'';
-  return `<div class="shell${readOnly?' is-readonly':''}"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${['trialing','internal_trial_active'].includes(e.status)?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header>${banner}<section class="page active">${C}</section></main><nav class="bottom-nav">${nav()}</nav>${actionAssistantOverlay()}</div>`;
+  return `<div class="shell${readOnly?' is-readonly':''}${S.data?.features?.opportunityDrafts?' is-opportunity-v2':''}"><aside class="sidebar">${brand()}<nav class="nav">${nav()}</nav><div class="sidebar-foot"><strong>${esc(S.data?.organization?.name||'NestLocal')}</strong><p>${t('plan')} ${esc(e.plan||'—')} · ${usage.requests||0}/${limit||'—'} ${t('used')}</p><a href="https://www.millionsnest.com/dashboard/billing">${t('managePlan')}</a></div></aside><main class="main"><header class="topbar"><div><span class="eyebrow">${['trialing','internal_trial_active'].includes(e.status)?t('trial'):t('realData')}</span><h1>${labels()[S.page]||labels().today}</h1></div><div class="top-actions"><select id="org" class="field compact">${orgs.map(o=>`<option ${o.id===S.orgId?'selected':''} value="${esc(o.id)}">${esc(o.name)}</option>`).join('')}</select>${lang()}<button class="button small" id="logout">${t('logout')}</button></div></header>${banner}<section class="page active">${C}</section></main><nav class="bottom-nav">${S.data?.features?.opportunityDrafts?mobileNav():nav()}</nav>${S.data?.features?.opportunityDrafts?`<button type="button" class="button primary opportunity-fab" data-open-draft>${t('register')}</button>`:''}${actionAssistantOverlay()}</div>`;
 }
 function reviewPublicView(){
   if(S.loading)return loading();
@@ -853,7 +922,7 @@ function render(){
     }
   }
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}}S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -909,6 +978,25 @@ async function beginGoogleLogin(){
 }
 async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
 function bind(){
+  document.querySelectorAll('[data-open-draft]').forEach(button=>button.onclick=()=>{S.page='today';render();document.querySelector('#quick-message')?.focus()});
+  document.querySelector('#opportunity-draft')?.addEventListener('submit',async e=>{
+    e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type="submit"]'),f=new FormData(form);
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,
+        {method:'POST',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({origin:f.get('origin'),message:f.get('message')})});
+      await loadData();render();toast(t('savedOpportunity'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-archive-draft]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts/${encodeURIComponent(button.dataset.archiveDraft)}`,
+        {method:'PATCH',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({state:'archived',expectedVersion:Number(button.dataset.draftVersion)})});
+      await loadData();render();toast(t('draftArchived'));
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+
   document.querySelectorAll('[data-calendar-google]').forEach(b=>b.onclick=()=>{
     const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarGoogle);
     if(!r)return;
