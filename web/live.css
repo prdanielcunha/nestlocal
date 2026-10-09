@@ -92,3 +92,10 @@
 .is-opportunity-v2 .followup-item .button{flex-shrink:0}
 .is-opportunity-v2 .followup-tasks{margin:12px 0}
 @media(max-width:620px){.is-opportunity-v2 .opportunity-preview{padding:12px}.is-opportunity-v2 .followup-item{align-items:flex-start}.is-opportunity-v2 .draft-controls{flex-wrap:wrap}}
+
+/* Billing recovery and customer portability stay reachable in read-only mode */
+.readonly-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.readonly-actions .button{min-height:43px;display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:760px){.readonly-actions{width:100%;flex-direction:column;align-items:stretch}.readonly-actions .button{width:100%}}
+.is-opportunity-v2 .task-actions{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+@media(max-width:620px){.is-opportunity-v2 .task-actions .button{min-height:40px}}
