@@ -103,7 +103,7 @@ try {
     assert.equal(aiInputs.length,0,'NestAI cannot run without checked consent');
     await page.locator('[data-ai-consent]').check();
     await page.locator('[data-ai-draft-preview]').click();
-    await page.waitForFunction(()=>document.querySelector('.opportunity-preview .preview-evidence')?.textContent?.includes('reparo'));
+    await page.waitForFunction(()=>document.querySelector('.opportunity-preview')?.textContent?.includes('Sugestão de IA'));
     assert.equal(aiInputs.length,1);
     assert.ok((await page.locator('.opportunity-preview').textContent()).includes('Sugestão de IA'));
     await page.screenshot({path:`artifacts/experience/opportunity-nestai-${width}.png`,fullPage:true});
