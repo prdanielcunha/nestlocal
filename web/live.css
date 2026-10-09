@@ -70,3 +70,25 @@
  .is-opportunity-v2 .top-actions .field.compact{box-sizing:border-box;max-width:100%;min-width:0;flex:1 1 150px}
  .is-opportunity-v2 .top-actions .lang{flex:0 0 auto;min-width:0}
 }
+
+/* Pilot F3/F5: legible evidence and manual follow-up tasks */
+.is-opportunity-v2 .draft-main{min-width:0;flex:1 1 auto}
+.is-opportunity-v2 .opportunity-preview{padding:14px;margin-top:15px;border:1px solid rgba(143,240,189,.17);border-radius:14px;background:rgba(5,25,18,.65)}
+.is-opportunity-v2 .opportunity-preview h3,.is-opportunity-v2 .followup-tasks h3{margin:0 0 10px;font-size:16px}
+.is-opportunity-v2 .preview-evidence{padding:12px 14px;border-left:3px solid #8ff0bd;background:rgba(255,255,255,.05);border-radius:8px;margin:12px 0;overflow-wrap:anywhere}
+.is-opportunity-v2 .opportunity-preview ul{padding-left:22px;margin:10px 0 15px;color:#c4dcd1}
+.is-opportunity-v2 .opportunity-preview li{margin:4px 0}
+.is-opportunity-v2 .draft-reply-label{display:grid;gap:8px;margin:12px 0 10px;color:#c4dcd1}
+.is-opportunity-v2 .opportunity-preview textarea,.is-opportunity-v2 .followup-task input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid rgba(255,255,255,.2);border-radius:12px;background:#071b15;color:#f2fff8;padding:11px 12px;font:inherit}
+.is-opportunity-v2 .followup-task{margin-top:13px}
+.is-opportunity-v2 .followup-task summary{cursor:pointer;color:#9becc0;font-weight:600;list-style-position:inside}
+.is-opportunity-v2 .followup-task[open] summary{margin-bottom:12px}
+.is-opportunity-v2 .followup-task form{max-width:450px}
+.is-opportunity-v2 .followup-task label{display:grid;gap:7px;font-size:13px;color:#bbd3c8}
+.is-opportunity-v2 .followup-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid rgba(255,255,255,.1)}
+.is-opportunity-v2 .followup-item>div{min-width:0;overflow-wrap:anywhere}
+.is-opportunity-v2 .followup-item strong{display:block;color:#effff6}
+.is-opportunity-v2 .followup-item small{display:block;color:#acc7bb;margin-top:4px}
+.is-opportunity-v2 .followup-item .button{flex-shrink:0}
+.is-opportunity-v2 .followup-tasks{margin:12px 0}
+@media(max-width:620px){.is-opportunity-v2 .opportunity-preview{padding:12px}.is-opportunity-v2 .followup-item{align-items:flex-start}.is-opportunity-v2 .draft-controls{flex-wrap:wrap}}
