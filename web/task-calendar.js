@@ -11,6 +11,16 @@ function zoneValid(zone){
  if(!/^[A-Za-z_]+(?:\/[A-Za-z0-9_+\-]+){0,3}$/.test(zone||''))return false;
  try{new Intl.DateTimeFormat('en',{timeZone:zone});return true}catch{return false}
 }
+function foldIcsLine(value){
+ const encoder=new TextEncoder(),output=[];let current='',bytes=0;
+ for(const point of String(value)){
+   const length=encoder.encode(point).length;
+   if(bytes+length>75){output.push(current);current=' ';bytes=1}
+   current+=point;bytes+=length;
+ }
+ if(current)output.push(current);
+ return output;
+}
 export function makeTaskReminderIcs(task,{issuedAt=new Date(),locale='pt'}={}){
  if(!task||!/^[A-Za-z0-9_-]{1,128}$/.test(String(task.id||''))||!validDate(task.dueDate)||!zoneValid(task.timezone))
    return null;
@@ -39,5 +49,5 @@ export function makeTaskReminderIcs(task,{issuedAt=new Date(),locale='pt'}={}){
  }
  lines.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+l.alert,
   'TRIGGER:-PT1H','END:VALARM','END:VEVENT','END:VCALENDAR');
- return lines.join('\r\n')+'\r\n';
+ return lines.flatMap(foldIcsLine).join('\r\n')+'\r\n';
 }
