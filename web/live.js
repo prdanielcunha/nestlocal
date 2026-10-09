@@ -29,7 +29,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -231,7 +231,7 @@ Object.assign(D.es,{
 Object.assign(D.pt,{
   opportunities:'Oportunidades', quickCapture:'O que aconteceu hoje?',quickHelp:'Cole uma mensagem ou descreva o contato. Sem conectar seu WhatsApp, sem orçamento automático.',
   captureOrigin:'De onde veio?',captureMessage:'Mensagem ou anotação',capturePlaceholder:'Ex.: A cliente perguntou sobre limpeza do sofá para a próxima semana.',
-  saveOpportunity:'Salvar rascunho',savedOpportunity:'Oportunidade guardada para continuar depois.',
+  prepareDraft:'Completar pedido',draftPrepared:'Complete os dados para criar o pedido.',saveOpportunity:'Salvar rascunho',savedOpportunity:'Oportunidade guardada para continuar depois.',
   salesQuestion:'Onde posso vender?',salesEmpty:'Seus próximos contatos aparecerão aqui conforme você registrar atendimentos.',
   taskQuestion:'O que tenho para fazer?',taskEmpty:'Sem compromissos para hoje ou amanhã.',
   detailsMore:'Ver painel completo',draftsOpen:'Conversas que ainda precisam de detalhes',
@@ -244,7 +244,7 @@ Object.assign(D.pt,{
 Object.assign(D.en,{
   opportunities:'Opportunities',quickCapture:'What happened today?',quickHelp:'Paste a message or describe an interaction. No WhatsApp connection or automatic quote.',
   captureOrigin:'Where did it come from?',captureMessage:'Message or note',capturePlaceholder:'E.g. Customer asked about sofa cleaning next week.',
-  saveOpportunity:'Save draft',savedOpportunity:'Opportunity saved for later.',
+  prepareDraft:'Complete request',draftPrepared:'Complete the required fields to create the request.',saveOpportunity:'Save draft',savedOpportunity:'Opportunity saved for later.',
   salesQuestion:'Where can I make a sale?',salesEmpty:'Your follow-ups appear here as you register interactions.',
   taskQuestion:'What do I need to do?',taskEmpty:'No appointments today or tomorrow.',
   detailsMore:'View full dashboard',draftsOpen:'Conversations that need more details',
@@ -257,7 +257,7 @@ Object.assign(D.en,{
 Object.assign(D.es,{
   opportunities:'Oportunidades',quickCapture:'¿Qué pasó hoy?',quickHelp:'Pega un mensaje o describe un contacto. Sin conectar WhatsApp ni presupuesto automático.',
   captureOrigin:'¿De dónde llegó?',captureMessage:'Mensaje o nota',capturePlaceholder:'Ej.: Una cliente preguntó por limpieza del sofá la semana próxima.',
-  saveOpportunity:'Guardar borrador',savedOpportunity:'Oportunidad guardada para después.',
+  prepareDraft:'Completar solicitud',draftPrepared:'Completa los datos para crear la solicitud.',saveOpportunity:'Guardar borrador',savedOpportunity:'Oportunidad guardada para después.',
   salesQuestion:'¿Dónde puedo vender?',salesEmpty:'Tus seguimientos aparecerán aquí cuando registres contactos.',
   taskQuestion:'¿Qué tengo que hacer?',taskEmpty:'Sin citas para hoy ni mañana.',
   detailsMore:'Ver panel completo',draftsOpen:'Conversaciones que necesitan más información',
@@ -569,7 +569,7 @@ function draftsPanel(limit=50){
   if(S.data?.draftLoadError)return `<article class="card"><p class="help">${t('draftError')}</p></article>`;
   const all=(S.data?.opportunityDrafts||[]).filter(x=>x.state==='open').slice(0,limit);
   if(!all.length)return '';
-  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>${all.map(d=>`<div class="draft-item"><div><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span><strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p></div><button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div>`).join('')}</article>`;
+  return `<article class="card opportunity-drafts"><div class="section-title"><h2>${t('draftsOpen')}</h2><span>${all.length}</span></div>${all.map(d=>`<div class="draft-item"><div><span class="eyebrow">${esc(t('draftOrigin_'+d.origin))}</span><strong>${esc(d.customerName||t('draftWithoutName'))}</strong><p>${esc(d.message||d.serviceSummary||t('draftUnknown'))}</p></div><div class="draft-controls"><button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button><button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
 }
 function today(){
   if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
@@ -904,6 +904,8 @@ function render(){
   document.documentElement.dataset.nlBuild='20260929-render-fix-10';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
   if(S.data?.entitlement?.readOnly===true){
+    const captureButton=document.querySelector('.opportunity-fab');
+    if(captureButton){captureButton.disabled=true;captureButton.title=t('readOnlyRequest')}
     const page=document.querySelector('.shell .page');
     if(page&&S.page!=='privacy'){
       // Keep navigation, filtering, exporting and copy controls usable.
@@ -912,6 +914,7 @@ function render(){
         form.querySelectorAll('input, textarea, select, button[type=submit]').forEach(el=>{el.disabled=true});
         form.setAttribute('aria-label',t('readOnlyRequest'));
       });
+      page.querySelectorAll('[data-prepare-draft],[data-archive-draft]').forEach(button=>{button.disabled=true;button.title=t('readOnlyRequest')});
       page.querySelectorAll('button').forEach(button=>{
         const attrs=Array.from(button.attributes).filter(a=>a.name.startsWith('data-')).map(a=>a.name);
         if(attrs.some(name=>/^data-(?:ai-|save|publish|delete|remove|edit|apply|create|add|request-status|request-quote|request-schedule|customer-|service-|experiment-|send)/.test(name))){
@@ -987,6 +990,19 @@ function bind(){
         {method:'POST',headers:{'Idempotency-Key':'nl-'+crypto.randomUUID()},body:JSON.stringify({origin:f.get('origin'),message:f.get('message')})});
       await loadData();render();toast(t('savedOpportunity'));
     }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-prepare-draft]').forEach(button=>button.onclick=()=>{
+    const draft=(S.data?.opportunityDrafts||[]).find(x=>x.id===button.dataset.prepareDraft&&x.state==='open');
+    if(!draft)return;
+    S.pendingDraftId=draft.id;S.page='requests';render();
+    const form=document.querySelector('#internal-request');
+    if(!form){toast(t('goToServices'));return}
+    const wrap=form.closest('details');if(wrap)wrap.open=true;
+    if(form.elements.name)form.elements.name.value=draft.customerName||'';
+    if(form.elements.phone)form.elements.phone.value=draft.phone||'';
+    if(form.elements.email)form.elements.email.value=draft.email||'';
+    if(form.elements.note)form.elements.note.value=(draft.message||draft.serviceSummary||'').slice(0,1000);
+    form.scrollIntoView({behavior:'smooth',block:'start'});toast(t('draftPrepared'));
   });
   document.querySelectorAll('[data-archive-draft]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
@@ -1090,7 +1106,7 @@ function bind(){
   document.querySelector('#playbook-add')?.addEventListener('click',async e=>{const button=e.currentTarget,template=document.querySelector('#playbook-add-select')?.value||'general';button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/playbooks/${encodeURIComponent(template)}/apply`,{method:'POST',body:'{}'});await loadData();render();toast(result.addedCount?(`${result.addedCount} ${t('playbookAdded')}`):t('playbookAlreadyPresent'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#publish')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/publish`,{method:'POST',body:'{}'});await loadData();render();toast(t('published'))}catch(err){button.disabled=false;toast(err.message==='PUBLISH_NOT_READY'?t('publishBlocked'):err.message)}});
 
-  document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||''};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',body:JSON.stringify(payload)});await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
+  document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={sourceDraftId:S.pendingDraftId||'',name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||''};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',body:JSON.stringify(payload)});S.pendingDraftId='';await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
 
   document.querySelectorAll('[data-request-quote]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const goNext=e.submitter?.dataset.saveNext==='true',button=e.submitter||form.querySelector('button[type="submit"]'),f=new FormData(form),amountCents=Math.round(Number(f.get('quoteAmount'))*100);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||''})});await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message)}});
 
