@@ -9,7 +9,7 @@ test('Pulse rollout is server-controlled, OFF by default, with per-organization 
   assert.ok(block.includes("process.env.NESTLOCAL_PULSE_V2_ENABLED==='true'"));
   assert.ok(block.includes("process.env.NESTLOCAL_PULSE_V2_PILOT_ORGS||''"));
   assert.ok(block.includes('allowed.includes(orgId)'));
-  assert.ok(server.includes('features:{pulseV2:pulseFeatureEnabled(req.access.orgId)}'));
+  assert.match(server,/features:\\{pulseV2:pulseFeatureEnabled\\(req\\.access\\.orgId\\)(?:,opportunityDrafts:opportunityDraftsEnabled\\(req\\.access\\.orgId\\))?\\}/);
   assert.ok(live.includes("S.data.features?.pulseV2===true?pulseTodayCard(actions):''"));
 });
 test('Pulse feedback endpoints reject requests before reading private data when feature disabled',()=>{
