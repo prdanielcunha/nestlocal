@@ -57,3 +57,7 @@
  .is-opportunity-v2 .request :is(summary,.request-detail){min-width:0;overflow-wrap:anywhere}
  .is-opportunity-v2 .draft-item,.is-opportunity-v2 .quick-capture-form{min-width:0;overflow-wrap:anywhere}
 }
+
+/* Native request form controls previously used width:100% plus padding.
+   Border-box prevents their box model from pushing the pilot page wider. */
+.is-opportunity-v2 .form-grid :is(input,select,textarea){box-sizing:border-box;max-width:100%;min-width:0}
