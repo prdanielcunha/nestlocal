@@ -7,7 +7,7 @@ mkdirSync('artifacts/experience',{recursive:true});
 try {
   for(const width of [390,1440]){
     const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'});
-    const errors=[],stored=[],orders=[];
+    const errors=[],stored=[],orders=[],tasks=[];
     page.on('pageerror',error=>errors.push(error.message));
     const data={
       features:{pulseV2:false,opportunityDrafts:true},
@@ -36,6 +36,26 @@ try {
         stored.unshift({id:'synthetic-draft',state:'open',version:1,schemaVersion:2,...body});
         return json({item:stored[0]},201);
       }
+      if(path.endsWith('/preview')&&method==='GET'){
+        return json({draftId:'synthetic-draft',mode:'deterministic',authority:'suggestion_only',
+          facts:[{evidence:stored[0]?.message||'',sourceField:'message',verified:false}],
+          questions:['Qual serviço precisa ser realizado?'],
+          replyDraft:'Olá! Pode confirmar a região e o serviço?',delivered:false,appointmentBooked:false});
+      }
+      if(path.endsWith('/action-tasks')&&method==='GET')return json({items:tasks,delivery:'in_app_only',pushEnabled:false});
+      if(path.endsWith('/action-tasks')&&method==='POST'){
+        const body=route.request().postDataJSON();
+        assert.equal(body.sourceDraftId,'synthetic-draft');
+        assert.equal(body.timezone,'America/Sao_Paulo');
+        assert.ok(route.request().headers()['idempotency-key']);
+        tasks.unshift({...body,id:'task-example',status:'open',version:1});
+        return json({item:tasks[0]},201);
+      }
+      if(path.endsWith('/action-tasks/task-example')&&method==='PATCH'){
+        const body=route.request().postDataJSON();
+        assert.equal(body.status,'done');assert.equal(body.expectedVersion,1);
+        tasks[0].status='done';tasks[0].version=2;return json({item:tasks[0]});
+      }
       if(path.endsWith('/requests')&&method==='POST'){
         const body=route.request().postDataJSON();
         assert.equal(body.sourceDraftId,'synthetic-draft');
@@ -59,6 +79,20 @@ try {
     await page.locator('[data-prepare-draft]').waitFor();
     assert.equal(stored.length,1);
     await page.screenshot({path:`artifacts/experience/opportunity-home-${width}.png`,fullPage:true});
+    await page.locator('[data-draft-preview]').click();
+    await page.locator('.opportunity-preview').waitFor();
+    assert.ok((await page.locator('.preview-evidence').textContent()).includes('Cliente pediu orçamento'));
+    assert.ok((await page.locator('[data-preview-reply]').inputValue()).includes('Pode confirmar'));
+    await page.locator('.followup-task summary').first().click();
+    await page.locator('[data-task-create] input[name=dueDate]').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+    await page.locator('[data-task-create] input[name=dueTime]').fill('09:30');
+    await page.locator('[data-task-create] button[type=submit]').click();
+    await page.locator('[data-task-done]').first().waitFor();
+    assert.equal(tasks.length,1);
+    await page.locator('[data-task-done]').first().click();
+    await page.waitForFunction(()=>document.querySelectorAll('[data-task-done]').length===0);
+    assert.equal(tasks[0].status,'done');
+    await page.screenshot({path:`artifacts/experience/opportunity-followup-${width}.png`,fullPage:true});
     await page.locator('[data-prepare-draft]').click();
     await page.locator('#internal-request').waitFor();
     assert.equal(await page.locator('#internal-request textarea[name=note]').inputValue(),'Cliente pediu orçamento para reparo.');
@@ -82,7 +116,7 @@ try {
     assert.deepEqual(errors,[],'Browser exceptions at '+width);
     await page.close();
   }
-  console.log('Synthetic NestLocal 2.0 E2E PASS: manual opportunity -> confirmed order, 390px and 1440px. Not a live Firestore or Stripe certification.');
+  console.log('Synthetic NestLocal 2.0 E2E PASS: draft -> grounded preview -> follow-up completed -> validated order on 390/1440px; no live Firestore/Stripe certification.');
 } finally {
   await browser.close();
 }
