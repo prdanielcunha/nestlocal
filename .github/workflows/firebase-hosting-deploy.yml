@@ -82,7 +82,7 @@ jobs:
             --max-instances 2 \
             --concurrency 40 \
             --timeout 30 \
-            --update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production \
+            --update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production,NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED=true \
             --allow-unauthenticated \
             --quiet
       - name: Ensure isolated Hosting sites
