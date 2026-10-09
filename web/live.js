@@ -6,6 +6,7 @@ import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
 import {makeTaskReminderIcs} from './task-calendar.js';
+import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
 
 const millionsNestHubOrigin='https://www.millionsnest.com';
@@ -274,6 +275,9 @@ Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendi
 Object.assign(D.pt,{aiPreview:'Analisar com NestAI',aiConsent:'Autorizo a análise pontual desta anotação no NestAI. Telefones, e-mails, documentos e links são ocultados antes do envio.',aiPrivacy:'Sugestão de IA: confirme as informações. Nenhuma mensagem será enviada, nenhuma venda é garantida e nenhum horário será reservado.',aiManualFallback:'NestAI indisponível ou limite atingido: continue com a revisão manual.',aiEvidence:'Serviço mencionado na conversa',aiConsentRequired:'Confirme a autorização antes de usar o NestAI.',aiNoCredits:'Limite diário de consultas de IA atingido. Use a revisão sem IA.'});
 Object.assign(D.en,{aiPreview:'Analyze with NestAI',aiConsent:'I authorize this single note to be analyzed by NestAI. Phone numbers, emails, IDs and URLs will be redacted before processing.',aiPrivacy:'AI suggestion: verify the facts. No message is sent, sale guaranteed or appointment booked.',aiManualFallback:'NestAI unavailable or quota reached. Continue with manual review.',aiEvidence:'Service mentioned in the source',aiConsentRequired:'Please authorize NestAI processing first.',aiNoCredits:'Daily AI request limit reached. Use manual review.'});
 Object.assign(D.es,{aiPreview:'Analizar con NestAI',aiConsent:'Autorizo un análisis de esta nota con NestAI. Se ocultan teléfonos, correos, documentos y enlaces antes del envío.',aiPrivacy:'Sugerencia de IA: verifica los datos. No se envían mensajes, ni se garantizan ventas o reservas.',aiManualFallback:'NestAI no disponible o límite alcanzado. Continúa con la revisión manual.',aiEvidence:'Servicio mencionado en el mensaje',aiConsentRequired:'Autoriza el análisis con NestAI antes de continuar.',aiNoCredits:'Límite diario de consultas de IA alcanzado. Usa la revisión manual.'});
+Object.assign(D.pt,{enableTaskAlerts:'Ativar avisos neste aparelho',alertsUnavailable:'Este navegador não oferece notificações para esta página. Use a opção Calendário.',alertsEnabled:'Avisos permitidos enquanto o NestLocal estiver aberto.',alertsDenied:'O aparelho não autorizou notificações. Você pode usar o calendário.',alertsExplanation:'Opcional: avisos para retornos de hoje e amanhã quando o app estiver aberto. Sem envio de WhatsApp ou notificação garantida em segundo plano.'});
+Object.assign(D.en,{enableTaskAlerts:'Enable alerts on this device',alertsUnavailable:'Notifications are unavailable here. Use the calendar option.',alertsEnabled:'Alerts enabled while NestLocal is open.',alertsDenied:'Device notifications were not permitted. You can use the calendar.',alertsExplanation:'Optional reminders for today and tomorrow while the app is open; no WhatsApp send or background push guarantee.'});
+Object.assign(D.es,{enableTaskAlerts:'Activar avisos en este dispositivo',alertsUnavailable:'Este navegador no admite notificaciones aquí. Usa el calendario.',alertsEnabled:'Avisos activados mientras NestLocal está abierto.',alertsDenied:'El dispositivo no autorizó notificaciones. Puedes usar el calendario.',alertsExplanation:'Avisos opcionales de hoy y mañana mientras la app está abierta; sin WhatsApp ni push garantizado en segundo plano.'});
 const t=k=>D[S.lang]?.[k]||D.pt[k]||k;
 const esc=s=>String(s??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
 const money=c=>c==null?'—':new Intl.NumberFormat(S.lang==='pt'?'pt-BR':S.lang==='es'?'es-ES':'en-US',{style:'currency',currency:'BRL'}).format(c/100);
@@ -602,7 +606,7 @@ function tasksPanel(dueOnly=false){
   const tasks=(S.data?.actionTasks||[]).filter(x=>x.status==='open'&&(!dueOnly||x.dueDate<=tomorrow))
     .sort((a,b)=>String(a.dueDate+' '+(a.dueTime||'99:99')).localeCompare(String(b.dueDate+' '+(b.dueTime||'99:99')))).slice(0,dueOnly?6:20);
   if(!tasks.length)return '';
-  return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${tasks.map(x=>`
+  return `<section class="followup-tasks"><h3>${t(dueOnly?'taskDue':'taskFuture')}</h3>${dueOnly?`<button class="button small" data-enable-task-alerts>${t('enableTaskAlerts')}</button><p class="help">${t('alertsExplanation')}</p>`:''}${tasks.map(x=>`
     <div class="followup-item"><div><strong>${esc(x.title)}</strong><small>${esc(x.dueDate)}${x.dueTime?' · '+esc(x.dueTime):''}</small></div>
       <div class="task-actions"><button class="button small" data-task-calendar="${esc(x.id)}">${t('taskCalendar')}</button><button class="button small" data-task-done="${esc(x.id)}" data-task-version="${Number(x.version)||1}">${t('taskDone')}</button></div></div>`).join('')}
     <p class="help">${t('taskOnlyApp')} ${t('taskCalendarHint')}</p></section>`;
@@ -977,7 +981,7 @@ function render(){
 async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
     try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
     catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
-  }S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';}
+  }S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';checkTaskNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -1032,7 +1036,36 @@ async function beginGoogleLogin(){
   redirectToMillionsNest();
 }
 async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
+function checkTaskNotifications(){
+  if(!S.orgId||!S.data?.features?.opportunityDrafts||S.data?.entitlement?.readOnly===true||
+     typeof Notification==='undefined'||Notification.permission!=='granted'||document.visibilityState!=='visible')return;
+  const enabled='nl_task_alerts_'+S.orgId;
+  if(storageGet(localStorage,enabled)!=='yes')return;
+  const date=organizationDateIso(),key='nl_task_alerted_'+S.orgId+'_'+date;
+  if(storageGet(localStorage,key)==='yes')return;
+  const digest=dueTaskDigest(S.data?.actionTasks||[],date,addIsoCalendarDays(date,1));
+  const notice=makeTaskNotification(digest,S.lang);
+  if(!notice)return;
+  try{
+    new Notification(notice.title,{body:notice.body,tag:'nestlocal-tasks-'+S.orgId+'-'+date,
+      silent:false,icon:'/favicon.ico'});
+    storageSet(localStorage,key,'yes');
+  }catch{ /* Device denied delivery. No false notification confirmation. */ }
+}
 function bind(){
+  document.querySelectorAll('[data-enable-task-alerts]').forEach(button=>button.onclick=async()=>{
+    if(typeof Notification==='undefined'||!('requestPermission' in Notification)){
+      toast(t('alertsUnavailable'));return;
+    }
+    try{
+      const permission=await Notification.requestPermission();
+      if(permission!=='granted')return toast(t('alertsDenied'));
+      storageSet(localStorage,'nl_task_alerts_'+S.orgId,'yes');
+      checkTaskNotifications();
+      toast(t('alertsEnabled'));
+    }catch{toast(t('alertsUnavailable'))}
+  });
+
   document.querySelector('[data-export-all]')?.addEventListener('click',async event=>{
     const button=event.currentTarget;button.disabled=true;
     try{
@@ -1362,4 +1395,6 @@ async function startAuthBootstrap(){
     clearTimeout(hardWatchdog);
   }
 }
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkTaskNotifications()});
+setInterval(checkTaskNotifications,15*60*1000);
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
