@@ -48,3 +48,12 @@
 
 .is-opportunity-v2 .draft-controls{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;align-items:flex-start}
 @media(max-width:620px){.is-opportunity-v2 .draft-controls{width:100%}.is-opportunity-v2 .draft-controls .button{flex:1 1 135px}}
+
+/* Keep long notes, values and narrow grids inside a 320–390px viewport. */
+@media(max-width:620px){
+ .is-opportunity-v2 .page-stack,.is-opportunity-v2 .card,.is-opportunity-v2 .form-grid,
+ .is-opportunity-v2 .request,.is-opportunity-v2 .request-detail{min-width:0;max-width:100%;box-sizing:border-box}
+ .is-opportunity-v2 .form-grid>*{min-width:0}
+ .is-opportunity-v2 .request :is(summary,.request-detail){min-width:0;overflow-wrap:anywhere}
+ .is-opportunity-v2 .draft-item,.is-opportunity-v2 .quick-capture-form{min-width:0;overflow-wrap:anywhere}
+}
