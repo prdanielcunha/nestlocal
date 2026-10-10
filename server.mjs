@@ -217,6 +217,16 @@ async function authenticate(req,res,next){
   }catch(e){console.error('[NESTLOCAL_SESSION_AUTH]',e);return sendError(res,401,'AUTH_REQUIRED')}
 }
 
+// Critical cross-account/tenant guard: cookies from an older Google account
+// must NEVER authorize a new account's NestAI request.
+async function resolveAuthorizedNestAiToken(req,res){
+  const token=readNestLocalSessionToken(req);
+  if(!token)throw new Error('NESTLOCAL_NESTAI_SESSION_REQUIRED');
+  const session=await resolveNestLocalSessionIdentity(token,res,'nestlocal_ai');
+  if(!session||session.uid!==req.identity?.uid||session.orgId!==req.access?.orgId)
+    throw new Error('NESTLOCAL_NESTAI_SESSION_MISMATCH');
+  return token;
+}
 async function authorize(req,res,next){
   const orgId=clean(req.params.orgId);if(!orgId)return sendError(res,400,'ORGANIZATION_REQUIRED');
   if(String(req.identity?.sessionKind||'').startsWith('nestlocal_')&&req.identity?.orgId!==orgId)return sendError(res,403,'SESSION_ORGANIZATION_MISMATCH');
@@ -812,6 +822,47 @@ app.post('/api/auth/handoff/redeem',async(req,res)=>{
     if(e?.message==='HANDOFF_INVALID_OR_EXPIRED')return sendError(res,400,'HANDOFF_INVALID_OR_EXPIRED');
     console.error('[NESTLOCAL_HANDOFF_REDEEM]',e);
     return sendError(res,500,'HANDOFF_REDEEM_FAILED');
+  }
+});
+
+// A standalone Google login can exchange verified identity for the SAME short-lived
+// Hub-compatible NestLocal session used by the AI gateway. The client-supplied
+// organizationId is only a preference, never an authorization source.
+app.post('/api/auth/firebase/session',authenticate,async(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  const bearer=String(req.headers.authorization||'');
+  if(!/^Bearer (?!nl_)[A-Za-z0-9._-]+$/.test(bearer)||String(req.identity?.sessionKind||'').startsWith('nestlocal_'))
+    return sendError(res,401,'FIREBASE_IDENTITY_REQUIRED');
+  if(!req.body||typeof req.body!=='object'||Array.isArray(req.body)||
+    Object.keys(req.body).some(key=>key!=='organizationId'))return sendError(res,400,'INVALID_SESSION_INPUT');
+  const orgId=safeId(req.body.organizationId),uid=safeId(req.identity.uid);
+  if(!uid||!orgId)return sendError(res,400,'INVALID_SESSION_INPUT');
+  try{
+    const [user,org,member,subscription,trial]=await Promise.all([
+      db.doc(`users/${uid}`).get(),
+      db.doc(`organizations/${orgId}`).get(),
+      db.doc(`organizations/${orgId}/members/${uid}`).get(),
+      db.doc(`subscriptions/${orgId}`).get(),
+      hubTrialV3Enabled?db.doc(`nestlocal_internal_trials/${orgId}`).get():Promise.resolve(null)
+    ]);
+    const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,
+      subscriptionDoc:subscription,trialDoc:trial,organizationId:orgId});
+    if(!access.accessible)return sendError(res,403,'NESTLOCAL_ACCESS_REQUIRED');
+    if(!(await rateLimit(req,'firebase_session',orgId)))return sendError(res,429,'RATE_LIMITED');
+    const sessionToken=`nl_${crypto.randomBytes(32).toString('base64url')}`;
+    const expiresAt=admin.firestore.Timestamp.fromMillis(Date.now()+nestLocalSessionTtlMs);
+    await db.doc(`nestlocal_sessions/${hash(sessionToken)}`).create({
+      version:1,appId:'nestlocal',status:'active',uid,organizationId:orgId,
+      accessSource:'firebase_verified_native',supportMode:false,
+      sessionVersion:normalizeEcosystemSessionVersion(user.data()?.ecosystemSessionVersion),
+      createdAt:admin.firestore.FieldValue.serverTimestamp(),expiresAt
+    });
+    res.setHeader('Set-Cookie',sessionCookieHeader(sessionToken,Math.floor(nestLocalSessionTtlMs/1000)));
+    return res.json({ok:true,organizationId:orgId,sessionToken,
+      sessionTransport:'cookie+bearer',expiresInSeconds:Math.floor(nestLocalSessionTtlMs/1000)});
+  }catch(error){
+    console.error('[NESTLOCAL_NATIVE_SESSION]',error?.code||'ERROR');
+    return sendError(res,503,'NATIVE_SESSION_UNAVAILABLE');
   }
 });
 
@@ -1449,7 +1500,7 @@ app.post('/api/organizations/:orgId/nestlocal/opportunity-drafts/:draftId/ai-pre
     const fallback=previewOpportunity(record,locale);
     try{
       const suggestion=await extractNestLocalRequest({
-        sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,
+        sessionToken:await resolveAuthorizedNestAiToken(req,res),organizationId:req.access.orgId,
         locale,text
       });
       const projected=projectNestAiOpportunityExtraction(suggestion,text,locale);
@@ -1924,7 +1975,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/setup-assist',authenticate,auth
       nextStep:'Revisar os serviços, a região atendida e um canal de resposta antes da publicação.'};
     if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
-      const suggestion=await assistNestLocalSetup({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),...facts});
+      const suggestion=await assistNestLocalSetup({sessionToken:await resolveAuthorizedNestAiToken(req,res),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),...facts});
       return res.json({ok:true,mode:'nestai',authority:'suggestion_only',suggestion,facts});
     }catch(error){console.warn('SETUP_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));return res.json(fallback)}
   }catch(error){console.error('SETUP_ASSIST_FAILED',error?.name||'ERROR');return sendError(res,500,'INTERNAL_ERROR')}
@@ -1944,7 +1995,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/return-suggest',authenticate,au
     if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
       const suggestion=await suggestNestLocalReturn({
-        sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),
+        sessionToken:await resolveAuthorizedNestAiToken(req,res),organizationId:req.access.orgId,locale:clean(req.body?.locale||'pt'),
         serviceCategory:clean(data.lastServiceId||'service').slice(0,60),dueDate,purposeConsent,
       });
       return res.json({ok:true,mode:'nestai',authority:'draft_only',suggestion,send:false});
@@ -1971,7 +2022,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/pulse-explain',authenticate,aut
     // OFF by default: authenticated canaries, free-only router and privacy gates must certify first.
     if(process.env.NESTLOCAL_AI_V2_ENABLED!=='true'||!pilotNestAiV2Enabled(req.access.orgId))return res.json(fallback);
     try{
-      const suggestion=await explainNestLocalPulse({sessionToken:readNestLocalSessionToken(req),organizationId:req.access.orgId,locale,sourceId:id,status,date});
+      const suggestion=await explainNestLocalPulse({sessionToken:await resolveAuthorizedNestAiToken(req,res),organizationId:req.access.orgId,locale,sourceId:id,status,date});
       return res.json({ok:true,authority:'suggestion_only',mode:'nestai',suggestion,sourceIds:[id]});
     }catch(error){
       console.warn('PULSE_AI_DEGRADED',String(error?.code||error?.name||'unknown').slice(0,50));
@@ -1984,7 +2035,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/request-extract',authenticate,a
   try{
     const text=clean(req.body?.text).slice(0,6000);
     if(text.length<3)return sendError(res,400,'AI_REQUEST_TEXT_REQUIRED');
-    const sessionToken=readNestLocalSessionToken(req);
+    const sessionToken=await resolveAuthorizedNestAiToken(req,res);
     const suggestion=await extractNestLocalRequest({sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',text});
     return res.json({ok:true,authority:'suggestion_only',suggestion});
   }catch(e){console.error('[NESTLOCAL_NESTAI_REQUEST_EXTRACT]',e?.message||e);return sendError(res,503,'AI_ASSIST_UNAVAILABLE')}
@@ -2003,7 +2054,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/quote-compose',authenticate,aut
     const data=requestSnap.data()||{},amount=Number(data.quote?.totalCents||0);
     if(!Number.isSafeInteger(amount)||amount<=0)return sendError(res,409,'QUOTE_NOT_READY');
     const service=servicesSnap.docs.find(doc=>doc.id===data.serviceId)?.data()||{};
-    const sessionToken=readNestLocalSessionToken(req);
+    const sessionToken=await resolveAuthorizedNestAiToken(req,res);
     const draft=await composeNestLocalQuote({
       sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',
       businessName:clean(settingsSnap.data()?.businessName||req.access.org.name),
@@ -2031,7 +2082,7 @@ app.post('/api/organizations/:orgId/nestlocal/ai/followup-compose',authenticate,
     if(!requestSnap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
     const data=requestSnap.data()||{},created=typeof data.updatedAt?.toMillis==='function'?data.updatedAt.toMillis():typeof data.createdAt?.toMillis==='function'?data.createdAt.toMillis():Date.now();
     const service=servicesSnap.docs.find(doc=>doc.id===data.serviceId)?.data()||{};
-    const sessionToken=readNestLocalSessionToken(req);
+    const sessionToken=await resolveAuthorizedNestAiToken(req,res);
     const draft=await composeNestLocalFollowup({
       sessionToken,organizationId:req.access.orgId,locale:req.body?.locale||'pt',
       businessName:clean(settingsSnap.data()?.businessName||req.access.org.name),

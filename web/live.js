@@ -351,7 +351,7 @@ function login(){
 }
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
 const sessionIssueText=code=>code==='USER_NOT_FOUND'?t('userNotFoundHelp'):t('sessionProblemHelp');
-function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261009-nestlocal-v2-staged-02</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
+function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261010-native-ai-session-v3</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
 function noOrg(){return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<h1>${t('noOrg')}</h1><p>${t('noEligibleOrgHelp')}</p><button class="button primary login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a>${lang()}</section></main>`}
 const accessReasonText=reason=>reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?t('accessPaymentRequired'):reason==='SUBSCRIPTION_NOT_FOUND'||reason==='SUBSCRIPTION_INACTIVE'?t('accessSubscriptionMissing'):reason==='ENTITLEMENT_INACTIVE'?t('accessEntitlementInactive'):reason==='MEMBER_APP_ACCESS_DISABLED'?t('accessMemberDisabled'):reason==='PERMISSION_DENIED'?t('accessPermissionDenied'):reason==='MEMBERSHIP_NOT_FOUND'||reason==='MEMBERSHIP_INACTIVE'?t('accessMembershipMissing'):t('noEligibleOrgHelp');
 Object.assign(D.pt,{checkPlanPrice:'Preço final e ofertas exibidos no checkout seguro'});
@@ -628,9 +628,19 @@ function firstRunJourney(){
   return '<details class="card first-run-journey" '+(!data.settings?'open':'')+'><summary><strong>'+esc(c.title)+'</strong><span>'+esc(c.intro)+'</span></summary><ol>'+steps.map(([title,help])=>'<li><strong>'+esc(title)+'</strong><p>'+esc(help)+'</p></li>').join('')+'</ol><button class="button small" type="button" data-action-page="requests">'+esc(c.cta)+'</button></details>';
 }
 
+const aiReconnectCopy={
+ pt:{title:'NestAI precisa reconectar',body:'Seu painel e seus pedidos continuam funcionando. A conexão com a IA não foi confirmada nesta sessão.',retry:'Reconectar IA'},
+ en:{title:'NestAI needs to reconnect',body:'Your dashboard and requests are still available. AI access could not be verified for this session.',retry:'Reconnect AI'},
+ es:{title:'NestAI necesita reconectarse',body:'Tu panel y las solicitudes siguen disponibles. No se pudo verificar el acceso a IA de esta sesión.',retry:'Reconectar IA'}
+};
+function nativeAiNotice(){
+ if(S.data?.nativeAiSessionIssue!==true)return '';
+ const c=aiReconnectCopy[S.lang]||aiReconnectCopy.pt;
+ return `<article class="card native-ai-notice" role="status"><div><strong>${esc(c.title)}</strong><p class="help">${esc(c.body)}</p></div><button class="button small" id="reconnect-native-ai">${esc(c.retry)}</button></article>`;
+}
 function todayLegacy(showFocus=true){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
-  return `${calendarAlertStrip()}${showFocus?operationalFocus(actions)+firstRunJourney():''}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+  return `${calendarAlertStrip()}${showFocus?nativeAiNotice()+operationalFocus(actions)+firstRunJourney():''}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function captureQuickCard(){
   const origins=['whatsapp_manual','instagram','website','telephone','referral','other'];
@@ -691,7 +701,7 @@ function today(){
   if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
   const prioritized=buildFocusQueue(nextBestActions(),organizationDateIso()),actions=[prioritized.focus,...prioritized.next].filter(Boolean).slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
   const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
-  return `<div class="page-stack nestlocal-today-v2">${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
+  return `<div class="page-stack nestlocal-today-v2">${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
       ${draftsPanel(3)}</article>
@@ -1017,7 +1027,7 @@ function render(){
     root.innerHTML=sessionFailure();
   }
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
-  document.documentElement.dataset.nlBuild='20261009-nestlocal-v2-staged-02';
+  document.documentElement.dataset.nlBuild='20261010-native-ai-session-v3';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
   if(S.data?.entitlement?.readOnly===true){
     const captureButton=document.querySelector('.opportunity-fab');
@@ -1066,6 +1076,16 @@ async function loadGrowth(){
     try{await syncGrowthRadar()}catch(e){toast(e.message)}
   }
 }
+async function ensureNativeNestAiSession(){
+  if(!S.directGoogleSession||!S.directGoogleToken||!S.orgId)return false;
+  const response=await api('/api/auth/firebase/session',{method:'POST',
+    body:JSON.stringify({organizationId:S.orgId}),timeoutMs:12000});
+  if(response?.ok!==true||response.organizationId!==S.orgId||
+     !/^nl_[A-Za-z0-9_-]{43}$/.test(response.sessionToken||''))throw Error('NESTAI_SESSION_UNAVAILABLE');
+  S.sessionToken=response.sessionToken;
+  storageSet(sessionStorage,'nl_session_token',S.sessionToken);
+  return true;
+}
 async function loadSession(){
   S.loading=true;S.error='';setAuthStage('session');render();let ok=false;
   try{
@@ -1078,7 +1098,17 @@ async function loadSession(){
     if(S.orgId){
       storageSet(localStorage,'nl_org',S.orgId);
       const org=organizations.find(x=>x.id===S.orgId);
-      if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};
+      if(org?.nestlocal?.access){
+        await loadData();
+        if(S.directGoogleSession){
+          try{await ensureNativeNestAiSession()}
+          catch(e){
+            console.warn('[NESTLOCAL_NATIVE_AI_SESSION]',e?.message||'UNAVAILABLE');
+            if(S.data?.features)S.data.features.opportunityAI=false;
+            S.data.nativeAiSessionIssue=true;
+          }
+        }
+      }else S.data={organization:org,entitlement:org?.nestlocal};
       if(S.page==='growth'&&isGrowthAdmin())await loadGrowth();
     }
     storageRemove(sessionStorage,'nl_auth_started_at');
@@ -1107,6 +1137,7 @@ async function resumeDirectGoogle(){
 }
 async function beginGoogleLogin(selectAccount=false){
   S.error='';setAuthStage('google_popup');
+  storageSet(localStorage,'nl_direct_google','yes');
   const {signInDirectGoogle}=await import('./direct-auth.js');
   const token=await signInDirectGoogle(selectAccount);
   if(!token)return; // Redirect fallback is in progress.
@@ -1120,6 +1151,7 @@ async function switchGoogleAccount(){
   try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}
   S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
   storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
+  storageRemove(localStorage,'nl_direct_google');
   S.error='';S.loading=false;render();
   await beginGoogleLogin(true);
 }
@@ -1355,8 +1387,19 @@ function bind(){
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{await beginGoogleLogin()}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
+  document.querySelector('#reconnect-native-ai')?.addEventListener('click',async e=>{
+    const button=e.currentTarget;button.disabled=true;
+    try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
+    catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
+  });
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+    await loadData();
+    if(S.directGoogleSession){
+      try{await ensureNativeNestAiSession()}
+      catch(err){console.warn('[NESTLOCAL_SWITCH_AI_SESSION]',err?.message||'ERROR');if(S.data?.features)S.data.features.opportunityAI=false}
+    }
+  }else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',communicationMode:f.get('communicationMode')||'none',contactEmail:f.get('contactEmail')||'',contactPhone:f.get('contactPhone')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),communicationMode:f.get('communicationMode'),contactEmail:f.get('contactEmail'),contactPhone:f.get('contactPhone'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#payment-settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={enabled:f.get('enabled')==='on',key:f.get('key')||'',label:f.get('label')||'',instructions:f.get('instructions')||''};button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/payment-settings`,{method:'PUT',body:JSON.stringify(payload)});await loadData();render();toast(t('pixSaved'))}catch(err){button.disabled=false;toast(err.message)}});
@@ -1438,6 +1481,8 @@ async function consumeHandoff(){
     storageSet(localStorage,'nl_org',S.orgId);
     storageRemove(sessionStorage,'nl_hub_redirect_at');
     storageRemove(sessionStorage,'nl_hub_redirect_count');
+    storageRemove(localStorage,'nl_direct_google');
+    S.directGoogleSession=false;S.directGoogleToken='';
     window.__nestLocalHandoffConsumed=true;
     const returnTo=params.get('returnTo');
     let next='/';
@@ -1471,6 +1516,16 @@ async function startAuthBootstrap(){
       if(!redeemed){S.user=null;S.session=null;S.data=null;S.loading=false;render();return}
       await loadSession();
       return;
+    }
+    if(storageGet(localStorage,'nl_direct_google')==='yes'){
+      setAuthStage('direct_google_restore');
+      if(await resumeDirectGoogle()){
+        if(await loadSession())return;
+        if(S.error&&!['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error))return;
+      }
+      S.sessionToken='';storageRemove(sessionStorage,'nl_session_token');
+      storageRemove(localStorage,'nl_direct_google');
+      S.error='';S.loading=false;setAuthStage('public_landing');render();return;
     }
     const loaded=await loadSession();
     if(loaded)return;
