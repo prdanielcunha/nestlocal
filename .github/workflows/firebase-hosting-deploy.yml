@@ -65,6 +65,7 @@ jobs:
           set -euo pipefail
           docker build -t "$IMAGE" .
           docker push "$IMAGE"
+      # Release flags remain operational kill switches; never overwrite them on deployment.
       - name: Deploy API
         if: steps.changes.outputs.api_changed == 'true'
         env:
@@ -82,7 +83,7 @@ jobs:
             --max-instances 2 \
             --concurrency 40 \
             --timeout 30 \
-            --update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production,NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED=true \
+            --update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production \
             --allow-unauthenticated \
             --quiet
       - name: Ensure isolated Hosting sites
