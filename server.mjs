@@ -837,7 +837,6 @@ app.post('/api/auth/firebase/session',authenticate,async(req,res)=>{
     Object.keys(req.body).some(key=>key!=='organizationId'))return sendError(res,400,'INVALID_SESSION_INPUT');
   const orgId=safeId(req.body.organizationId),uid=safeId(req.identity.uid);
   if(!uid||!orgId)return sendError(res,400,'INVALID_SESSION_INPUT');
-  if(!(await rateLimit(req,'firebase_session',uid)))return sendError(res,429,'RATE_LIMITED');
   try{
     const [user,org,member,subscription,trial]=await Promise.all([
       db.doc(`users/${uid}`).get(),
@@ -849,6 +848,7 @@ app.post('/api/auth/firebase/session',authenticate,async(req,res)=>{
     const access=resolveNestLocalAccess({userDoc:user,orgDoc:org,memberDoc:member,
       subscriptionDoc:subscription,trialDoc:trial,organizationId:orgId});
     if(!access.accessible)return sendError(res,403,'NESTLOCAL_ACCESS_REQUIRED');
+    if(!(await rateLimit(req,'firebase_session',orgId)))return sendError(res,429,'RATE_LIMITED');
     const sessionToken=`nl_${crypto.randomBytes(32).toString('base64url')}`;
     const expiresAt=admin.firestore.Timestamp.fromMillis(Date.now()+nestLocalSessionTtlMs);
     await db.doc(`nestlocal_sessions/${hash(sessionToken)}`).create({
