@@ -616,3 +616,10 @@
 @media(max-width:980px){.first-run-journey ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.first-run-journey>summary{display:grid;gap:7px}.first-run-journey ol{grid-template-columns:1fr 1fr;gap:8px}.first-run-journey li{padding:12px}}
 @media(max-width:390px){.first-run-journey ol{grid-template-columns:1fr}}
+
+/* Visible, non-blocking native NestAI recovery: preserves the manual workflow. */
+.native-ai-notice{display:flex;align-items:center;justify-content:space-between;gap:16px;border-color:rgba(214,166,90,.38);background:rgba(130,98,37,.09)}
+.native-ai-notice strong{display:block;font-size:14px}
+.native-ai-notice .help{margin:5px 0 0;font-size:12px;line-height:1.5}
+.native-ai-notice button{min-height:44px;flex-shrink:0}
+@media(max-width:560px){.native-ai-notice{flex-direction:column;align-items:stretch}.native-ai-notice button{width:100%}}
