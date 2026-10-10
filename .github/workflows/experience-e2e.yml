@@ -10,6 +10,8 @@ on:
       - "firebase.json"
       - "scripts/e2e-experience.mjs"
       - "scripts/e2e-public-entry.mjs"
+      - "scripts/e2e-direct-login.mjs"
+      - "web/direct-auth.js"
       - "scripts/e2e-operation-ui.mjs"
       - "scripts/e2e-opportunity-capture.mjs"
       - "scripts/e2e-calendar.mjs"
@@ -43,6 +45,7 @@ jobs:
         run: |
           node scripts/e2e-experience.mjs
           node scripts/e2e-public-entry.mjs
+          node scripts/e2e-direct-login.mjs
           node scripts/e2e-operation-ui.mjs
           node scripts/e2e-opportunity-capture.mjs
           node scripts/e2e-calendar.mjs
