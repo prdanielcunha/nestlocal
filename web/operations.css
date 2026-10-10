@@ -600,3 +600,19 @@
  .shell:not(.is-opportunity-v2) .mobile-more-list button.active{background:var(--mint);color:#062219}
  .shell:not(.is-opportunity-v2) .mobile-more-list button:focus-visible,.shell:not(.is-opportunity-v2) .mobile-more>summary:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
 }
+
+/* One first-visit explanation, without suggesting that personal WhatsApp is connected. */
+.first-run-journey{margin:0 0 17px;border-color:rgba(110,242,197,.17)}
+.first-run-journey>summary{cursor:pointer;list-style:none;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;min-height:44px}
+.first-run-journey>summary::-webkit-details-marker{display:none}
+.first-run-journey>summary strong{font-size:15px}
+.first-run-journey>summary span{max-width:50ch;font-size:12px;line-height:1.55;color:var(--muted)}
+.first-run-journey ol{counter-reset:steps;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:11px;padding:16px 0 0;margin:17px 0 15px;border-top:1px solid var(--line);list-style:none}
+.first-run-journey li{position:relative;min-width:0;padding:14px;border:1px solid var(--line);border-radius:14px;background:rgba(33,70,56,.24)}
+.first-run-journey li::before{counter-increment:steps;content:counter(steps,decimal-leading-zero);display:block;margin-bottom:11px;font-size:11px;color:var(--mint);font-weight:800}
+.first-run-journey li strong{display:block;font-size:13px;line-height:1.35}
+.first-run-journey li p{font-size:12px;line-height:1.55;color:var(--muted);margin:7px 0 0;overflow-wrap:anywhere}
+.first-run-journey summary:focus-visible{outline:2px solid var(--mint);outline-offset:4px;border-radius:5px}
+@media(max-width:980px){.first-run-journey ol{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.first-run-journey>summary{display:grid;gap:7px}.first-run-journey ol{grid-template-columns:1fr 1fr;gap:8px}.first-run-journey li{padding:12px}}
+@media(max-width:390px){.first-run-journey ol{grid-template-columns:1fr}}
