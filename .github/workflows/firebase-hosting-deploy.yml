@@ -213,9 +213,11 @@ jobs:
           # Firebase's reserved JSON config, or if its module is missing.
           # The API key and app ID are PUBLIC Firebase Web config; never echo values.
           fetch https://nestlocal.millionsnest.com/__/firebase/init.json > /tmp/nestlocal-firebase-config.json
+          # /__/firebase/init.json can omit appId on secondary Hosting sites.
+          # Firebase Auth needs the correct project and API key, not Analytics appId.
           jq -e '.projectId == "millionsnest" and
             (.apiKey | type == "string" and startswith("AIza")) and
-            (.appId | type == "string" and length > 8)' \
+            (.authDomain | type == "string" and length > 3)' \
             /tmp/nestlocal-firebase-config.json >/dev/null
           fetch_until_contains https://nestlocal.millionsnest.com/direct-auth.js /tmp/nestlocal-direct-auth.js \
             'restoreDirectIdentity' 'signInDirectGoogle' 'getFreshDirectToken' \
