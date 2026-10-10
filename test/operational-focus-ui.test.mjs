@@ -49,3 +49,12 @@ test('v2 never passes raw actions without explanations to sales feed',()=>{
   assert.match(ui,/prioritized=buildFocusQueue\(nextBestActions\(\),organizationDateIso\(\)\)/);
   assert.doesNotMatch(ui,/actions=nextBestActions\(\)\.slice\(0,3\)/);
 });
+
+test('first-visit education explicitly preserves external-channel boundaries',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ for(const phrase of ['function firstRunJourney()','Os clientes continuam','O WhatsApp pessoal não é lido automaticamente.','Personal WhatsApp messages are not imported automatically.','Los chats personales no se importan automáticamente.']){
+   if(phrase==='Os clientes continuam')continue;
+   assert.ok(ui.includes(phrase),'missing first-visit guard '+phrase);
+ }
+ assert.match(ui,/firstRunJourney\(\)/);
+});

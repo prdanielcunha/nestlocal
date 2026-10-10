@@ -4,15 +4,18 @@ import { readFileSync } from 'node:fs';
 
 const read=path=>readFileSync(new URL(path,import.meta.url),'utf8');
 
-test('direct private entry delegates identity to the canonical MillionsNest Hub',()=>{
+test('native direct Google entry is preferred, with optional canonical Hub recovery',()=>{
   const client=read('../web/live.js');
   for(const token of [
     "const millionsNestHubOrigin='https://www.millionsnest.com'",
     "new URL('/apps/nestlocal/launch',millionsNestHubOrigin)",
     "url.searchParams.set('returnTo',nestLocalReturnPath())",
-    'redirectToMillionsNest()',
+    'resumeDirectGoogle()',
+    "import('./direct-auth.js')",
+    "id=\"login\"",
   ]) assert.ok(client.includes(token),'missing '+token);
-
+  const identity=read('../web/direct-auth.js');
+  for(const required of ['signInWithPopup','getRedirectResult','authStateReady','signOutDirectGoogle',"'/__/firebase/init.json'",'millionsnest.firebaseapp.com'])assert.ok(identity.includes(required),'missing '+required);
   for(const forbidden of [
     'firebase-app.js',
     'firebase-auth.js',
@@ -57,7 +60,7 @@ test('backend handoff redeems a short opaque code and never places Firebase cred
   }
 });
 
-test('bootstrap first redeems code, then resolves the server session; direct entry reuses cookie or returns to Hub',()=>{
+test('bootstrap redeems handoff first, then restores native Firebase identity without forced Hub loop',()=>{
   const client=read('../web/live.js');
   const start=client.indexOf('async function startAuthBootstrap()');
   const end=client.indexOf("if(isLegal()||isRevenueXray())",start);
@@ -68,8 +71,10 @@ test('bootstrap first redeems code, then resolves the server session; direct ent
     "await loadSession()",
     "const loaded=await loadSession()",
     "['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)",
-    'redirectToMillionsNest()',
+    'resumeDirectGoogle()',
+    "setAuthStage('public_landing')",
   ]) assert.ok(block.includes(token),'missing '+token);
+  assert.equal(block.includes('redirectToMillionsNest()'),false);
   assert.ok(block.indexOf('consumeHandoff()')<block.indexOf('await loadSession()'));
 });
 
@@ -91,12 +96,12 @@ test('session projection populates the local user from the backend session',()=>
   assert.ok(block.includes("const eligible=organizations.filter(x=>x.nestlocal?.access)"));
 });
 
-test('switch account and logout revoke only the NestLocal cookie session',()=>{
+test('switch account and logout revoke local cookie and native Google identity',()=>{
   const client=read('../web/live.js');
   for(const token of [
     "api('/api/auth/session',{method:'DELETE'",
     "storageRemove(localStorage,'nl_org')",
-    'redirectToMillionsNest()',
+    'signOutDirectGoogle()',
   ]) assert.ok(client.includes(token),'missing '+token);
   assert.equal(client.includes('signOut(auth)'),false);
 });
@@ -238,7 +243,7 @@ test('inline boot recovery script is valid JavaScript and contains no literal es
   for(const token of [
     "__nestLocalRecover",
     "__nestLocalAuthStage = 'html_boot'",
-    "setTimeout(() => recovery('html_timeout'), 20000)",
+    "setTimeout(() => recovery('html_timeout'), 38000)",
   ]) assert.ok(match[1].includes(token),'missing '+token);
 });
 
@@ -254,7 +259,7 @@ test('runtime auth boot is storage-safe, stage-aware and has a hard watchdog',()
     "setAuthStage('ready')",
     "[NESTLOCAL_BOOT_TIMEOUT]",
     "setTimeout(()=>{",
-    "},18000)",
+    "},34000)",
   ]) assert.ok(client.includes(token),'missing '+token);
   for(const forbidden of [
     'localStorage.getItem(',
@@ -314,4 +319,11 @@ test('private shell renderer registry maps navigation ids to real render functio
   for(const fn of ['today','requests','customers','agenda','services','automations','page','growth']){
     assert.ok(client.includes(`function ${fn}(`)||client.includes(`const ${fn}=`)||client.includes(`let ${fn}=`),`missing renderer function ${fn}`);
   }
+});
+
+
+test('production deploy must preserve the operator kill switch for opportunity pilot',()=>{
+  const workflow=read('../.github/workflows/firebase-hosting-deploy.yml');
+  assert.ok(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production'));
+  assert.equal(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production,NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED=true'),false);
 });
