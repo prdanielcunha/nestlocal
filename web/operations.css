@@ -566,3 +566,23 @@
 .calendar-today-alert .help{margin:5px 0;font-size:12px}
 .agenda-actions{flex-wrap:wrap;row-gap:7px}
 @media(max-width:620px){.calendar-connect{padding:17px;gap:14px}.calendar-due>div{padding:13px}.calendar-due strong{font-size:2rem}.calendar-intro-top .tag{font-size:11px}.calendar-sync-actions .button{min-height:42px}.calendar-today-alert{align-items:flex-start}.agenda-actions{width:100%}.agenda-actions .button{flex:1 1 auto;min-height:41px}}
+
+/* NestLocal 2 — one operational focus, with advanced reporting on demand. */
+.operation-focus{margin:0 0 18px;padding:clamp(18px,2.5vw,27px);border-color:rgba(110,242,197,.35);background:linear-gradient(116deg,rgba(26,72,57,.82),rgba(9,29,25,.97) 72%)}
+.operation-focus-main{display:flex;align-items:center;justify-content:space-between;gap:22px}
+.operation-focus-main>div:first-child{min-width:0;max-width:70ch}
+.operation-focus h2{font-size:clamp(1.4rem,3vw,1.95rem);line-height:1.18;letter-spacing:-.035em;margin:8px 0 9px;overflow-wrap:anywhere}
+.operation-focus-main p{color:#c3d8cf;line-height:1.55;font-size:.92rem;margin:0}
+.operation-focus-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end;flex-shrink:0}
+.operation-focus-actions .button{min-height:44px}
+.operation-focus-ai{margin:18px 0 0;padding-top:14px;border-top:1px solid rgba(167,224,199,.17);color:#b0d3c4;font-size:12px;line-height:1.6}
+.today-insights{margin:15px 0 19px;padding:0;border:1px solid var(--line);border-radius:16px;background:rgba(9,23,20,.5)}
+.today-insights>summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 19px;min-height:52px}
+.today-insights>summary::-webkit-details-marker{display:none}
+.today-insights>summary strong{font-size:14px}
+.today-insights>summary span{font-size:12px;color:var(--muted);line-height:1.4;text-align:right}
+.today-insights[open]>summary{border-bottom:1px solid var(--line)}
+.today-insights-body{display:grid;gap:16px;padding:16px}
+.today-insights-body>*{min-width:0}
+
+@media(max-width:620px){.operation-focus-main{display:grid;gap:16px}.operation-focus-actions{justify-content:stretch}.operation-focus-actions .button{flex:1 1 100%;white-space:normal}}
