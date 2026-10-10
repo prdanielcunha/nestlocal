@@ -586,3 +586,17 @@
 .today-insights-body>*{min-width:0}
 
 @media(max-width:620px){.operation-focus-main{display:grid;gap:16px}.operation-focus-actions{justify-content:stretch}.operation-focus-actions .button{flex:1 1 100%;white-space:normal}}
+
+/* The compact More menu also works for tenants on the legacy rollout. */
+@media(max-width:980px){
+ .shell:not(.is-opportunity-v2) .bottom-nav{overflow:visible;bottom:calc(12px + env(safe-area-inset-bottom,0px))}
+ .shell:not(.is-opportunity-v2) .bottom-nav>button{min-width:0;flex:1 1 0;min-height:46px}
+ .shell:not(.is-opportunity-v2) .bottom-nav .mobile-more{flex:1 1 0;min-width:0;position:relative}
+ .shell:not(.is-opportunity-v2) .mobile-more>summary{display:grid;place-items:center;min-height:46px;padding:8px 0;color:var(--muted);font-size:11px;cursor:pointer;list-style:none}
+ .shell:not(.is-opportunity-v2) .mobile-more>summary::-webkit-details-marker{display:none}
+ .shell:not(.is-opportunity-v2) .mobile-more[open]>summary{color:var(--mint)}
+ .shell:not(.is-opportunity-v2) .mobile-more-list{position:absolute;right:0;bottom:calc(100% + 11px);width:min(76vw,280px);display:grid;gap:6px;padding:10px;border:1px solid #3a5d51;border-radius:16px;background:#0b1916;box-shadow:0 16px 46px #000a}
+ .shell:not(.is-opportunity-v2) .mobile-more-list button{min-height:44px;min-width:0;flex:initial;padding:10px 13px;border:1px solid rgba(110,242,197,.13);border-radius:11px;background:#142923;color:#edf8f5;text-align:left;font-size:12px}
+ .shell:not(.is-opportunity-v2) .mobile-more-list button.active{background:var(--mint);color:#062219}
+ .shell:not(.is-opportunity-v2) .mobile-more-list button:focus-visible,.shell:not(.is-opportunity-v2) .mobile-more>summary:focus-visible{outline:2px solid var(--mint);outline-offset:2px}
+}
