@@ -107,6 +107,8 @@ jobs:
           grep -q "sessionTransport:'cookie+bearer'" server.mjs
           grep -q '__session' server.mjs
           node --check web/live.js
+          node --check web/direct-auth.js
+          grep -q "resumeDirectGoogle" web/live.js
           node --check web/opportunity-pulse.js
           node --check web/action-focus.js
           node --check web/action-playbooks.js
