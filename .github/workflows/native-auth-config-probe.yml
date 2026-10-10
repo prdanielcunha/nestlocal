@@ -1,0 +1,24 @@
+name: NestLocal public Firebase config probe
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/native-auth-config-probe.yml"
+      - "web/direct-auth.js"
+      - ".github/workflows/firebase-hosting-deploy.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect public config shape without logging its values
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --silent --show-error \
+            --retry 3 --connect-timeout 10 --max-time 30 \
+            https://nestlocal.millionsnest.com/__/firebase/init.json > /tmp/fb-config.json
+          jq -c '{keys:keys,projectMatches:(.projectId=="millionsnest"),hasApiKey:(.apiKey|type=="string" and startswith("AIza")),hasAppId:(.appId|type=="string" and length>8),hasAuthDomain:(.authDomain|type=="string" and length>3)}' /tmp/fb-config.json
+          echo "PUBLIC_FIREBASE_SHAPE_PROBED"

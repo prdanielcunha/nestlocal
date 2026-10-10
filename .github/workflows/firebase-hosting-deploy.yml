@@ -101,7 +101,7 @@ jobs:
           test -s web/live.css
           test -s web/styles.css
           grep -q 'NestLocal' web/index.html
-          grep -q '20261010-native-ai-session-v3' web/index.html
+          grep -q '20261010-firebase-auth-config-v4' web/index.html
           grep -q '/api/auth/handoff/redeem' web/live.js
           grep -q 'nl_session_token' web/live.js
           grep -q "value.startsWith('Bearer nl_')" server.mjs
@@ -207,15 +207,17 @@ jobs:
             exit 1
           fi
 
-          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20261010-native-ai-session-v3' '20261010-native-ai-session-v3'
+          fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20261010-firebase-auth-config-v4' '20261010-firebase-auth-config-v4'
 
           # The standalone Google flow cannot work if Hosting returns SPA HTML for
           # Firebase's reserved JSON config, or if its module is missing.
           # The API key and app ID are PUBLIC Firebase Web config; never echo values.
           fetch https://nestlocal.millionsnest.com/__/firebase/init.json > /tmp/nestlocal-firebase-config.json
+          # /__/firebase/init.json can omit appId on secondary Hosting sites.
+          # Firebase Auth needs the correct project and API key, not Analytics appId.
           jq -e '.projectId == "millionsnest" and
             (.apiKey | type == "string" and startswith("AIza")) and
-            (.appId | type == "string" and length > 8)' \
+            (.authDomain | type == "string" and length > 3)' \
             /tmp/nestlocal-firebase-config.json >/dev/null
           fetch_until_contains https://nestlocal.millionsnest.com/direct-auth.js /tmp/nestlocal-direct-auth.js \
             'restoreDirectIdentity' 'signInDirectGoogle' 'getFreshDirectToken' \
@@ -243,7 +245,7 @@ jobs:
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
             'revenueXrayView' 'growthFunnelView' 'parseGrowthBatch' 'nextBestActions' \
             'outcomeLearningCard' 'explainableInsights' 'data-start-experiment' \
-            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261010-native-ai-session-v3' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
+            'data-experiment-id' 'experimentReview' 'data-review-context' 'operationalMemory' 'experimentContextHtml' 'learningLibrary' 'S.data.decisionMemory' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261010-firebase-auth-config-v4' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'schedulePanel' 'operationPanel' 'function customers()' 'data-tracking-link' 'publishReadiness' 'action-resume-date' 'data-decision="accepted"' 'reviewPublicView' 'fieldEvidencePanel' 'maintenancePlanForm' 'serviceReportHtml' 'trackingPortalView' 'paymentSettingsCard' 'data-schedule-confirm="confirmed"' 'dossier42Import' 'dossier_2026_09_22' 'pilotScoreboard' 'data-request-status="no_show"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/opportunity-pulse.js /tmp/nestlocal-opportunity-pulse.js \
             'buildOpportunitySnapshot' 'renderOpportunityPulse'
@@ -268,7 +270,7 @@ jobs:
 
           fetch_until_contains https://nestlocal.web.app/live.js /tmp/nestlocal-alias-live.js \
             'revenueXrayView' 'nextBestActions' 'outcomeLearningCard' 'explainableInsights' \
-            'data-start-experiment' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261010-native-ai-session-v3' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
+            'data-start-experiment' 'millionsNestHubOrigin' 'redirectToMillionsNest' 'startAuthBootstrap' '20261010-firebase-auth-config-v4' '/api/auth/handoff/redeem' 'NETWORK_TIMEOUT' 'sessionFailure' 'newRequestForm' 'quotePanel' 'function customers()' 'action-resume-date'
 
           fetch_until_contains https://nestlocal.web.app/guided-experiment.js /tmp/nestlocal-alias-guided-experiment.js \
             'renderGuidedExperiment' 'experimentForAction'

@@ -11,7 +11,7 @@ test('native direct Google entry is preferred, with optional canonical Hub recov
     "new URL('/apps/nestlocal/launch',millionsNestHubOrigin)",
     "url.searchParams.set('returnTo',nestLocalReturnPath())",
     'resumeDirectGoogle()',
-    "import('./direct-auth.js')",
+    "import('./direct-auth.js?v=20261010-firebase-auth-config-v4')",
     "id=\"login\"",
   ]) assert.ok(client.includes(token),'missing '+token);
   const identity=read('../web/direct-auth.js');
@@ -203,8 +203,8 @@ test('auth recovery states have responsive premium styling',()=>{
 
 test('root document cache-busts the backend SSO bundle',()=>{
   const html=read('../web/index.html');
-  assert.ok(html.includes('/live.js?v=20261010-native-ai-session-v3'));
-  assert.ok(html.includes('20261010-native-ai-session-v3'));
+  assert.ok(html.includes('/live.js?v=20261010-firebase-auth-config-v4'));
+  assert.ok(html.includes('20261010-firebase-auth-config-v4'));
 });
 
 test('app shell recovery guard recognizes both new code handoff and stale legacy URLs',()=>{
@@ -231,7 +231,7 @@ test('independent boot guard stays armed through handoff and clears only after l
   const renderBlock=client.slice(renderStart,renderEnd);
   assert.ok(renderBlock.includes("if(!S.loading&&window.__nestLocalBootGuard)"));
   assert.ok(renderBlock.includes('clearTimeout(window.__nestLocalBootGuard)'));
-  assert.ok(client.includes("dataset.nlBuild='20261010-native-ai-session-v3'"));
+  assert.ok(client.includes("dataset.nlBuild='20261010-firebase-auth-config-v4'"));
 });
 
 test('inline boot recovery script is valid JavaScript and contains no literal escaped newlines',()=>{
@@ -296,8 +296,8 @@ test('production workflow deploys backend SSO bundle and validates it on the off
   const custom=workflow.indexOf('Connect official custom domain');
   const smoke=workflow.indexOf('Smoke production endpoints');
   assert.ok(deploy>=0&&custom>deploy&&smoke>custom);
-  assert.ok(workflow.includes('/live.js?v=20261010-native-ai-session-v3'));
-  assert.ok(workflow.includes('20261010-native-ai-session-v3'));
+  assert.ok(workflow.includes('/live.js?v=20261010-firebase-auth-config-v4'));
+  assert.ok(workflow.includes('20261010-firebase-auth-config-v4'));
 });
 
 test('direct-entry destinations preserve only known private NestLocal views',()=>{
@@ -340,4 +340,17 @@ test('production smoke checks the actual Firebase Web config, native module and 
    'native_unauth', 'native_forged',
    '"INVALID_TOKEN"', '"AUTH_REQUIRED"',
  ])assert.ok(workflow.includes(token),'missing live smoke condition '+token);
+});
+
+test('Firebase Hosting secondary-site config may omit optional appId but cannot swap the Firebase project',()=>{
+  const module=read('../web/direct-auth.js');
+  assert.ok(module.includes("config.projectId!=='millionsnest'"));
+  assert.ok(module.includes("!config.apiKey.startsWith('AIza')"));
+  assert.equal(module.includes("typeof config.appId!=='string'"),false);
+  assert.ok(module.includes("authDomain:'millionsnest.firebaseapp.com'"));
+  const deployment=read('../.github/workflows/firebase-hosting-deploy.yml');
+  assert.ok(deployment.includes('https://nestlocal.millionsnest.com/__/firebase/init.json'));
+  assert.ok(deployment.includes('(.authDomain | type == "string" and length > 3)'));
+  assert.equal(deployment.includes('(.appId | type == "string" and length > 8)'),false);
+  assert.ok(read('../web/live.js').includes("import('./direct-auth.js?v=20261010-firebase-auth-config-v4')"));
 });
