@@ -8,9 +8,12 @@ const APP_SDK='https://www.gstatic.com/firebasejs/12.3.0/firebase-app.js';
 const AUTH_SDK='https://www.gstatic.com/firebasejs/12.3.0/firebase-auth.js';
 let contextPromise=null;
 function requireTrustedConfiguration(config){
+  // Secondary Firebase Hosting sites may omit appId from /__/firebase/init.json.
+  // Firebase Authentication only requires the trusted project, public API key
+  // and canonical authDomain; do not block Google sign-in on an Analytics ID.
   if(!config||typeof config!=='object'||config.projectId!=='millionsnest'||
-     typeof config.apiKey!=='string'||!config.apiKey.startsWith('AIza')||
-     typeof config.appId!=='string'||!config.appId)throw Error('GOOGLE_CONFIG_UNAVAILABLE');
+     typeof config.apiKey!=='string'||!config.apiKey.startsWith('AIza'))
+    throw Error('GOOGLE_CONFIG_UNAVAILABLE');
   return {...config,authDomain:'millionsnest.firebaseapp.com'};
 }
 async function init(){
