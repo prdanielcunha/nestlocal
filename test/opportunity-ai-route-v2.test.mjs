@@ -16,7 +16,7 @@ test('AI route is server-flagged, tenant authenticated, read-only protected and 
 test('no customer data or payload sent to provider; only redacted record and authorized token',()=>{
  assert.ok(route.includes('text=redactOpportunityForAi(String(record.message'));
  assert.ok(route.includes('extractNestLocalRequest({'));
- assert.ok(route.includes('sessionToken:readNestLocalSessionToken(req)'));
+ assert.ok(route.includes('sessionToken:await resolveAuthorizedNestAiToken(req,res)'));
  assert.doesNotMatch(route,/sendMessage\(|sendWhatsapp\(|reserveSchedule\(|customerPhone|stripe\./i);
 });
 test('NestAI call is bounded by atomic org/day quota and has manual fallback',()=>{
