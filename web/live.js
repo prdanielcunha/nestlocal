@@ -1448,7 +1448,7 @@ async function startAuthBootstrap(){
     console.error('[NESTLOCAL_BOOT_TIMEOUT]',window.__nestLocalAuthStage||'unknown');
     S.loading=false;S.user=null;S.session=null;S.data=null;S.error='AUTH_BOOT_TIMEOUT';
     setAuthStage('boot_timeout');render();
-  },18000);
+  },34000);
   try{
     if(codeExpected){
       let redeemed=false;
