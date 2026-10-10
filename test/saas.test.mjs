@@ -47,3 +47,11 @@ test('all SaaS copy is available in Portuguese, English, and Spanish', () => {
   assert.ok(client.includes("Object.assign(D.en,{choosePlan:"));
   assert.ok(client.includes("Object.assign(D.es,{choosePlan:"));
 });
+
+test('acquisition plan link does not silently select a higher paid tier or guarantee a trial',()=>{
+  const client=read('../web/live.js');
+  assert.ok(client.includes('https://www.millionsnest.com/checkout?app=nestlocal'));
+  assert.equal(client.includes('https://www.millionsnest.com/checkout?app=nestlocal&plan=nestlocal_growth_monthly'),false);
+  for(const promise of ['Comece com 7 dias de teste.','Start with a 7-day trial.','Comienza con una prueba de 7 días.'])assert.equal(client.includes(promise),false);
+  for(const disclosure of ['avaliação gratuita, quando disponível','A free trial, if eligible','prueba gratis, si corresponde'])assert.ok(client.includes(disclosure),'missing '+disclosure);
+});
