@@ -315,7 +315,9 @@ async function api(path,opt={}){
   const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
   if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
      !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
-  if(S.directGoogleSession&&S.directGoogleToken){try{const {getFreshDirectToken}=await import('./direct-auth.js');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}}
+  if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
+    if(!S.directGoogleToken)throw Error('AUTH_REQUIRED'); // Never fall back to a different account's cookie.
+  }
   const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(path,{...request,credentials:'same-origin',cache:request.cache||'no-store',signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...nestLocalAuthHeaders(),...(request.headers||{})}});
