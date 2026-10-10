@@ -48,10 +48,8 @@
           currentParams.has('code') ||
           currentParams.has('ecosystem_ctx');
 
-        if (!handoffExpected && !window.__nestLocalHandoffConsumed) {
-          location.replace(launchUrl());
-          return;
-        }
+        // Never force the user into the Hub because an optional direct login failed.
+        // Keep the local recovery surface and the Hub fallback link accessible.
 
         const stage = String(window.__nestLocalAuthStage || reason || 'bootstrap').replace(/[^a-z0-9_-]/gi, '').slice(0, 40);
         root.innerHTML =
@@ -62,7 +60,7 @@
           '<p>O acesso chegou ao NestLocal, mas a abertura parou antes de concluir. Tente novamente nesta tela.</p>' +
           '<small class="login-trust">Etapa: ' + (stage || 'bootstrap') + ' · ' + build + '</small>' +
           '<div class="recovery-actions"><button class="button primary login-button" id="boot-retry">Tentar novamente</button>' +
-          '<a class="button login-button" href="https://www.millionsnest.com">Abrir MillionsNest</a></div>' +
+          '<a class="button login-button" href="' + launchUrl() + '">Entrar pelo MillionsNest</a></div>' +
           '</section></main>';
         document.getElementById('boot-retry')?.addEventListener('click', () => location.reload());
       };
@@ -73,7 +71,7 @@
       window.__nestLocalHandoffConsumed = false;
       window.__nestLocalAuthStage = 'html_boot';
       window.__nestLocalRecover = recovery;
-      window.__nestLocalBootGuard = setTimeout(() => recovery('html_timeout'), 20000);
+      window.__nestLocalBootGuard = setTimeout(() => recovery('html_timeout'), 38000);
 
       window.addEventListener('error', event => {
         window.__nestLocalAuthStage = window.__nestLocalAuthStage || 'window_error';
