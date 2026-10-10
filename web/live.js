@@ -628,9 +628,19 @@ function firstRunJourney(){
   return '<details class="card first-run-journey" '+(!data.settings?'open':'')+'><summary><strong>'+esc(c.title)+'</strong><span>'+esc(c.intro)+'</span></summary><ol>'+steps.map(([title,help])=>'<li><strong>'+esc(title)+'</strong><p>'+esc(help)+'</p></li>').join('')+'</ol><button class="button small" type="button" data-action-page="requests">'+esc(c.cta)+'</button></details>';
 }
 
+const aiReconnectCopy={
+ pt:{title:'NestAI precisa reconectar',body:'Seu painel e seus pedidos continuam funcionando. A conexão com a IA não foi confirmada nesta sessão.',retry:'Reconectar IA'},
+ en:{title:'NestAI needs to reconnect',body:'Your dashboard and requests are still available. AI access could not be verified for this session.',retry:'Reconnect AI'},
+ es:{title:'NestAI necesita reconectarse',body:'Tu panel y las solicitudes siguen disponibles. No se pudo verificar el acceso a IA de esta sesión.',retry:'Reconectar IA'}
+};
+function nativeAiNotice(){
+ if(S.data?.nativeAiSessionIssue!==true)return '';
+ const c=aiReconnectCopy[S.lang]||aiReconnectCopy.pt;
+ return `<article class="card native-ai-notice" role="status"><div><strong>${esc(c.title)}</strong><p class="help">${esc(c.body)}</p></div><button class="button small" id="reconnect-native-ai">${esc(c.retry)}</button></article>`;
+}
 function todayLegacy(showFocus=true){
   const a=S.data.requests||[],customers=S.data.customers||[],assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+(x.commercial?.finalAmountCents??x.quote?.totalCents??0),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,done=a.filter(x=>x.status==='completed').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
-  return `${calendarAlertStrip()}${showFocus?operationalFocus(actions)+firstRunJourney():''}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
+  return `${calendarAlertStrip()}${showFocus?nativeAiNotice()+operationalFocus(actions)+firstRunJourney():''}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${money(revenue)}</strong><small>${t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${priced?Math.round(done/priced*100):0}%</strong><small>${t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function captureQuickCard(){
   const origins=['whatsapp_manual','instagram','website','telephone','referral','other'];
@@ -691,7 +701,7 @@ function today(){
   if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
   const prioritized=buildFocusQueue(nextBestActions(),organizationDateIso()),actions=[prioritized.focus,...prioritized.next].filter(Boolean).slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
   const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
-  return `<div class="page-stack nestlocal-today-v2">${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
+  return `<div class="page-stack nestlocal-today-v2">${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
       ${draftsPanel(3)}</article>
@@ -1377,6 +1387,11 @@ function bind(){
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{await beginGoogleLogin()}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
+  document.querySelector('#reconnect-native-ai')?.addEventListener('click',async e=>{
+    const button=e.currentTarget;button.disabled=true;
+    try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
+    catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
+  });
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
