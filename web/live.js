@@ -315,7 +315,7 @@ async function api(path,opt={}){
   const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
   if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
      !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
-  if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
+  if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
     if(!S.directGoogleToken)throw Error('AUTH_REQUIRED'); // Never fall back to a different account's cookie.
   }
   const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -1125,7 +1125,7 @@ async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${e
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function resumeDirectGoogle(){
   try{
-    const {restoreDirectIdentity}=await import('./direct-auth.js');
+    const {restoreDirectIdentity}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');
     const token=await withTimeout(restoreDirectIdentity(),9500,'GOOGLE_RESTORE_TIMEOUT');
     S.directGoogleToken=token||'';
     S.directGoogleSession=Boolean(token);
@@ -1138,7 +1138,7 @@ async function resumeDirectGoogle(){
 async function beginGoogleLogin(selectAccount=false){
   S.error='';setAuthStage('google_popup');
   storageSet(localStorage,'nl_direct_google','yes');
-  const {signInDirectGoogle}=await import('./direct-auth.js');
+  const {signInDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');
   const token=await signInDirectGoogle(selectAccount);
   if(!token)return; // Redirect fallback is in progress.
   S.sessionToken='';storageRemove(sessionStorage,'nl_session_token');
@@ -1148,7 +1148,7 @@ async function beginGoogleLogin(selectAccount=false){
 }
 async function switchGoogleAccount(){
   try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}
-  try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}
+  try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');await signOutDirectGoogle()}catch{}
   S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
   storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
   storageRemove(localStorage,'nl_direct_google');
@@ -1392,7 +1392,7 @@ function bind(){
     try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
