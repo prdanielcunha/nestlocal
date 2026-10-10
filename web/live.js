@@ -1066,6 +1066,16 @@ async function loadGrowth(){
     try{await syncGrowthRadar()}catch(e){toast(e.message)}
   }
 }
+async function ensureNativeNestAiSession(){
+  if(!S.directGoogleSession||!S.directGoogleToken||!S.orgId)return false;
+  const response=await api('/api/auth/firebase/session',{method:'POST',
+    body:JSON.stringify({organizationId:S.orgId}),timeoutMs:12000});
+  if(response?.ok!==true||response.organizationId!==S.orgId||
+     !/^nl_[A-Za-z0-9_-]{43}$/.test(response.sessionToken||''))throw Error('NESTAI_SESSION_UNAVAILABLE');
+  S.sessionToken=response.sessionToken;
+  storageSet(sessionStorage,'nl_session_token',S.sessionToken);
+  return true;
+}
 async function loadSession(){
   S.loading=true;S.error='';setAuthStage('session');render();let ok=false;
   try{
@@ -1078,7 +1088,17 @@ async function loadSession(){
     if(S.orgId){
       storageSet(localStorage,'nl_org',S.orgId);
       const org=organizations.find(x=>x.id===S.orgId);
-      if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};
+      if(org?.nestlocal?.access){
+        await loadData();
+        if(S.directGoogleSession){
+          try{await ensureNativeNestAiSession()}
+          catch(e){
+            console.warn('[NESTLOCAL_NATIVE_AI_SESSION]',e?.message||'UNAVAILABLE');
+            if(S.data?.features)S.data.features.opportunityAI=false;
+            S.data.nativeAiSessionIssue=true;
+          }
+        }
+      }else S.data={organization:org,entitlement:org?.nestlocal};
       if(S.page==='growth'&&isGrowthAdmin())await loadGrowth();
     }
     storageRemove(sessionStorage,'nl_auth_started_at');
@@ -1107,6 +1127,7 @@ async function resumeDirectGoogle(){
 }
 async function beginGoogleLogin(selectAccount=false){
   S.error='';setAuthStage('google_popup');
+  storageSet(localStorage,'nl_direct_google','yes');
   const {signInDirectGoogle}=await import('./direct-auth.js');
   const token=await signInDirectGoogle(selectAccount);
   if(!token)return; // Redirect fallback is in progress.
@@ -1120,6 +1141,7 @@ async function switchGoogleAccount(){
   try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}
   S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
   storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
+  storageRemove(localStorage,'nl_direct_google');
   S.error='';S.loading=false;render();
   await beginGoogleLogin(true);
 }
@@ -1355,8 +1377,14 @@ function bind(){
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{await beginGoogleLogin()}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+    await loadData();
+    if(S.directGoogleSession){
+      try{await ensureNativeNestAiSession()}
+      catch(err){console.warn('[NESTLOCAL_SWITCH_AI_SESSION]',err?.message||'ERROR');if(S.data?.features)S.data.features.opportunityAI=false}
+    }
+  }else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',communicationMode:f.get('communicationMode')||'none',contactEmail:f.get('contactEmail')||'',contactPhone:f.get('contactPhone')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),communicationMode:f.get('communicationMode'),contactEmail:f.get('contactEmail'),contactPhone:f.get('contactPhone'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#payment-settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={enabled:f.get('enabled')==='on',key:f.get('key')||'',label:f.get('label')||'',instructions:f.get('instructions')||''};button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/payment-settings`,{method:'PUT',body:JSON.stringify(payload)});await loadData();render();toast(t('pixSaved'))}catch(err){button.disabled=false;toast(err.message)}});
@@ -1438,6 +1466,8 @@ async function consumeHandoff(){
     storageSet(localStorage,'nl_org',S.orgId);
     storageRemove(sessionStorage,'nl_hub_redirect_at');
     storageRemove(sessionStorage,'nl_hub_redirect_count');
+    storageRemove(localStorage,'nl_direct_google');
+    S.directGoogleSession=false;S.directGoogleToken='';
     window.__nestLocalHandoffConsumed=true;
     const returnTo=params.get('returnTo');
     let next='/';
@@ -1471,6 +1501,16 @@ async function startAuthBootstrap(){
       if(!redeemed){S.user=null;S.session=null;S.data=null;S.loading=false;render();return}
       await loadSession();
       return;
+    }
+    if(storageGet(localStorage,'nl_direct_google')==='yes'){
+      setAuthStage('direct_google_restore');
+      if(await resumeDirectGoogle()){
+        if(await loadSession())return;
+        if(S.error&&!['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error))return;
+      }
+      S.sessionToken='';storageRemove(sessionStorage,'nl_session_token');
+      storageRemove(localStorage,'nl_direct_google');
+      S.error='';S.loading=false;setAuthStage('public_landing');render();return;
     }
     const loaded=await loadSession();
     if(loaded)return;
