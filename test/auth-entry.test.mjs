@@ -320,3 +320,10 @@ test('private shell renderer registry maps navigation ids to real render functio
     assert.ok(client.includes(`function ${fn}(`)||client.includes(`const ${fn}=`)||client.includes(`let ${fn}=`),`missing renderer function ${fn}`);
   }
 });
+
+
+test('production deploy must preserve the operator kill switch for opportunity pilot',()=>{
+  const workflow=read('../.github/workflows/firebase-hosting-deploy.yml');
+  assert.ok(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production'));
+  assert.equal(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production,NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED=true'),false);
+});
