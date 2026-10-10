@@ -327,3 +327,17 @@ test('production deploy must preserve the operator kill switch for opportunity p
   assert.ok(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production'));
   assert.equal(workflow.includes('--update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production,NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED=true'),false);
 });
+
+test('production smoke checks the actual Firebase Web config, native module and rejects anonymous exchanges',()=>{
+ const workflow=read('../.github/workflows/firebase-hosting-deploy.yml');
+ for(const token of [
+   'https://nestlocal.millionsnest.com/__/firebase/init.json',
+   'nestlocal-firebase-config.json',
+   '.projectId == "millionsnest"',
+   'https://nestlocal.millionsnest.com/direct-auth.js',
+   'NESTLOCAL_NATIVE_GOOGLE_CONFIG_AND_AUTH_GATE_OK',
+   '/api/auth/firebase/session',
+   'native_unauth', 'native_forged',
+   '"INVALID_TOKEN"', '"AUTH_REQUIRED"',
+ ])assert.ok(workflow.includes(token),'missing live smoke condition '+token);
+});
