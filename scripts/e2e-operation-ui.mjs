@@ -6,8 +6,9 @@ mkdirSync('artifacts/experience',{recursive:true});
 try{
   for(const width of [320,390,1440]){
     const page=await browser.newPage({viewport:{width,height:width<450?840:960},reducedMotion:'reduce'});
-    const errors=[],feedback=[];
+    const errors=[],feedback=[],consoleErrors=[];
     page.on('pageerror',error=>errors.push(error.message));
+    page.on('console',message=>{if(message.type()==='error')consoleErrors.push(message.text())});
     const fakeEpoch=Math.floor((Date.now()-72*3600000)/1000);
     const sample={
       features:{pulseV2:true},
@@ -38,8 +39,10 @@ try{
     });
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
     const pulse=page.locator('.pulse2-panel');
-    await pulse.waitFor();
+    try{await pulse.waitFor({timeout:10000})}catch(error){const debug=await page.locator('body').innerText().catch(()=>'?');throw Error('AUTHED_PANEL_NOT_SHOWN '+width+' '+JSON.stringify({url:page.url(),body:debug.slice(0,1600),errors,consoleErrors})+' '+error.message)}
     assert.ok((await pulse.textContent()).includes('Cliente fictício'));
+    await page.locator('.operation-focus').waitFor();
+    assert.ok((await page.locator('.operation-focus').textContent()).includes('Cliente fictício'));
     const size=await page.evaluate(()=>({document:document.documentElement.scrollWidth,window:innerWidth}));
     assert.ok(size.document<=size.window+1,'Dashboard overflow at '+width+': '+JSON.stringify(size));
     await page.screenshot({path:'artifacts/experience/pulse-facts-'+width+'.png',fullPage:true});
@@ -50,7 +53,8 @@ try{
     await page.locator('.pulse2-empty').waitFor();
     assert.equal(feedback.length,1);
     await page.screenshot({path:'artifacts/experience/pulse-snoozed-'+width+'.png',fullPage:true});
-    await page.locator(width<=980?'.bottom-nav button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
+    if(width<=980)await page.locator('.bottom-nav .mobile-more > summary').click();
+    await page.locator(width<=980?'.bottom-nav .mobile-more-list button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
     await page.locator('.privacy-center').waitFor();
     assert.ok((await page.locator('.privacy-center').textContent()).includes('example')===false,'contact email should not leak into privacy center');
     await page.screenshot({path:'artifacts/experience/privacy-'+width+'.png',fullPage:true});
