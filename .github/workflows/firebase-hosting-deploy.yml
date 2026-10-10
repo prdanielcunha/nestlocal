@@ -208,6 +208,36 @@ jobs:
           fi
 
           fetch_until_contains https://nestlocal.millionsnest.com/ /tmp/nestlocal-home.html 'id="app"' '/live.js?v=20261010-native-ai-session-v3' '20261010-native-ai-session-v3'
+
+          # The standalone Google flow cannot work if Hosting returns SPA HTML for
+          # Firebase's reserved JSON config, or if its module is missing.
+          # The API key and app ID are PUBLIC Firebase Web config; never echo values.
+          fetch https://nestlocal.millionsnest.com/__/firebase/init.json > /tmp/nestlocal-firebase-config.json
+          jq -e '.projectId == "millionsnest" and
+            (.apiKey | type == "string" and startswith("AIza")) and
+            (.appId | type == "string" and length > 8)' \
+            /tmp/nestlocal-firebase-config.json >/dev/null
+          fetch_until_contains https://nestlocal.millionsnest.com/direct-auth.js /tmp/nestlocal-direct-auth.js \
+            'restoreDirectIdentity' 'signInDirectGoogle' 'getFreshDirectToken' \
+            '/__/firebase/init.json' 'millionsnest.firebaseapp.com'
+
+          # Neither native session minting nor AI may be reachable anonymously.
+          # These probes NEVER create an authorized tenant session.
+          native_unauth="$(curl --silent --show-error -o /tmp/nestlocal-native-unauth.json \
+            -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            --data '{"organizationId":"nestlocal-release-smoke"}' \
+            https://nestlocal.millionsnest.com/api/auth/firebase/session)"
+          test "$native_unauth" = "401"
+          jq -e '.error == "AUTH_REQUIRED"' /tmp/nestlocal-native-unauth.json >/dev/null
+          native_forged="$(curl --silent --show-error -o /tmp/nestlocal-native-forged.json \
+            -w '%{http_code}' -X POST -H 'content-type: application/json' \
+            -H 'Authorization: Bearer invalid-token-for-smoke' \
+            --data '{"organizationId":"nestlocal-release-smoke"}' \
+            https://nestlocal.millionsnest.com/api/auth/firebase/session)"
+          test "$native_forged" = "401"
+          jq -e '.error == "INVALID_TOKEN"' /tmp/nestlocal-native-forged.json >/dev/null
+          echo "NESTLOCAL_NATIVE_GOOGLE_CONFIG_AND_AUTH_GATE_OK"
+
           fetch_until_contains https://nestlocal.millionsnest.com/raio-x /tmp/nestlocal-xray.html 'id="app"'
 
           fetch_until_contains https://nestlocal.millionsnest.com/live.js /tmp/nestlocal-live.js \
