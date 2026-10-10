@@ -341,3 +341,16 @@ test('production smoke checks the actual Firebase Web config, native module and 
    '"INVALID_TOKEN"', '"AUTH_REQUIRED"',
  ])assert.ok(workflow.includes(token),'missing live smoke condition '+token);
 });
+
+test('Firebase Hosting secondary-site config may omit optional appId but cannot swap the Firebase project',()=>{
+  const module=read('../web/direct-auth.js');
+  assert.ok(module.includes("config.projectId!=='millionsnest'"));
+  assert.ok(module.includes("!config.apiKey.startsWith('AIza')"));
+  assert.equal(module.includes("typeof config.appId!=='string'"),false);
+  assert.ok(module.includes("authDomain:'millionsnest.firebaseapp.com'"));
+  const deployment=read('../.github/workflows/firebase-hosting-deploy.yml');
+  assert.ok(deployment.includes('https://nestlocal.millionsnest.com/__/firebase/init.json'));
+  assert.ok(deployment.includes('(.authDomain | type == "string" and length > 3)'));
+  assert.equal(deployment.includes('(.appId | type == "string" and length > 8)'),false);
+  assert.ok(read('../web/live.js').includes("import('./direct-auth.js?v=20261010-firebase-auth-config-v4')"));
+});
