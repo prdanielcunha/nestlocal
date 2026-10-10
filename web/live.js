@@ -351,7 +351,7 @@ function login(){
 }
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
 const sessionIssueText=code=>code==='USER_NOT_FOUND'?t('userNotFoundHelp'):t('sessionProblemHelp');
-function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261010-native-ai-session-v3</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
+function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261010-firebase-auth-config-v4</small><div class="recovery-actions"><button class="button primary login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
 function noOrg(){return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<h1>${t('noOrg')}</h1><p>${t('noEligibleOrgHelp')}</p><button class="button primary login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a>${lang()}</section></main>`}
 const accessReasonText=reason=>reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?t('accessPaymentRequired'):reason==='SUBSCRIPTION_NOT_FOUND'||reason==='SUBSCRIPTION_INACTIVE'?t('accessSubscriptionMissing'):reason==='ENTITLEMENT_INACTIVE'?t('accessEntitlementInactive'):reason==='MEMBER_APP_ACCESS_DISABLED'?t('accessMemberDisabled'):reason==='PERMISSION_DENIED'?t('accessPermissionDenied'):reason==='MEMBERSHIP_NOT_FOUND'||reason==='MEMBERSHIP_INACTIVE'?t('accessMembershipMissing'):t('noEligibleOrgHelp');
 Object.assign(D.pt,{checkPlanPrice:'Preço final e ofertas exibidos no checkout seguro'});
@@ -1027,7 +1027,7 @@ function render(){
     root.innerHTML=sessionFailure();
   }
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
-  document.documentElement.dataset.nlBuild='20261010-native-ai-session-v3';
+  document.documentElement.dataset.nlBuild='20261010-firebase-auth-config-v4';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
   if(S.data?.entitlement?.readOnly===true){
     const captureButton=document.querySelector('.opportunity-fab');
