@@ -36,3 +36,10 @@ test('mobile menu has accessible extras and existing navigation target handlers'
   assert.match(ui,/function operationalFocus\(/);
   assert.match(ui,/data-nav/);
 });
+
+test('pricing UI delegates current offers to checkout instead of obsolete constants',()=>{
+  const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+  assert.match(ui,/checkPlanPrice/);
+  assert.doesNotMatch(ui,/plans=\[\['essential',79\]/);
+  assert.match(ui,/nestlocal_\$\{id\}_monthly/);
+});
