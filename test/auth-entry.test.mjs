@@ -354,3 +354,13 @@ test('Firebase Hosting secondary-site config may omit optional appId but cannot 
   assert.equal(deployment.includes('(.appId | type == "string" and length > 8)'),false);
   assert.ok(read('../web/live.js').includes("import('./direct-auth.js?v=20261010-firebase-auth-config-v4')"));
 });
+
+test('first-time Google users receive an explicit, voluntary MillionsNest business-onboarding path',()=>{
+ const client=read('../web/live.js');
+ assert.ok(client.includes("S.error==='USER_NOT_FOUND'"));
+ assert.ok(client.includes('https://www.millionsnest.com/checkout?app=nestlocal'));
+ for(const locale of ['Começar cadastro da minha empresa','Set up my business','Empezar el registro de mi negocio'])
+  assert.ok(client.includes(locale),'missing onboarding copy '+locale);
+ assert.ok(client.includes('id="retry-session"'));
+ assert.ok(client.includes('id="switch-account"'));
+});
