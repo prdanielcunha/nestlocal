@@ -44,3 +44,12 @@ test('direct Google multi-organization flow renews separate session on selected 
  assert.ok(ui.includes("if(S.data?.features)S.data.features.opportunityAI=false"),
    'failed exchange must disable premium AI, not send a mismatched credential');
 });
+
+test('native AI connection failure is visible and manually recoverable',()=>{
+ const ui=read('../web/live.js'),css=read('../web/operations.css');
+ for(const token of ['function nativeAiNotice()','nativeAiSessionIssue','id="reconnect-native-ai"',
+   "querySelector('#reconnect-native-ai')", "await ensureNativeNestAiSession();await loadData()",
+   'NestAI precisa reconectar', 'NestAI needs to reconnect',
+   'NestAI necesita reconectarse'])assert.ok(ui.includes(token),'missing '+token);
+ assert.ok(css.includes('.native-ai-notice'));
+});
