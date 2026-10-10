@@ -32,7 +32,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',copilotPreview:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -308,13 +308,14 @@ const isReview=()=>pathParts()[0]==='review'&&Boolean(pathParts()[1]);
 const lang=()=>`<select data-lang class="lang"><option ${S.lang==='pt'?'selected':''} value="pt">PT</option><option ${S.lang==='en'?'selected':''} value="en">EN</option><option ${S.lang==='es'?'selected':''} value="es">ES</option></select>`;
 const toast=m=>{const e=document.createElement('div');e.className='toast';e.textContent=m;document.body.append(e);setTimeout(()=>e.remove(),2400)};
 function withTimeout(promise,ms,code='TIMEOUT'){let timer;return Promise.race([Promise.resolve(promise),new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error(code)),ms)})]).finally(()=>clearTimeout(timer))}
-const nestLocalAuthHeaders=()=>S.sessionToken&&/^nl_[A-Za-z0-9_-]{43}$/.test(S.sessionToken)?{Authorization:`Bearer ${S.sessionToken}`}:{};
+const nestLocalAuthHeaders=()=>S.directGoogleSession&&S.directGoogleToken?{Authorization:`Bearer ${S.directGoogleToken}`}:S.sessionToken&&/^nl_[A-Za-z0-9_-]{43}$/.test(S.sessionToken)?{Authorization:`Bearer ${S.sessionToken}`}:{};
 async function api(path,opt={}){
   const method=String(opt.method||'GET').toUpperCase();
   const isNestLocalBusinessRoute=/^\/api\/organizations\/[^/]+\/nestlocal(?:\/|$)/.test(String(path));
   const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
   if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
      !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
+  if(S.directGoogleSession&&S.directGoogleToken){try{const {getFreshDirectToken}=await import('./direct-auth.js');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}}
   const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
   try{
     const r=await fetch(path,{...request,credentials:'same-origin',cache:request.cache||'no-store',signal:controller.signal,headers:{...(form?{}:{'Content-Type':'application/json'}),...nestLocalAuthHeaders(),...(request.headers||{})}});
@@ -338,7 +339,7 @@ function login(){
   return '<main class="entry-landing"><div class="entry-header">'+brand()+'<div class="entry-header-right">'+lang()+'</div></div>'+
     '<section class="entry-hero"><div class="entry-hero-copy"><span class="eyebrow">'+c.eyebrow+'</span><h1>'+c.hero+'</h1><p>'+c.sub+'</p>'+
     '<div class="entry-actions"><a class="button primary entry-main-cta" href="/experience">'+c.demo+' ↗</a>'+
-    '<button class="button entry-login-cta" id="login">'+c.login+'</button></div>'+
+    '<button class="button entry-login-cta" id="login">'+t('login')+'</button><a class="button entry-hub-cta" href="'+millionsNestLaunchUrl()+'">'+t('hub')+'</a></div>'+
     '<a class="entry-xray-link" href="/raio-x">'+c.xray+' ↗</a><small class="entry-trust-line">'+c.small+'</small></div>'+
     '<aside class="entry-visual"><div class="entry-visual-label">NESTLOCAL <span> / SERVICE OS</span></div>'+
     '<h2>'+c.flow+'</h2><div class="entry-flow">'+[c.one,c.two,c.three,c.four].map((x,i)=>'<div class="entry-flow-row"><span>0'+(i+1)+'</span><strong>'+x+'</strong><i aria-hidden="true">↗</i></div>').join('')+'</div>'+
@@ -1077,12 +1078,36 @@ async function loadSession(){
 async function loadPublic(){try{S.store=await api(`/api/public/stores/${encodeURIComponent(publicSlug())}`);if(!S.publicServiceId)S.publicServiceId=S.store.services?.[0]?.id||null}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
-async function beginGoogleLogin(){
-  S.error='';
-  storageSet(sessionStorage,'nl_auth_started_at',Date.now());
-  redirectToMillionsNest();
+async function resumeDirectGoogle(){
+  try{
+    const {restoreDirectIdentity}=await import('./direct-auth.js');
+    const token=await withTimeout(restoreDirectIdentity(),9500,'GOOGLE_RESTORE_TIMEOUT');
+    S.directGoogleToken=token||'';
+    S.directGoogleSession=Boolean(token);
+    return Boolean(token);
+  }catch(error){
+    console.warn('[NESTLOCAL_DIRECT_GOOGLE_RESTORE]',error?.code||error?.message||'UNAVAILABLE');
+    S.directGoogleToken='';S.directGoogleSession=false;return false;
+  }
 }
-async function switchGoogleAccount(){try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');redirectToMillionsNest()}
+async function beginGoogleLogin(selectAccount=false){
+  S.error='';setAuthStage('google_popup');
+  const {signInDirectGoogle}=await import('./direct-auth.js');
+  const token=await signInDirectGoogle(selectAccount);
+  if(!token)return; // Redirect fallback is in progress.
+  S.sessionToken='';storageRemove(sessionStorage,'nl_session_token');
+  S.directGoogleToken=token;S.directGoogleSession=true;
+  await loadSession();
+  if(!S.session)throw Error(S.error||'GOOGLE_SESSION_FAILED');
+}
+async function switchGoogleAccount(){
+  try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}
+  try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}
+  S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
+  storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
+  S.error='';S.loading=false;render();
+  await beginGoogleLogin(true);
+}
 function checkTaskNotifications(){
   if(!S.orgId||!S.data?.features?.opportunityDrafts||S.data?.entitlement?.readOnly===true||
      typeof Notification==='undefined'||Notification.permission!=='granted'||document.visibilityState!=='visible')return;
@@ -1315,7 +1340,7 @@ function bind(){
   document.querySelector('#login')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;button.textContent=t('loading');try{await beginGoogleLogin()}catch(err){button.disabled=false;button.textContent=t('login');toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
   document.querySelector('#retry-session')?.addEventListener('click',()=>startAuthBootstrap());
   document.querySelector('#switch-account')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await switchGoogleAccount()}catch(err){button.disabled=false;toast(err.message==='AUTH_POPUP_CLOSED'?t('authPopupClosed'):t('authFailed'))}});
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access)await loadData();else S.data={organization:org,entitlement:org?.nestlocal};S.loading=false;render()});
   document.querySelector('#bootstrap-form')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/bootstrap`,{method:'POST',body:JSON.stringify({template:f.get('template')||'general',businessName:f.get('businessName'),coverageCodes:String(f.get('coverage')||'').split(',').map(x=>x.trim()).filter(Boolean),whatsapp:f.get('whatsapp')||'',communicationMode:f.get('communicationMode')||'none',contactEmail:f.get('contactEmail')||'',contactPhone:f.get('contactPhone')||'',timezone:f.get('timezone')||'America/Sao_Paulo'})});await loadData();render()}catch(err){button.disabled=false;toast(err.message==='ONBOARDING_DETAILS_REQUIRED'?t('publishBlocked'):err.message)}});
   document.querySelector('#settings')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/settings`,{method:'PUT',body:JSON.stringify({businessName:f.get('business'),slug:f.get('slug'),coverageCodes:String(f.get('coverage')).split(',').map(x=>x.trim()),whatsapp:f.get('whatsapp'),communicationMode:f.get('communicationMode'),contactEmail:f.get('contactEmail'),contactPhone:f.get('contactPhone'),whatsappServiceTemplate:f.get('whatsappServiceTemplate'),whatsappMaintenanceTemplate:f.get('whatsappMaintenanceTemplate'),validForMinutes:30})});await loadData();render();toast(t('save'))}catch(err){button.disabled=false;toast(err.message)}});
@@ -1434,7 +1459,11 @@ async function startAuthBootstrap(){
     }
     const loaded=await loadSession();
     if(loaded)return;
-    if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)){if(S.error==='AUTH_REQUIRED'&&!storageGet(sessionStorage,'nl_auth_started_at')){setAuthStage('public_landing');S.error='';S.loading=false;render();return}setAuthStage('hub_redirect');redirectToMillionsNest();return}
+    if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)){
+      setAuthStage('direct_google_restore');
+      if(await resumeDirectGoogle()){if(await loadSession())return}
+      if(['AUTH_REQUIRED','INVALID_TOKEN'].includes(S.error)||!S.directGoogleSession){setAuthStage('public_landing');S.error='';S.loading=false;render();return}
+    }
   }catch(e){
     console.error('[NESTLOCAL_BOOT_FATAL]',e);
     S.loading=false;S.user=null;S.session=null;S.data=null;S.error=e?.message||'AUTH_BOOT_FAILED';setAuthStage('boot_error');render();
