@@ -43,3 +43,9 @@ test('pricing UI delegates current offers to checkout instead of obsolete consta
   assert.doesNotMatch(ui,/plans=\[\['essential',79\]/);
   assert.match(ui,/nestlocal_\$\{id\}_monthly/);
 });
+
+test('v2 never passes raw actions without explanations to sales feed',()=>{
+  const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+  assert.match(ui,/prioritized=buildFocusQueue\(nextBestActions\(\),organizationDateIso\(\)\)/);
+  assert.doesNotMatch(ui,/actions=nextBestActions\(\)\.slice\(0,3\)/);
+});
