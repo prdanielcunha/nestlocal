@@ -7,3 +7,105 @@
 .read-only-banner .button{white-space:nowrap;flex-shrink:0;min-height:42px;display:inline-flex;align-items:center}
 .is-readonly .page :disabled{opacity:.57;cursor:not-allowed}
 @media(max-width:760px){.read-only-banner{flex-direction:column;align-items:stretch;padding:18px;border-radius:17px;gap:14px}.read-only-banner .button{width:100%;justify-content:center}}
+
+
+/* NestLocal 2.0 pilot, isolated to the flagged experience. */
+.is-opportunity-v2 .nestlocal-today-v2{max-width:1020px;margin-inline:auto}
+.is-opportunity-v2 .quick-capture{border:1px solid rgba(143,240,189,.24);background:linear-gradient(130deg,rgba(20,58,46,.82),rgba(9,25,22,.97))}
+.is-opportunity-v2 .quick-capture h2{font-size:clamp(22px,3vw,31px);letter-spacing:-.035em}
+.is-opportunity-v2 .quick-capture-form{display:grid;gap:16px}
+.is-opportunity-v2 .quick-capture-form label{display:grid;gap:7px;color:#bad4c9;font-size:13px}
+.is-opportunity-v2 .quick-capture-form :is(select,textarea){width:100%;min-width:0;box-sizing:border-box;border:1px solid rgba(213,253,232,.22);border-radius:13px;background:#091b16;color:#f5fff9;padding:13px 14px;font:inherit}
+.is-opportunity-v2 .quick-capture-form textarea{resize:vertical;min-height:98px;line-height:1.55}
+.is-opportunity-v2 .quick-capture-form :is(select,textarea):focus-visible{outline:2px solid #8ff0bd;outline-offset:2px}
+.is-opportunity-v2 .quick-capture-form .button{justify-self:start;min-height:44px}
+.is-opportunity-v2 .draft-item{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:16px 0;border-top:1px solid rgba(255,255,255,.09)}
+.is-opportunity-v2 .draft-item div{min-width:0;overflow-wrap:anywhere}
+.is-opportunity-v2 .draft-item strong{display:block;margin-top:4px;font-size:15px}
+.is-opportunity-v2 .draft-item p{color:#aec7bb;margin:7px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}
+.is-opportunity-v2 .draft-item .button{flex-shrink:0}
+.is-opportunity-v2 .today-advanced{margin-top:4px}
+.is-opportunity-v2 .today-advanced>summary{padding:16px 19px;border:1px solid rgba(255,255,255,.15);border-radius:15px;cursor:pointer;color:#bce1d0;list-style-position:inside}
+.is-opportunity-v2 .today-advanced[open]>summary{margin-bottom:18px}
+.is-opportunity-v2 .opportunity-fab{position:fixed;right:24px;bottom:24px;z-index:7;min-height:48px;padding:12px 22px;border-radius:999px;box-shadow:0 12px 30px rgba(0,0,0,.4)}
+@media(max-width:980px){
+ .is-opportunity-v2 .opportunity-fab{right:18px;bottom:88px}
+ .is-opportunity-v2 .bottom-nav{overflow:visible;align-items:stretch}
+ .is-opportunity-v2 .bottom-nav>button{min-width:0;flex:1 1 0;white-space:normal}
+ .is-opportunity-v2 .bottom-nav .mobile-more{flex:1 1 0;min-width:0;position:relative}
+ .is-opportunity-v2 .mobile-more summary{display:grid;place-items:center;height:100%;padding:8px 0;color:var(--muted);font-size:11px;cursor:pointer;list-style:none}
+ .is-opportunity-v2 .mobile-more summary::-webkit-details-marker{display:none}
+ .is-opportunity-v2 .mobile-more-list{position:absolute;right:0;bottom:calc(100% + 13px);width:min(76vw,275px);padding:8px;border:1px solid rgba(255,255,255,.18);border-radius:16px;background:#0c211a;box-shadow:0 18px 45px rgba(0,0,0,.45);display:grid;gap:4px}
+ .is-opportunity-v2 .mobile-more-list button{text-align:left;padding:12px;color:#edfff7;flex:auto;font-size:13px;border-radius:9px}
+ .is-opportunity-v2 .mobile-more-list button:focus-visible{outline:2px solid #8ff0bd}
+}
+@media(max-width:620px){
+ .is-opportunity-v2 .main{padding-bottom:155px}
+ .is-opportunity-v2 .draft-item{flex-direction:column}
+ .is-opportunity-v2 .quick-capture-form .button{width:100%;justify-content:center}
+ .is-opportunity-v2 .opportunity-fab{bottom:91px;right:14px}
+}
+
+.is-opportunity-v2 .draft-controls{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0;align-items:flex-start}
+@media(max-width:620px){.is-opportunity-v2 .draft-controls{width:100%}.is-opportunity-v2 .draft-controls .button{flex:1 1 135px}}
+
+/* Keep long notes, values and narrow grids inside a 320–390px viewport. */
+@media(max-width:620px){
+ .is-opportunity-v2 .page-stack,.is-opportunity-v2 .card,.is-opportunity-v2 .form-grid,
+ .is-opportunity-v2 .request,.is-opportunity-v2 .request-detail{min-width:0;max-width:100%;box-sizing:border-box}
+ .is-opportunity-v2 .form-grid>*{min-width:0}
+ .is-opportunity-v2 .request :is(summary,.request-detail){min-width:0;overflow-wrap:anywhere}
+ .is-opportunity-v2 .draft-item,.is-opportunity-v2 .quick-capture-form{min-width:0;overflow-wrap:anywhere}
+}
+
+/* Native request form controls previously used width:100% plus padding.
+   Border-box prevents their box model from pushing the pilot page wider. */
+.is-opportunity-v2 .form-grid :is(input,select,textarea){box-sizing:border-box;max-width:100%;min-width:0}
+
+/* Browser-tested: organization picker was extending 10px beyond 390px viewport. */
+@media(max-width:620px){
+ .is-opportunity-v2 .topbar{flex-wrap:wrap;align-items:flex-start;gap:12px}
+ .is-opportunity-v2 .topbar>div{min-width:0}
+ .is-opportunity-v2 .top-actions{display:flex;width:100%;max-width:100%;min-width:0;box-sizing:border-box;flex-wrap:wrap}
+ .is-opportunity-v2 .top-actions .field.compact{box-sizing:border-box;max-width:100%;min-width:0;flex:1 1 150px}
+ .is-opportunity-v2 .top-actions .lang{flex:0 0 auto;min-width:0}
+}
+
+/* Pilot F3/F5: legible evidence and manual follow-up tasks */
+.is-opportunity-v2 .draft-main{min-width:0;flex:1 1 auto}
+.is-opportunity-v2 .opportunity-preview{padding:14px;margin-top:15px;border:1px solid rgba(143,240,189,.17);border-radius:14px;background:rgba(5,25,18,.65)}
+.is-opportunity-v2 .opportunity-preview h3,.is-opportunity-v2 .followup-tasks h3{margin:0 0 10px;font-size:16px}
+.is-opportunity-v2 .preview-evidence{padding:12px 14px;border-left:3px solid #8ff0bd;background:rgba(255,255,255,.05);border-radius:8px;margin:12px 0;overflow-wrap:anywhere}
+.is-opportunity-v2 .opportunity-preview ul{padding-left:22px;margin:10px 0 15px;color:#c4dcd1}
+.is-opportunity-v2 .opportunity-preview li{margin:4px 0}
+.is-opportunity-v2 .draft-reply-label{display:grid;gap:8px;margin:12px 0 10px;color:#c4dcd1}
+.is-opportunity-v2 .opportunity-preview textarea,.is-opportunity-v2 .followup-task input{width:100%;max-width:100%;min-width:0;box-sizing:border-box;border:1px solid rgba(255,255,255,.2);border-radius:12px;background:#071b15;color:#f2fff8;padding:11px 12px;font:inherit}
+.is-opportunity-v2 .followup-task{margin-top:13px}
+.is-opportunity-v2 .followup-task summary{cursor:pointer;color:#9becc0;font-weight:600;list-style-position:inside}
+.is-opportunity-v2 .followup-task[open] summary{margin-bottom:12px}
+.is-opportunity-v2 .followup-task form{max-width:450px}
+.is-opportunity-v2 .followup-task label{display:grid;gap:7px;font-size:13px;color:#bbd3c8}
+.is-opportunity-v2 .followup-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid rgba(255,255,255,.1)}
+.is-opportunity-v2 .followup-item>div{min-width:0;overflow-wrap:anywhere}
+.is-opportunity-v2 .followup-item strong{display:block;color:#effff6}
+.is-opportunity-v2 .followup-item small{display:block;color:#acc7bb;margin-top:4px}
+.is-opportunity-v2 .followup-item .button{flex-shrink:0}
+.is-opportunity-v2 .followup-tasks{margin:12px 0}
+@media(max-width:620px){.is-opportunity-v2 .opportunity-preview{padding:12px}.is-opportunity-v2 .followup-item{align-items:flex-start}.is-opportunity-v2 .draft-controls{flex-wrap:wrap}}
+
+/* Billing recovery and customer portability stay reachable in read-only mode */
+.readonly-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-shrink:0}
+.readonly-actions .button{min-height:43px;display:inline-flex;align-items:center;justify-content:center}
+@media(max-width:760px){.readonly-actions{width:100%;flex-direction:column;align-items:stretch}.readonly-actions .button{width:100%}}
+.is-opportunity-v2 .task-actions{display:flex;gap:8px;flex-wrap:wrap;flex-shrink:0}
+@media(max-width:620px){.is-opportunity-v2 .task-actions .button{min-height:40px}}
+
+/* AI opt-in is an explicit choice, never a prechecked consent or invisible send. */
+.is-opportunity-v2 .ai-opt-in{display:flex;gap:10px;align-items:flex-start;margin:14px 0 6px;font-size:13px;line-height:1.55;color:var(--muted,#c7ded2);max-width:560px}
+.is-opportunity-v2 .ai-opt-in input{flex:0 0 18px;width:18px;height:18px;margin:3px 0 0;accent-color:#9becbf;cursor:pointer}
+.is-opportunity-v2 [data-ai-draft-preview]{white-space:normal;min-height:40px}
+@media(max-width:640px){.is-opportunity-v2 .draft-controls>button{flex:1 1 44%;white-space:normal}.is-opportunity-v2 .ai-opt-in{font-size:12px}}
+
+/* Local notifications are user activated and remain honest about background limits. */
+.is-opportunity-v2 [data-enable-task-alerts]{min-height:42px;margin:8px 0 4px}
+.is-opportunity-v2 .followup-tasks>.help{margin-top:6px}
