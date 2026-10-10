@@ -673,7 +673,7 @@ function draftsPanel(limit=50){
 }
 function today(){
   if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
-  const actions=nextBestActions().slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
+  const prioritized=buildFocusQueue(nextBestActions(),organizationDateIso()),actions=[prioritized.focus,...prioritized.next].filter(Boolean).slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
   const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
   return `<div class="page-stack nestlocal-today-v2">${operationalFocus(actions)}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
