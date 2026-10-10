@@ -528,7 +528,8 @@ const focusCopy={
 };
 function operationalFocus(actions){
   const c=focusCopy[S.lang]||focusCopy.pt,data=S.data||{},settings=data.settings||null;
-  const next=chooseOperationalFocus({settings,services:data.services,requests:data.requests,actions,readOnly:data.entitlement?.readOnly===true});
+  const prioritized=buildFocusQueue(actions,organizationDateIso());
+  const next=chooseOperationalFocus({settings,services:data.services,requests:data.requests,actions:prioritized.focus?[prioritized.focus]:[],readOnly:data.entitlement?.readOnly===true});
   const button=(view,label)=>'<button type="button" class="button primary" data-action-page="'+view+'">'+esc(label)+'</button>';
   let heading='',description='',action='',secondary='';
   if(next.kind==='readonly'){
@@ -542,7 +543,7 @@ function operationalFocus(actions){
   }else if(next.kind==='priority'){
     const a=next.action;
     heading=t('action_'+a.type)+(a.customerName?' · '+esc(a.customerName):'');
-    description=c.priorityBody+' '+esc(actionReason(a)||'');
+    description=c.priorityBody+(a.reasonKey?' '+esc(actionReason(a)):'');
     action=a.requestId?'<button type="button" class="button primary" data-open-request="'+esc(a.requestId)+'">'+esc(c.priorityCta)+'</button>':button('customers',c.customerCta);
     if(['followup','reactivate','collect'].includes(a.type))secondary='<button type="button" class="button" data-action-assist="'+esc(assistActionKey(a))+'">'+esc(c.prepareContact)+'</button>';
   }else if(next.kind==='share'){
