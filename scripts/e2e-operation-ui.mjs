@@ -40,6 +40,8 @@ try{
     const pulse=page.locator('.pulse2-panel');
     await pulse.waitFor();
     assert.ok((await pulse.textContent()).includes('Cliente fictício'));
+    await page.locator('.operation-focus').waitFor();
+    assert.ok((await page.locator('.operation-focus').textContent()).includes('Cliente fictício'));
     const size=await page.evaluate(()=>({document:document.documentElement.scrollWidth,window:innerWidth}));
     assert.ok(size.document<=size.window+1,'Dashboard overflow at '+width+': '+JSON.stringify(size));
     await page.screenshot({path:'artifacts/experience/pulse-facts-'+width+'.png',fullPage:true});
@@ -50,7 +52,8 @@ try{
     await page.locator('.pulse2-empty').waitFor();
     assert.equal(feedback.length,1);
     await page.screenshot({path:'artifacts/experience/pulse-snoozed-'+width+'.png',fullPage:true});
-    await page.locator(width<=980?'.bottom-nav button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
+    if(width<=980)await page.locator('.bottom-nav .mobile-more > summary').click();
+    await page.locator(width<=980?'.bottom-nav .mobile-more-panel button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
     await page.locator('.privacy-center').waitFor();
     assert.ok((await page.locator('.privacy-center').textContent()).includes('example')===false,'contact email should not leak into privacy center');
     await page.screenshot({path:'artifacts/experience/privacy-'+width+'.png',fullPage:true});
