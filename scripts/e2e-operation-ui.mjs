@@ -38,7 +38,7 @@ try{
     });
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
     const pulse=page.locator('.pulse2-panel');
-    await pulse.waitFor();
+    try{await pulse.waitFor({timeout:10000})}catch(error){const debug=await page.locator('body').innerText().catch(()=>'?');throw Error('AUTHED_PANEL_NOT_SHOWN '+width+' '+JSON.stringify({url:page.url(),body:debug.slice(0,1600),errors})+' '+error.message)}
     assert.ok((await pulse.textContent()).includes('Cliente fictício'));
     await page.locator('.operation-focus').waitFor();
     assert.ok((await page.locator('.operation-focus').textContent()).includes('Cliente fictício'));
