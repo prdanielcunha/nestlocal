@@ -1,3 +1,4 @@
+import { radarServicePlaybooks } from './src/domain/radar-playbooks.mjs';
 import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
@@ -71,6 +72,7 @@ const servicePlaybooks={
     {id:'visita-tecnica',name:'Visita técnica',nameI18n:{pt:'Visita técnica',en:'Technical visit',es:'Visita técnica'},mode:'review',requiresEquipmentType:false,requiresSafeAccess:false,intakeFields:[{id:'issue',labelI18n:{pt:'O que precisa ser avaliado?',en:'What needs evaluation?',es:'¿Qué necesita evaluación?'},type:'text',required:true,maxLength:180}]}
   ]}
 };
+Object.assign(servicePlaybooks, radarServicePlaybooks);
 const clean=v=>typeof v==='string'?v.trim():'';
 const slug=v=>clean(v).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9-]+/g,'-').replace(/^-+|-+$/g,'').slice(0,60);
 const phone=v=>clean(v).replace(/\D/g,'').slice(0,15);
