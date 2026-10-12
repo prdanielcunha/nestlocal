@@ -64,6 +64,27 @@ A entrada registra categoria/necessidade e urgência. Todos começam em modo `re
 
 A entrada pode registrar marca/modelo, defeito e perfil do portão. Todos começam em modo `review`.
 
+### Segmentos adicionais do Radar (outubro/2026)
+
+Aderência ampliada aos leads reais do Radar. Os seguintes playbooks são **opcionais** e não substituem os anteriores:
+
+- `solar`: projeto, instalação, limpeza e manutenção fotovoltaica;
+- `pools`: manutenção, equipamentos/aquecimento, obras e reformas de piscinas;
+- `water`: instalação, refis e assistência de purificadores;
+- `gardens`: jardinagem e paisagismo;
+- `appliance`: diagnóstico e reparo de eletrodomésticos;
+- `technical`: informática e eletrônicos;
+- `automotive`: estética, detalhamento e revisão automotiva;
+- `glass`: vidraçaria e esquadrias;
+- `waterproofing`: vistoria de infiltrações e impermeabilização;
+- `roofs`: calhas, rufos, telhados, toldos e coberturas.
+
+Cada serviço nasce em **modo avaliação**, com perguntas contextualizadas em PT/EN/ES. Não existem preços, periodicidades, disponibilidade ou garantias presumidas. O prestador deve revisar catálogo, campos e regras antes de publicar; orçamentos e agenda continuam dependentes de confirmação humana.
+
+**Proteção operacional:** adicionar playbooks a uma empresa já publicada não pode despublicar seu catálogo atual; os novos serviços ficam separados como rascunhos até a próxima publicação explícita. Isso evita tirar a página da empresa do ar durante expansão.
+
+Estes modelos dão cobertura aos fluxos básicos dos segmentos; **não** afirmam capacidade para PMOC completo, gestão de estoque/peças, ordem de serviço multietapas ou conformidade regulatória especializada. Qualifique necessidades antes de prometer substituição de um ERP vertical.
+
 ### Geral
 
 Para outros prestadores:
