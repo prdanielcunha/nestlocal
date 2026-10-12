@@ -41,3 +41,14 @@ test('every Radar vertical is wired into onboarding and additional catalog', () 
   assert.match(ui,/\.\.\.radarTemplateChoices\.map/);
   for(const id of expected)assert.match(ui,new RegExp("'"+id+"','templateRadar_"+id+"'"));
 });
+
+test('adding draft services never takes a published customer store offline', () => {
+  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+  const start=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply'");
+  const end=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/bootstrap'",start);
+  assert.ok(start>0 && end>start);
+  const apply=server.slice(start,end);
+  assert.match(apply,/published:false,addedFromPlaybook/);
+  assert.doesNotMatch(apply,/batch\.set\(settingsRef,\{published:false/);
+  assert.match(apply,/lastPlaybookApplied/);
+});
