@@ -15,10 +15,12 @@ Beachhead atual:
 
 Planos atuais:
 
-- Essencial: R$ 79/mês, 1 usuário e 100 solicitações/mês.
-- Crescimento: R$ 129/mês, até 3 usuários, 500 solicitações/mês e automações operacionais.
-- Pro: R$ 199/mês, até 10 usuários, 5.000 solicitações/mês em política de uso justo.
-- Trial: sete dias por organização, uma única vez.
+- Essencial: **R$ 59,90/mês**, 1 usuário (preço mensal regular verificado no catálogo Stripe em 12/10/2026).
+- Crescimento: **R$ 129,00/mês**, até 3 usuários (preço mensal regular).
+- Pro: **R$ 199,00/mês**, até 10 usuários (preço mensal regular).
+- A oferta **Founders**, quando o Hub confirmar elegibilidade, aplica os cupons Stripe oficiais por até 12 meses: **Essencial R$ 49,90**, **Crescimento R$ 109,90**, **Pro R$ 169,90**. Não é um preço regular novo: é desconto sobre cada assinatura aprovada. Não anunciar como disponível se a API do Hub não confirmar a janela e as vagas.
+- Metadados do produto no Stripe: 150 / 500 / 1.500 créditos de IA mensais (Essencial / Crescimento / Pro). Os limites efetivos e a política de cobrança dependem do Hub/NestAI e precisam de teste autenticado.
+- Trial sem cartão: sete dias, **se o Hub retornar a oferta elegível e a ativação concluir**. Não confundir com trial da assinatura Stripe; conversão paga é separada.
 
 A cobrança da mensalidade usa Stripe Checkout e Customer Portal do Hub MillionsNest.
 
