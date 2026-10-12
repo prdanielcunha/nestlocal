@@ -315,7 +315,7 @@ async function api(path,opt={}){
   const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
   if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
      !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
-  if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
+  if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
     if(!S.directGoogleToken)throw Error('AUTH_REQUIRED'); // Never fall back to a different account's cookie.
   }
   const {timeoutMs=15000,...request}=opt,form=request.body instanceof FormData,controller=new AbortController(),timer=setTimeout(()=>controller.abort(),timeoutMs);
@@ -354,7 +354,7 @@ Object.assign(D.pt,{startBusinessSignup:'Começar cadastro da minha empresa'});
 Object.assign(D.en,{startBusinessSignup:'Set up my business'});
 Object.assign(D.es,{startBusinessSignup:'Empezar el registro de mi negocio'});
 const sessionIssueText=code=>code==='USER_NOT_FOUND'?t('userNotFoundHelp'):t('sessionProblemHelp');
-function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261010-firebase-auth-config-v4</small><div class="recovery-actions">${S.error==='USER_NOT_FOUND'?'<a class="button primary login-button" href="https://www.millionsnest.com/checkout?app=nestlocal">'+esc(t('startBusinessSignup'))+'</a>':''}<button class="button ${S.error==='USER_NOT_FOUND'?'':'primary'} login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
+function sessionFailure(){const code=String(S.error||'SESSION_FAILED').replace(/[^A-Z0-9_-]/gi,'').slice(0,60),stage=String(window.__nestLocalAuthStage||'session').replace(/[^A-Z0-9_-]/gi,'').slice(0,40);return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<span class="eyebrow">NestLocal</span><h1>${t('sessionProblem')}</h1><p>${esc(sessionIssueText(S.error))}</p><small class="login-trust">Diagnóstico: ${esc(code)} · ${esc(stage)} · 20261012-radar-verticals-v1</small><div class="recovery-actions">${S.error==='USER_NOT_FOUND'?'<a class="button primary login-button" href="https://www.millionsnest.com/checkout?app=nestlocal">'+esc(t('startBusinessSignup'))+'</a>':''}<button class="button ${S.error==='USER_NOT_FOUND'?'':'primary'} login-button" id="retry-session">${t('retry')}</button><button class="button login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a></div>${lang()}</section></main>`}
 function noOrg(){return `<main class="login-shell"><section class="login-card auth-recovery">${brand()}<h1>${t('noOrg')}</h1><p>${t('noEligibleOrgHelp')}</p><button class="button primary login-button" id="switch-account">${t('switchAccount')}</button><a class="button login-button" href="https://www.millionsnest.com">${t('hub')}</a>${lang()}</section></main>`}
 const accessReasonText=reason=>reason==='SUBSCRIPTION_PAYMENT_REQUIRED'?t('accessPaymentRequired'):reason==='SUBSCRIPTION_NOT_FOUND'||reason==='SUBSCRIPTION_INACTIVE'?t('accessSubscriptionMissing'):reason==='ENTITLEMENT_INACTIVE'?t('accessEntitlementInactive'):reason==='MEMBER_APP_ACCESS_DISABLED'?t('accessMemberDisabled'):reason==='PERMISSION_DENIED'?t('accessPermissionDenied'):reason==='MEMBERSHIP_NOT_FOUND'||reason==='MEMBERSHIP_INACTIVE'?t('accessMembershipMissing'):t('noEligibleOrgHelp');
 Object.assign(D.pt,{checkPlanPrice:'Preço final e ofertas exibidos no checkout seguro'});
@@ -1034,7 +1034,7 @@ function render(){
     root.innerHTML=sessionFailure();
   }
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
-  document.documentElement.dataset.nlBuild='20261010-firebase-auth-config-v4';
+  document.documentElement.dataset.nlBuild='20261012-radar-verticals-v1';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
   if(S.data?.entitlement?.readOnly===true){
     const captureButton=document.querySelector('.opportunity-fab');
@@ -1132,7 +1132,7 @@ async function loadTracking(){try{S.tracking=await api(`/api/public/requests/${e
 async function loadReview(){try{S.reviewPublic=await api(`/api/public/reviews/${encodeURIComponent(pathParts()[1])}?token=${encodeURIComponent(new URLSearchParams(location.search).get('token')||'')}`)}catch(e){S.error=e.message}S.loading=false;render()}
 async function resumeDirectGoogle(){
   try{
-    const {restoreDirectIdentity}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');
+    const {restoreDirectIdentity}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');
     const token=await withTimeout(restoreDirectIdentity(),9500,'GOOGLE_RESTORE_TIMEOUT');
     S.directGoogleToken=token||'';
     S.directGoogleSession=Boolean(token);
@@ -1145,7 +1145,7 @@ async function resumeDirectGoogle(){
 async function beginGoogleLogin(selectAccount=false){
   S.error='';setAuthStage('google_popup');
   storageSet(localStorage,'nl_direct_google','yes');
-  const {signInDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');
+  const {signInDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');
   const token=await signInDirectGoogle(selectAccount);
   if(!token)return; // Redirect fallback is in progress.
   S.sessionToken='';storageRemove(sessionStorage,'nl_session_token');
@@ -1155,7 +1155,7 @@ async function beginGoogleLogin(selectAccount=false){
 }
 async function switchGoogleAccount(){
   try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}
-  try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');await signOutDirectGoogle()}catch{}
+  try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}
   S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
   storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
   storageRemove(localStorage,'nl_direct_google');
@@ -1399,7 +1399,7 @@ function bind(){
     try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261010-firebase-auth-config-v4');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
