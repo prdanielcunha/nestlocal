@@ -1709,7 +1709,8 @@ app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply',authent
     const services=servicePlaybooks[template].services,refs=services.map(service=>db.doc(`${root}/nestlocal_services/${service.id}`)),existing=await db.getAll(...refs),missing=services.map((service,index)=>({service,ref:refs[index],exists:existing[index]?.exists===true})).filter(x=>!x.exists);
     if(!missing.length)return res.json({ok:true,template,addedCount:0,skippedCount:services.length});
     const batch=db.batch();for(const item of missing)batch.create(item.ref,{...item.service,published:false,addedFromPlaybook:template,createdAt:admin.firestore.FieldValue.serverTimestamp()});
-    batch.set(settingsRef,{published:false,lastPlaybookApplied:template,lastPlaybookAppliedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    // New services remain unpublished drafts; a live public catalog must not go offline.
+    batch.set(settingsRef,{lastPlaybookApplied:template,lastPlaybookAppliedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
     await batch.commit();res.status(201).json({ok:true,template,addedCount:missing.length,skippedCount:services.length-missing.length,warning:'REVIEW_CATALOG_BEFORE_PUBLISH'});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
