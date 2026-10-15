@@ -1321,7 +1321,7 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData?.draftSettings?{...settingsData,...settingsData.draftSettings}:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData?.draftSettings?{...settingsData,...settingsData.draftSettings}:settingsData,setupReadiness,canManageCatalog:canManageNestLocal(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -1797,6 +1797,7 @@ app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,
 });
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
   const updatingChannels=b.communicationMode!==undefined||b.contactEmail!==undefined||b.contactPhone!==undefined;
   if(updatingChannels){
@@ -1872,6 +1873,7 @@ app.put('/api/organizations/:orgId/nestlocal/payment-settings',authenticate,auth
 });
 
 app.put('/api/organizations/:orgId/nestlocal/capacity',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   const b=req.body||{},timezone=clean(b.timezone||'America/Sao_Paulo'),workingDays=Array.isArray(b.workingDays)?[...new Set(b.workingDays.map(Number))].sort((a,b)=>a-b):[],windows=Array.isArray(b.windows)?[...new Set(b.windows.map(x=>clean(x)))]:[];
   if(!validTimeZone(timezone)||!workingDays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)||!windows.every(x=>capacityWindows.has(x)))return sendError(res,400,'INVALID_CAPACITY');
   await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set({timezone,'capacity.workingDays':workingDays,'capacity.windows':windows,capacityUpdatedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
@@ -1879,6 +1881,7 @@ app.put('/api/organizations/:orgId/nestlocal/capacity',authenticate,authorize,as
 });
 
 app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   const b=req.body||{},id=slug(req.params.serviceId),returnAfterDays=Number(b.returnAfterDays||0);
   if(!id||!clean(b.name)||!['fixed','review'].includes(b.mode)||!Number.isInteger(returnAfterDays)||returnAfterDays<0||returnAfterDays>730)return sendError(res,400,'INVALID_SERVICE');
   const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays};
@@ -1888,6 +1891,7 @@ app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,a
 });
 
 app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   try{
     const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`),[settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);
     const active=settings.exists?settings.data():null,data=active?.draftSettings?{...active,...active.draftSettings}:active,list=services.docs.map(x=>{const service=x.data();return{id:x.id,...service,...(service.draft||{})}}),readiness=catalogReadiness(data,list);
