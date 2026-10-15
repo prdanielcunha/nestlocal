@@ -9,7 +9,7 @@ test('service return rule is explicit, bounded, and keeps published catalog onli
   for (const token of [
     "returnAfterDays=Number(b.returnAfterDays||0)",
     "returnAfterDays<0||returnAfterDays>730",
-    "const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays};",
+    "const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays,inclusions:clean(b.inclusions).slice(0,500),exclusions:clean(b.exclusions).slice(0,500)};",
     "draft:data,draftUpdatedAt:",
     "else{await ref.set({...data,published:false}",
   ]) assert.ok(server.includes(token), `missing ${token}`);
