@@ -23,6 +23,14 @@ export function scheduleRevisionAfterPatch(schedule={},patch={}){
  * This helper never creates an adjustment event for repeated identical writes.
  */
 export function completedAmountAdjustment(record,patch={}){
+  if(record?.status==='completed'&&!record?.completionRecordedAt&&patch.finalAmountCents!==undefined){
+    const original=record.commercial?.finalAmountCents??record.quote?.totalCents;
+    // No completion marker means legacy revenue recognition is unverified.
+    // Equal-value edits remain compatible; actual corrections require review.
+    if(original==null||!Number.isSafeInteger(Number(original))||
+       Number(patch.finalAmountCents)!==Number(original))
+      throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
+  }
   if(record?.status!=='completed'||!record?.completionRecordedAt||patch.finalAmountCents===undefined)
     return {changed:false,deltaCents:0,oldAmountCents:null,newAmountCents:null};
   const oldValue=record.commercial?.finalAmountCents??record.quote?.totalCents;
