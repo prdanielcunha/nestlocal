@@ -134,3 +134,16 @@ test('C08: payment ledger is operator-entered and audited only after transaction
  assert.match(block,/nextPayment==='cancelled'&&nextPaid!==0/);
  assert.match(block,/FINANCIAL_RECONCILIATION_REQUIRED/);
 });
+
+test('C21: field workers can complete jobs but cannot change financial amounts without explicit capability',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const live=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(server,/canManageNestLocalFinance=access=>canManageNestLocal\(access\)/);
+ assert.match(server,/permissions\?\.financeWrite===true/);
+ assert.match(server,/financialEdit&&!canManageNestLocalFinance\(req\.access\)/);
+ assert.match(server,/FINANCE_ACCESS_DENIED'\)return sendError\(res,403/);
+ assert.match(live,/canManageFinance===false/);
+ assert.match(live,/S\.data\?\.canManageFinance!==false\)Object\.assign\(payload/);
+ assert.match(live,/data-payment-history=/);
+ assert.match(server,/gatewayVerified:false/);
+});
