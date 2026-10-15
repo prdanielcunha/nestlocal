@@ -28,7 +28,7 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | C16 | P2 | Preservação iniciada pelo formulário público | Unificar controle de rascunho/foco nas demais telas |
 | C17 | P2 | **Parcial**: opções avançadas de modelos de mensagem recolhíveis, sem bloquear o uso manual | Reorganizar módulos de configuração em áreas e testar mobile |
 | C18 | P2 | Pedido interno usa perguntas/quantidade/qualificadores do catálogo compartilhado com público | Testar playbooks e validade de schema histórico |
-| C19 | P2 | **Parcial**: prévia de importação por linha, contagem de novos/atualizações/duplicados e confirmação explícita | Falta mesclagem auditada de identidades multicanal e importação de equipamentos/locais |
+| C19 | P2 | **Parcial**: prévia por linha, comparação de criação/atualização, versão `updatedAt` e gravação transacional com auditoria sem contatos | Falta mesclagem auditada de identidades multicanal, importação de equipamentos/locais e homologação concorrente em Firestore |
 | C20 | P2 | **Pendente** | Política de backups reais e ensaio de restauração em ambiente isolado |
 | C21 | P2 | **Parcial**: gestão de configurações/capacidade/catálogo/publicação restrita no servidor a administrador/proprietário; UI sinaliza permissão | Requer matriz granular de atendimento/campo/financeiro/consulta e testes negativos completos |
 
@@ -76,3 +76,12 @@ Não declarar push real em segundo plano, envio oficial pelo Connect, sincroniza
 3. Executar migração compatível e reversível de histórico de catálogo/orçamento e testar rollback.
 4. Concluir notificações duráveis, transporte Connect, governança NestAI e RBAC antes de liberar os respectivos módulos.
 5. Rodar regressão completa, autenticação Google/Hub, verificação cruzada de organizações, testes mobile e restauração isolada.
+
+## Continuação da execução em 15/10/2026 — revisão incremental
+
+- **C02:** priorização de Hoje passou a consultar separadamente estágios operacionais, reunindo também clientes com retorno vencido; sinaliza quando existem mais resultados ou uma consulta falhou. Continua exigindo carga com histórico acima de 100 e validação de volume/custo.
+- **C04/C05:** cálculo de prontidão reflete as configurações em rascunho e inclusões/exclusões são preservadas para serviços de preço fixo **e** sob avaliação.
+- **C19:** confirmação de importação verifica na mesma transação o estado e a versão `updatedAt` mostrados ao operador; divergência retorna `CUSTOMER_IMPORT_PREVIEW_STALE` (409), sem importar parcialmente. Auditoria registra contagens, não nomes ou telefones.
+- **Testes:** regressões adicionais para prioridades por estágio, prontidão de rascunhos e importação transacional; o trabalho continua no PR em rascunho, sem promoção para as branches públicas.
+
+**Riscos ainda bloqueadores:** C02 não certificado com dados sintéticos acima de 100 registros; C08 carece de casos reais de conciliação; C13–C14 dependem de configuração e execução autenticada de push/Connect; C20 carece de backup/restauração ensaiada; C21 não tem papéis finos completos. O conjunto de mudanças não equivale às seis etapas concluídas.
