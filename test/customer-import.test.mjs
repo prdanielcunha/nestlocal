@@ -20,3 +20,15 @@ test('customer import UI parses Sheets-style rows and supports Brazilian dates',
   for(const token of ['function parseCustomerBatch(text)','const importDate=','customerBatchText','customerBatchImport','customerImportPlaceholder']) assert.ok(client.includes(token),`missing ${token}`);
   assert.ok(client.includes("m[3]}-"));
 });
+
+test('C19: customer import preflight is checked again before writing and audit event contains no contact data',()=>{
+  const server=read('../server.mjs'),ui=read('../web/live.js');
+  const begin=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview'");
+  const end=server.indexOf("app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-plan'",begin);
+  const route=server.slice(begin,end);
+  assert.match(route,/customerKey:row\.id/);
+  assert.match(route,/CUSTOMER_IMPORT_PREVIEW_STALE/);
+  assert.match(route,/prediction\.customerKey!==prepared\[i\]\.id/);
+  assert.match(route,/customers\.batch_import/);
+  assert.match(ui,/preflightRows:S\.customerBatchPreview\.rows/);
+});
