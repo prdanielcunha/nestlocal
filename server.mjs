@@ -1743,7 +1743,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authentic
     const root=`organizations/${req.access.orgId}`,docs=valid.length?await db.getAll(...valid.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`))):[];
     for(let i=0;i<valid.length;i++){
       const row=valid[i],state=docs[i]?.exists?'update':'create';
-      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,customerKey:row.id,status:state});
+      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,customerKey:row.id,status:state,recordVersion:docs[i]?.data()?.updatedAt?.toMillis?.()||0});
     }
     results.sort((a,b)=>a.index-b.index);
     const counts={create:0,update:0,invalid:0,duplicate:0};
@@ -1779,7 +1779,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
         if(expectedByIndex.size!==prepared.length)throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
         for(let i=0;i<prepared.length;i++){
           const prediction=expectedByIndex.get(prepared[i].index),state=existing[i]?.exists?'update':'create';
-          if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state)
+          if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state||Number(prediction.recordVersion||0)!==(existing[i]?.data()?.updatedAt?.toMillis?.()||0))
             throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
         }
       }
