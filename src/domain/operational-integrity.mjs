@@ -27,7 +27,7 @@ export function completedAmountAdjustment(record,patch={}){
     return {changed:false,deltaCents:0,oldAmountCents:null,newAmountCents:null};
   const oldValue=record.commercial?.finalAmountCents??record.quote?.totalCents;
   const oldAmountCents=Number(oldValue),newAmountCents=Number(patch.finalAmountCents);
-  if(!Number.isSafeInteger(oldAmountCents)||oldAmountCents<0||
+  if(oldValue==null||!Number.isSafeInteger(oldAmountCents)||oldAmountCents<0||
      !Number.isSafeInteger(newAmountCents)||newAmountCents<0||newAmountCents>100000000)
     throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
   return {changed:oldAmountCents!==newAmountCents,deltaCents:newAmountCents-oldAmountCents,oldAmountCents,newAmountCents};
