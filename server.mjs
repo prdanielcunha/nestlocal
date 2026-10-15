@@ -2437,20 +2437,6 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.finalAmountCents!==undefined){
         const value=Number(b.finalAmountCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.finalAmountCents']=value;
       }
-      if(paymentCorrection.changed){
-        update['commercial.paymentRevision']=paymentCorrection.revision;
-        // Audit is a manually entered cash record, not confirmation of a gateway payment.
-        const paymentEvent=db.collection(`organizations/${req.access.orgId}/nestlocal_payment_events`).doc();
-        tx.create(paymentEvent,{requestId,actorUid:req.identity.uid,
-          kind:'manual_payment_adjustment',
-          oldAmountCents:paymentCorrection.oldAmountCents,
-          newAmountCents:paymentCorrection.newAmountCents,
-          deltaCents:paymentCorrection.deltaCents,
-          previousStatus:paymentCorrection.oldStatus,
-          nextStatus:paymentCorrection.newStatus,
-          revision:paymentCorrection.revision,
-          source:'operator_entry',createdAt:admin.firestore.FieldValue.serverTimestamp()});
-      }
       if(b.amountPaidCents!==undefined){
         const value=Number(b.amountPaidCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.amountPaidCents']=value;
       }
@@ -2515,6 +2501,20 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(oldSlotRef&&oldSlot?.exists&&oldSlot.data()?.requestId===requestId)tx.delete(oldSlotRef);
       if(!shouldHoldSlot&&currentSlotId)update['schedule.slotId']=admin.firestore.FieldValue.delete();
 
+      if(paymentCorrection.changed){
+        update['commercial.paymentRevision']=paymentCorrection.revision;
+        // Audit is a manually entered cash record, not confirmation of a gateway payment.
+        const paymentEvent=db.collection(`organizations/${req.access.orgId}/nestlocal_payment_events`).doc();
+        tx.create(paymentEvent,{requestId,actorUid:req.identity.uid,
+          kind:'manual_payment_adjustment',
+          oldAmountCents:paymentCorrection.oldAmountCents,
+          newAmountCents:paymentCorrection.newAmountCents,
+          deltaCents:paymentCorrection.deltaCents,
+          previousStatus:paymentCorrection.oldStatus,
+          nextStatus:paymentCorrection.newStatus,
+          revision:paymentCorrection.revision,
+          source:'operator_entry',createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      }
       if(completedNow){
         const finalAmount=Number.isSafeInteger(Number(b.finalAmountCents))?Number(b.finalAmountCents):Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0);
         update.completionRecordedAt=admin.firestore.FieldValue.serverTimestamp();
