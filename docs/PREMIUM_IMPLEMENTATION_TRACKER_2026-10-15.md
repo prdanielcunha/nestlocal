@@ -11,26 +11,26 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | ID | Prioridade | Implementação na branch | Próximo portão de aceitação |
 |---|---|---|---|
 | C01 | P0 | Submit explícito, estado recuperável e erro persistente nos dois formulários | E2E autenticado com falha de rede, teclado e confirmação em banco |
-| C02 | P0 | Totais reais, filtro por status/paginação, leitura de pedidos antigos, agenda por reservas com paginação e prioridade por status + vencimentos | Validar com >100 pedidos/clientes, agenda histórica sem slots e prioritização completa em concorrência |
+| C02 | P0 | Contagens reais, filtro/paginação, prioridades por situação, agenda com reservas + pedidos antigos sem slot, acesso a históricos e testes sintéticos >100 | Testar Firestore real, índices, concorrência, custo e dados legados de clientes |
 | C03 | P1 | Rascunho público preservado ao trocar serviço; fotos retidas também com fallback móvel | E2E em iOS/Android, arquivos interrompidos e retentativa |
 | C04 | P1 | Alterações em catálogo/configuração viram rascunho; publicação transacional | Teste real de edição e publish sem interrupção, concorrência e rollback |
 | C05 | P1 | Inclusões/exclusões e título editáveis; escopo de serviço sob revisão protegido | Conferir serviços com modo review, campos legados e publicação de versões |
 | C06 | P1 | Validade configurável, bloqueio de aprovação vencida na API pública e interna, comparação de versão e snapshots imutáveis das revisões manuais | Testar expiração concorrente, renovação, histórico legado e frontend em cache |
 | C07 | P1 | Revisão do compromisso incrementa, confirmação antiga é arquivada e link antigo não confirma versão nova | E2E de reagendamento e múltiplos dispositivos |
-| C08 | P1 | **Parcial**: ajuste por diferença de serviço concluído, agregados reconciliados quando conhecidos, auditoria imutável e erro seguro para legado inconsistente | Falta fluxo de estorno/parcela, reconciliação histórica, teste integrado Firebase e separação explícita caixa vs. execução |
+| C08 | P1 | **Parcial**: correção do valor concluído por diferença, trilha de ajustes de caixa manuais com revisão idempotente, histórico protegido por administrador e bloqueio do legado inconsistente | Teste integrado financeiro, reconciliação histórica, parcelas/estornos de provedor e comprovante de pagamento real |
 | C09 | P1 | Identificador por intenção de cadastro e retentativa idempotente da criação manual | Simulação de concorrência e perda de resposta HTTP |
 | C10 | P1 | `growth` permanece plano e `navRadar` é rótulo independente PT/EN/ES | E2E das 3 línguas |
 | C11 | P1 | Workflow de produção observa `src/nestai.mjs` | Verificar ação somente para alteração do adaptador |
 | C12 | P1 | **Parcial**: atualização ao retomar a tela Hoje e indicador de frescor/atualização manual, com proteção contra foco em formulário | Testar edição concorrente, defasagem por módulo e custo de consultas |
 | C13 | P1 | **Pendente** | Push real com app fechado, permissões e aparelhos físicos |
-| C14 | P1 | **Pendente** | Transporte Connect validado, recibos `sent/delivered` e fallback manual |
+| C14 | P1 | **Parcial**: outbox não dispara; API/UI agora declaram explicitamente mensagens apenas preparadas, sem custo ou confirmação de entrega; contrato atual do Connect é validation-only | Connect com boundary de despacho oficial, provider autorizado, política de custos, assinaturas de webhooks e recibos sent/delivered |
 | C15 | P2 | Erros públicos distintos e recuperáveis, região viva e falhas persistentes nos formulários críticos | Leitor de tela, foco/teclado, textos de erro em todos os fluxos |
 | C16 | P2 | Preservação iniciada pelo formulário público | Unificar controle de rascunho/foco nas demais telas |
 | C17 | P2 | **Parcial**: opções avançadas de modelos de mensagem recolhíveis, sem bloquear o uso manual | Reorganizar módulos de configuração em áreas e testar mobile |
 | C18 | P2 | Pedido interno usa perguntas/quantidade/qualificadores do catálogo compartilhado com público | Testar playbooks e validade de schema histórico |
 | C19 | P2 | **Parcial**: prévia por linha, comparação de criação/atualização, versão `updatedAt` e gravação transacional com auditoria sem contatos | Falta mesclagem auditada de identidades multicanal, importação de equipamentos/locais e homologação concorrente em Firestore |
-| C20 | P2 | **Pendente** | Política de backups reais e ensaio de restauração em ambiente isolado |
-| C21 | P2 | **Parcial**: gestão de configurações/capacidade/catálogo/publicação restrita no servidor a administrador/proprietário; UI sinaliza permissão | Requer matriz granular de atendimento/campo/financeiro/consulta e testes negativos completos |
+| C20 | P2 | **Parcial**: manifesto read-only de contagens e assinaturas HMAC, comparação obrigatoriamente entre projetos distintos, testes sintéticos e runbook | Backup real, retenção, IAM e restauração isolada ensaiada ainda não executados |
+| C21 | P2 | **Parcial**: catálogo restrito a admin/owner; nova capacidade financeWrite limita alterações monetárias; profissionais podem concluir trabalho sem editar valores; histórico financeiro protegido | Perfis granulares completos de atendimento/campo/financeiro/consulta, papéis no Hub e matriz negativa multiempresa |
 
 **Correção adicional:** a criação pública de pedido referenciava `sourceDraftId` não definido; removida a referência no fluxo público.
 
@@ -85,3 +85,14 @@ Não declarar push real em segundo plano, envio oficial pelo Connect, sincroniza
 - **Testes:** regressões adicionais para prioridades por estágio, prontidão de rascunhos e importação transacional; o trabalho continua no PR em rascunho, sem promoção para as branches públicas.
 
 **Riscos ainda bloqueadores:** C02 não certificado com dados sintéticos acima de 100 registros; C08 carece de casos reais de conciliação; C13–C14 dependem de configuração e execução autenticada de push/Connect; C20 carece de backup/restauração ensaiada; C21 não tem papéis finos completos. O conjunto de mudanças não equivale às seis etapas concluídas.
+
+## Continuação — rodada adicional (15/10/2026)
+
+- **C08:** eventos manuais de pagamento agora são gravados dentro do pedido, em transação Firestore e com revisão crescente; a interface administrativa apresenta diferenças e informa que não há comprovação bancária. Correções de valor executado permanecem separadas de ajustes de valores efetivamente recebidos.
+- **C21:** a nova permissão explícita `appAccess.nestlocal.permissions.financeWrite=true` permite delegar alterações monetárias sem abrir o catálogo; administradores e proprietários mantêm a permissão. O frontend evita enviar mudanças financeiras por profissionais sem esse direito, e a API revalida.
+- **C02:** agenda mescla reservas e pedidos históricos agendados, incluindo casos anteriores à criação da coleção de slots. Botão de continuidade pagina as duas origens.
+- **C14:** verificado no [contrato de saída do Connect](https://github.com/prdanielcunha/millionsnest-connect/blob/production/docs/OUTBOUND_DELIVERY_CONTRACT.md) que a boundary permanece validation-only e a política bloqueia custo. O NestLocal não vai simular entrega nem cobrar por envio inexistente.
+- **C20:** [manual de recuperação](./NESTLOCAL_BACKUP_RECOVERY_RUNBOOK_2026-10-15.md), CLI `scripts/nestlocal-recovery-manifest.mjs` e testes para detectar diferenças em restaurações isoladas. Não há backup real executado nem declaração de RPO/RTO.
+- **Validação:** confiar exclusivamente nos workflows do último SHA do PR. Uma revisão antiga aprovada não libera mudanças mais recentes. Até comprovar testes end-to-end autenticados e restauração, o PR permanece rascunho.
+
+**Bloqueios externos concretos:** envio Connect real exige capacidade/provedor e política comercial deliberada, notificações push persistentes precisam da infraestrutura e testes em aparelhos com o app fechado, e o backup/restore real requer acesso GCP + destino isolado. Não ativar pagamento, WhatsApp ou migração a partir de testes sintéticos.
