@@ -88,7 +88,7 @@ test('C02: operational priorities query every actionable status independently an
  assert.match(live,/await Promise\.allSettled\(statuses\.map/);
  assert.match(live,/S\.data\.priorityRequests=/);
  assert.match(live,/S\.data\.priorityHasMore=/);
- assert.match(live,/for\(const c of S\.data\.dueCustomers\|\|\[\]\)/);
+ assert.match(live,/mergeOperationalRows\(S\.data\.customers,S\.data\.dueCustomers\)/);
  assert.match(server,/dueCustomers:dueRows/);
  assert.match(server,/dueCustomersHasMore:/);
 });
