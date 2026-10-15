@@ -33,7 +33,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,dataLoadSequence:0,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -1164,17 +1164,17 @@ function render(){
   }
 }
 
-const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'];
-async function loadOperationalPriorities({append=false}={}){
-  if(!S.orgId||!S.data)return;
-  const org=S.orgId,previous=append?(S.data.priorityPages||{}):{},pageSize=25;
+const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quo
+async function loadOperationalPriorities({append=false,targetData=S.data,orgId=S.orgId}={}){
+  if(!orgId||!targetData)return;
+  const previous=append?(targetData.priorityPages||{}):{},pageSize=25;
   const statuses=priorityStatusOptions.filter(status=>!append||previous[status]?.hasMore===true);
   const values=await Promise.allSettled(statuses.map(status=>{
     const cursor=append?previous[status]?.nextCursor:'';
     const query=`?limit=${pageSize}&status=${encodeURIComponent(status)}${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`;
-    return api(`/api/organizations/${encodeURIComponent(org)}/nestlocal/lists/requests/page${query}`,{timeoutMs:7500});
+    return api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/lists/requests/page${query}`,{timeoutMs:7500});
   }));
-  if(org!==S.orgId||!S.data)return;
+  if(orgId!==S.orgId)return;
   const pages={...previous},errors=[];
   for(let i=0;i<statuses.length;i++){
     const status=statuses[i],result=values[i];
@@ -1182,25 +1182,55 @@ async function loadOperationalPriorities({append=false}={}){
     const page=result.value,already=append?(pages[status]?.items||[]):[],seen=new Set(already.map(x=>x.id));
     pages[status]={...page,items:[...already,...(page.items||[]).filter(row=>!seen.has(row.id))]};
   }
-  S.data.priorityPages=pages;
-  S.data.priorityRequests=Object.values(pages).flatMap(page=>page.items||[]);
-  S.data.priorityHasMore=Object.values(pages).some(page=>page.hasMore===true);
-  S.data.priorityLoadError=errors.length?errors.join(','):'';
+  targetData.priorityPages=pages;
+  targetData.priorityRequests=Object.values(pages).flatMap(page=>page.items||[]);
+  targetData.priorityHasMore=Object.values(pages).some(page=>page.hasMore===true);
+  targetData.priorityLoadError=errors.length?errors.join(','):'';
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});const priorityLoad=loadOperationalPriorities();
-  if(S.requestListFilter!=='all'){
-    try{S.requestList=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/lists/requests/page?status=${encodeURIComponent(S.requestListFilter)}&limit=50`,{timeoutMs:6500})}
-    catch(error){S.requestList=null;S.requestListFilter='all'}
+async function loadData(){
+  setAuthStage('operation_data');
+  const orgId=S.orgId,run=++S.dataLoadSequence;
+  const data=await api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal`,{timeoutMs:12000});
+  if(orgId!==S.orgId||run!==S.dataLoadSequence)return;
+  const path=`/api/organizations/${encodeURIComponent(orgId)}/nestlocal`,
+    filter=S.requestListFilter,
+    opt={timeoutMs:6500};
+  // Secondary areas never block the principal operational response, and old
+  // requests can never commit data into a subsequently selected organization.
+  const priorityLoad=loadOperationalPriorities({targetData:data,orgId});
+  const [filtered,drafts,tasks,agenda,permissions,feedback,feed]=await Promise.all([
+    filter!=='all'?api(`${path}/lists/requests/page?status=${encodeURIComponent(filter)}&limit=50`,opt).catch(()=>null):Promise.resolve(null),
+    data.features?.opportunityDrafts===true?api(`${path}/opportunity-drafts`,{timeoutMs:6000}).catch(error=>({loadError:String(error?.message||'ERROR')})):Promise.resolve(null),
+    data.features?.opportunityDrafts===true?api(`${path}/action-tasks`,{timeoutMs:6000}).catch(error=>({loadError:String(error?.message||'ERROR')})):Promise.resolve(null),
+    api(`${path}/agenda/page?limit=50`,{timeoutMs:7500}).catch(error=>({loadError:String(error?.message||'AGENDA_UNAVAILABLE')})),
+    api(`${path}/privacy/permissions`,{timeoutMs:4000}).catch(()=>null),
+    api(`${path}/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]})),
+    api(`${path}/calendar/feed/status`,{timeoutMs:4000}).catch(()=>null)
+  ]);
+  await priorityLoad;
+  // Priorities are started independently and joined before committing state.
+  if(orgId!==S.orgId||run!==S.dataLoadSequence)return;
+  if(data.features?.opportunityDrafts===true){
+    data.opportunityDrafts=Array.isArray(drafts?.items)?drafts.items:[];
+    data.actionTasks=Array.isArray(tasks?.items)?tasks.items:[];
+    if(drafts?.loadError)data.draftLoadError=drafts.loadError;
+    if(tasks?.loadError)data.tasksLoadError=tasks.loadError;
   }
-  if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
-    try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
-    catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
-  }try{const appointments=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/agenda/page?limit=50`,{timeoutMs:7500});
-    S.data.agendaRequests=Array.isArray(appointments.items)?appointments.items:[];
-    S.data.agendaHasMore=appointments.hasMore===true;S.data.agendaCursor=appointments.nextCursor||'';
-    S.data.agendaTotalSlots=appointments.totalSlots||0;S.data.agendaLoadError='';
-  }catch(error){S.data.agendaRequests=[];S.data.agendaHasMore=false;S.data.agendaLoadError=String(error?.message||'AGENDA_UNAVAILABLE')}
-  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';await priorityLoad;S.operationalLoadedAt=Date.now();checkTaskNotifications();}
+  data.agendaRequests=Array.isArray(agenda?.items)?agenda.items:[];
+  data.agendaHasMore=agenda?.hasMore===true;
+  data.agendaCursor=agenda?.nextCursor||'';
+  data.agendaTotalSlots=agenda?.totalSlots||0;
+  data.agendaLoadError=agenda?.loadError||'';
+  if(filter!=='all'){
+    if(filtered)S.requestList=filtered;
+    else{S.requestList=null;S.requestListFilter='all'}
+  }
+  S.data=data;S.privacyPermissions=permissions;
+  S.pulseFeedback=Array.isArray(feedback?.items)?feedback.items:[];
+  S.calendarFeedActive=feed?.active===true;S.calendarFeedUrl='';
+  S.operationalLoadedAt=Date.now();checkTaskNotifications();
+}
+kNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
