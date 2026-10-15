@@ -1164,7 +1164,7 @@ function render(){
   }
 }
 
-const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quo
+const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'];
 async function loadOperationalPriorities({append=false,targetData=S.data,orgId=S.orgId}={}){
   if(!orgId||!targetData)return;
   const previous=append?(targetData.priorityPages||{}):{},pageSize=25;
@@ -1230,7 +1230,6 @@ async function loadData(){
   S.calendarFeedActive=feed?.active===true;S.calendarFeedUrl='';
   S.operationalLoadedAt=Date.now();checkTaskNotifications();
 }
-kNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
