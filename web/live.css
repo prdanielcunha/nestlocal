@@ -109,3 +109,20 @@
 /* Local notifications are user activated and remain honest about background limits. */
 .is-opportunity-v2 [data-enable-task-alerts]{min-height:42px;margin:8px 0 4px}
 .is-opportunity-v2 .followup-tasks>.help{margin-top:6px}
+
+/* Clear, restrained operational feedback on narrow screens and desktop. */
+.settings-advanced{border:1px solid rgba(167,228,197,.18);border-radius:14px;padding:10px 14px;background:rgba(255,255,255,.025)}
+.settings-advanced>summary{list-style:none;display:flex;flex-direction:column;gap:5px;cursor:pointer;padding:5px 0;min-height:44px;justify-content:center}
+.settings-advanced>summary::-webkit-details-marker{display:none}
+.settings-advanced>summary strong{color:#eafff0;font-weight:650}
+.settings-advanced>summary small{color:#a3bdb0;line-height:1.4}
+.settings-advanced[open]>summary{margin-bottom:12px}
+.settings-advanced:focus-within,.customer-import-preview:focus-within{outline:2px solid rgba(139,241,190,.65);outline-offset:3px}
+.form-error{border:1px solid rgba(250,160,153,.45);border-radius:12px;background:rgba(120,32,30,.12);padding:12px 14px;color:#ffe4dc;line-height:1.5}
+.operational-freshness{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:#a9c1b5;font-size:13px}
+.operational-freshness .button{min-height:40px}
+.customer-import-preview{border:1px solid rgba(154,217,181,.25);border-radius:14px;padding:16px;background:rgba(130,208,160,.035)}
+.customer-import-preview h3{margin:0 0 10px;font-size:15px}
+.customer-import-preview p{font-size:13px;line-height:1.5}
+.customer-import-preview ul{margin:10px 0 0;padding-left:18px;max-height:240px;overflow:auto;font-size:12px;line-height:1.7}
+@media(max-width:640px){.settings-advanced{padding:10px 12px}.operational-freshness .button{min-width:92px}.customer-import-preview{padding:12px}}
