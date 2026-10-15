@@ -6,7 +6,7 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
-import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch } from './src/domain/operational-integrity.mjs';
+import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment } from './src/domain/operational-integrity.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -2290,7 +2290,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     let response={ok:true};
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
-      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b);
       if(b.status!==undefined){
         const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');
         update.status=status;
@@ -2356,17 +2356,19 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         slotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${nextSlotId}`);
       }
       if(currentSlotId&&currentSlotId!==nextSlotId)oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`);
-      if(completedNow&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
+      if((completedNow||financialCorrection.changed)&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
       if(completedNow&&serviceId)serviceRef=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${serviceId}`);
       if(completedNow)settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);
+      const assistedEventRef=financialCorrection.changed&&current.attribution?.assisted===true?db.doc(`organizations/${req.access.orgId}/nestlocal_revenue_events/${requestId}`):null;
 
-      const [member,slot,oldSlot,customer,service,settings]=await Promise.all([
+      const [member,slot,oldSlot,customer,service,settings,assistedEvent]=await Promise.all([
         memberRef?tx.get(memberRef):Promise.resolve(null),
         slotRef?tx.get(slotRef):Promise.resolve(null),
         oldSlotRef?tx.get(oldSlotRef):Promise.resolve(null),
         customerRef?tx.get(customerRef):Promise.resolve(null),
         serviceRef?tx.get(serviceRef):Promise.resolve(null),
-        settingsRef?tx.get(settingsRef):Promise.resolve(null)
+        settingsRef?tx.get(settingsRef):Promise.resolve(null),
+        assistedEventRef?tx.get(assistedEventRef):Promise.resolve(null)
       ]);
 
       if(memberRef&&(!member?.exists||inactive(member.data())||!(clean(member.data()?.role||member.data()?.organizationRole).toLowerCase()==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true)))throw new TypeError('INVALID_ASSIGNEE');
@@ -2398,7 +2400,29 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
           if(autoDate){update['return.nextServiceDate']=autoDate;update['return.reason']=nextServiceReason;update['return.source']='service_rule';update['return.ruleDays']=ruleDays}
           tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
-      } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
+      } else if(financialCorrection.changed){
+        // Correct executed-service value, not the amount actually received.
+        if(!customerId||!customer?.exists||(assistedEventRef&&!assistedEvent?.exists))
+          throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
+        const delta=financialCorrection.deltaCents,previous=Number(customer.data()?.lifetimeRevenueCents);
+        if(!Number.isSafeInteger(previous)||previous+delta<0)
+          throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
+        tx.update(customerRef,{lifetimeRevenueCents:admin.firestore.FieldValue.increment(delta),
+          updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+        if(assistedEventRef){
+          tx.update(assistedEventRef,{amountCents:financialCorrection.newAmountCents,
+            adjustedAt:admin.firestore.FieldValue.serverTimestamp()});
+          tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_metrics/revenue`),
+            {assistedRevenueCents:admin.firestore.FieldValue.increment(delta),
+             updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        }
+        const adjustmentRef=db.collection(`organizations/${req.access.orgId}/nestlocal_financial_adjustments`).doc();
+        tx.create(adjustmentRef,{requestId,customerId,actorUid:req.identity.uid,kind:'completed_amount_correction',
+          oldAmountCents:financialCorrection.oldAmountCents,
+          newAmountCents:financialCorrection.newAmountCents,
+          deltaCents:delta,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      }
+      if(!completedNow&&current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
         tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }
       tx.update(ref,update);response={ok:true,status:nextStatus};
@@ -2406,7 +2430,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
