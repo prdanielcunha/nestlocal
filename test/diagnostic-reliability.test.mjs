@@ -80,3 +80,22 @@ test('C06 C21: public decisions reject stale revisions and management routes che
    assert.match(server.slice(i,i+350),/if\(!canManageNestLocal\(req\.access\)\)return sendError\(res,403,'ACCESS_DENIED'\)/);
  }
 });
+
+test('C02: operational priorities query every actionable status independently and include due customers',()=>{
+ const live=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ assert.match(live,/priorityStatusOptions=\['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'\]/);
+ assert.match(live,/await Promise\.allSettled\(statuses\.map/);
+ assert.match(live,/S\.data\.priorityRequests=/);
+ assert.match(live,/S\.data\.priorityHasMore=/);
+ assert.match(live,/for\(const c of S\.data\.dueCustomers\|\|\[\]\)/);
+ assert.match(server,/dueCustomers:dueRows/);
+ assert.match(server,/dueCustomersHasMore:/);
+});
+
+test('C04/C05: catalog readiness accounts for draft changes and review services retain their scope',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ assert.match(server,/effectiveSettings=settingsData\?\.draftSettings\?/);
+ assert.match(server,/setupReadiness=catalogReadiness\(effectiveSettings,serviceRows\)/);
+ assert.match(server,/mode:b\.mode,returnAfterDays,inclusions:clean\(b\.inclusions\)/);
+});
