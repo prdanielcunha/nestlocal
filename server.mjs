@@ -2402,7 +2402,7 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,a
 
 // An explicitly authorized audit view; never treats operator entries as gateway receipts.
 app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/payment-events',authenticate,authorize,async(req,res)=>{
-  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+  if(!canManageNestLocalFinance(req.access))return sendError(res,403,'ACCESS_DENIED');
   const requestId=safeId(req.params.requestId);
   if(!requestId)return sendError(res,404,'REQUEST_NOT_FOUND');
   try{
