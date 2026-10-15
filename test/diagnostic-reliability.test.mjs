@@ -146,6 +146,9 @@ test('C21: field workers can complete jobs but cannot change financial amounts w
  assert.match(live,/S\.data\?\.canManageFinance!==false\)Object\.assign\(payload/);
  assert.match(live,/data-payment-history=/);
  assert.match(server,/gatewayVerified:false/);
+ const historyRoute=server.slice(server.indexOf("app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/payment-events'"),server.indexOf("app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId'"));
+ assert.match(historyRoute,/canManageNestLocalFinance\(req\.access\)/);
+ assert.match(live,/canManageFinance===true\?`<div class="payment-audit"/);
 });
 
 test('C14: official outbound remains unsent until Connect implements real dispatch',()=>{
