@@ -46,6 +46,9 @@ Object.assign(D.es,{pendingPublication:'Cambios pendientes de publicación'});
 Object.assign(D.pt,{publicUnavailable:'Serviço temporariamente indisponível',publicUnavailableHelp:'Não conseguimos carregar as informações agora. Tente novamente sem perder seu pedido.',tryAgain:'Tentar novamente'});
 Object.assign(D.en,{publicUnavailable:'Service temporarily unavailable',publicUnavailableHelp:'We could not load this page right now. Please try again.',tryAgain:'Try again'});
 Object.assign(D.es,{publicUnavailable:'Servicio temporalmente no disponible',publicUnavailableHelp:'No pudimos cargar esta página ahora. Inténtalo de nuevo.',tryAgain:'Reintentar'});
+Object.assign(D.pt,{agendaMore:'Mais compromissos',agendaIncomplete:'Agenda parcialmente carregada. Tente novamente.',agendaSlots:'Reservas na agenda'});
+Object.assign(D.en,{agendaMore:'More appointments',agendaIncomplete:'Schedule partially loaded. Please retry.',agendaSlots:'Scheduled reservations'});
+Object.assign(D.es,{agendaMore:'Más citas',agendaIncomplete:'Agenda cargada parcialmente. Vuelva a intentarlo.',agendaSlots:'Reservas en agenda'});
 Object.assign(D.pt,{loadMore:'Carregar mais'});
 Object.assign(D.en,{loadMore:'Load more'});
 Object.assign(D.es,{loadMore:'Cargar más'});
@@ -754,11 +757,13 @@ function customerCard(customer){
 function customerImportPanel(){return `<details class="card customer-import-card"><summary><div><span class="eyebrow">${t('customerImport')}</span><strong>${t('customerImportButton')}</strong><small>${t('customerImportHelp')}</small></div></summary><div class="customer-import-body"><textarea id="customerBatchText" rows="7" placeholder="${esc(t('customerImportPlaceholder'))}"></textarea><button class="button primary small" id="customerBatchImport" type="button">${t('customerImportButton')}</button></div></details>`}
 function customers(){const a=S.data.customers||[];return `<div class="page-stack">${customerImportPanel()}<article class="card"><div class="section-title"><h2>${t('customers')}</h2><span>${esc(S.data.customerCount??a.length)}</span></div><div class="customer-list">${a.length?a.map(customerCard).join(''):emptyAction('noCustomersTitle','noCustomersHelp','createRequest','requests')}</div>${S.data.customersHasMore?`<button type="button" class="button wide" data-load-list="customers">${t('loadMore')}</button>`:''}</article></div>`}
 function agenda(){
-  const intro=renderCalendarIntro({requests:S.data.requests||[],locale:S.lang,today:organizationDateIso(),esc,active:S.calendarFeedActive,hasLink:Boolean(S.calendarFeedUrl)});
-  const a=(S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)).sort((x,y)=>String(x.schedule?.date||'').localeCompare(String(y.schedule?.date||'')));
-  if(!a.length)return intro+`<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>0</span></div>${emptyAction('noAgendaTitle','noAgendaHelp','goToRequests','requests')}</article>`;
+  const combined=new Map((S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)).map(x=>[x.id,x]));for(const item of S.data.agendaRequests||[])combined.set(item.id,item);
+  const all=[...combined.values()];
+  const intro=renderCalendarIntro({requests:all,locale:S.lang,today:organizationDateIso(),esc,active:S.calendarFeedActive,hasLink:Boolean(S.calendarFeedUrl)});
+  const a=all.filter(x=>['scheduled','in_progress'].includes(x.status)).sort((x,y)=>String(x.schedule?.date||'').localeCompare(String(y.schedule?.date||'')));
+  if(!a.length)return intro+`<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>0</span></div>${S.data.agendaLoadError?`<p class="help" role="status">${t('agendaIncomplete')}</p>`:emptyAction('noAgendaTitle','noAgendaHelp','goToRequests','requests')}</article>`;
   const groups=new Map();for(const item of a){const key=item.schedule?.date||item.preference?.date||'—';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
-  return intro+`<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button><button type="button" class="button small" data-calendar-google="${esc(r.id)}">${cw(S.lang,'google')}</button><button type="button" class="button small" data-calendar-ics="${esc(r.id)}">${cw(S.lang,'file')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}</div>`;
+  return intro+`<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button><button type="button" class="button small" data-calendar-google="${esc(r.id)}">${cw(S.lang,'google')}</button><button type="button" class="button small" data-calendar-ics="${esc(r.id)}">${cw(S.lang,'file')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}${S.data.agendaHasMore?`<button type="button" class="button wide" data-load-agenda>${t('agendaMore')}</button>`:''}${S.data.agendaLoadError?`<p class="help" role="status">${t('agendaIncomplete')}</p>`:''}</div>`;
 }
 
 const trustStartCopy={
@@ -1106,7 +1111,12 @@ function render(){
 async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
     try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
     catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
-  }S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';checkTaskNotifications();}
+  }try{const appointments=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/agenda/page?limit=50`,{timeoutMs:7500});
+    S.data.agendaRequests=Array.isArray(appointments.items)?appointments.items:[];
+    S.data.agendaHasMore=appointments.hasMore===true;S.data.agendaCursor=appointments.nextCursor||'';
+    S.data.agendaTotalSlots=appointments.totalSlots||0;S.data.agendaLoadError='';
+  }catch(error){S.data.agendaRequests=[];S.data.agendaHasMore=false;S.data.agendaLoadError=String(error?.message||'AGENDA_UNAVAILABLE')}
+  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';checkTaskNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -1358,13 +1368,13 @@ function bind(){
   });
 
   document.querySelectorAll('[data-calendar-google]').forEach(b=>b.onclick=()=>{
-    const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarGoogle);
+    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[])].find(x=>x.id===b.dataset.calendarGoogle);
     if(!r)return;
     const url=makeGoogleCalendarUrl(r,calendarRequest(r));
     if(url)window.open(url,'_blank','noopener,noreferrer');
   });
   document.querySelectorAll('[data-calendar-ics]').forEach(b=>b.onclick=()=>{
-    const r=(S.data?.requests||[]).find(x=>x.id===b.dataset.calendarIcs);
+    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[])].find(x=>x.id===b.dataset.calendarIcs);
     if(r)calendarDownload(r);
   });
   document.querySelectorAll('[data-calendar-feed-create]').forEach(button=>button.onclick=async()=>{
@@ -1461,6 +1471,17 @@ function bind(){
   document.querySelector('#playbook-add')?.addEventListener('click',async e=>{const button=e.currentTarget,template=document.querySelector('#playbook-add-select')?.value||'general';button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/playbooks/${encodeURIComponent(template)}/apply`,{method:'POST',body:'{}'});await loadData();render();toast(result.addedCount?(`${result.addedCount} ${t('playbookAdded')}`):t('playbookAlreadyPresent'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#publish')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/publish`,{method:'POST',body:'{}'});await loadData();render();toast(t('published'))}catch(err){button.disabled=false;toast(err.message==='PUBLISH_NOT_READY'?t('publishBlocked'):err.message)}});
 
+  document.querySelectorAll('[data-load-agenda]').forEach(button=>button.onclick=async()=>{
+    if(!S.data?.agendaCursor)return;
+    button.disabled=true;
+    try{
+      const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/agenda/page?limit=50&cursor=${encodeURIComponent(S.data.agendaCursor)}`);
+      const current=S.data.agendaRequests||[],seen=new Set(current.map(r=>r.id));
+      S.data.agendaRequests=[...current,...(result.items||[]).filter(r=>!seen.has(r.id))];
+      S.data.agendaCursor=result.nextCursor||'';S.data.agendaHasMore=result.hasMore===true;
+      render();
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
   document.querySelectorAll('[data-load-list]').forEach(button=>button.onclick=async()=>{
     const kind=button.dataset.loadList;
     if(!['requests','customers'].includes(kind))return;
