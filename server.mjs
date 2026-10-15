@@ -2317,6 +2317,22 @@ app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/tracking-link'
   }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(['QUOTE_NOT_READY','TRACKING_LOCKED'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+// Authorized single-record read keeps older appointments actionable even when
+// their request is not in the dashboard's latest-page sample.
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
+  const id=safeId(req.params.requestId);
+  if(!id)return sendError(res,404,'REQUEST_NOT_FOUND');
+  try{
+    const snap=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${id}`).get();
+    if(!snap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const row={id:snap.id,...snap.data()};
+    delete row.trackingTokenHash;delete row.trackingTokenHashes;
+    delete row.reviewTokenHash;delete row.reviewTokenHashes;
+    res.set('Cache-Control','private, no-store');
+    return res.json({item:row});
+  }catch(error){console.error('NESTLOCAL_REQUEST_DETAIL_FAILED',error?.code||error?.name);return sendError(res,500,'REQUEST_UNAVAILABLE')}
+});
+
 app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),b=req.body||{};if(!requestId)return sendError(res,400,'INVALID_REQUEST');
