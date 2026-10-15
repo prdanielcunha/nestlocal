@@ -6,6 +6,7 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch } from './src/domain/operational-integrity.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -1172,11 +1173,11 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     // A customer may still track an old request after a trial expires, but
     // actions must not be advertised when writes are blocked.
     const storeEntitlement=await getPublicEntitlement(orgId);
-    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0&&!(d.quote?.expiresAt&&Date.parse(d.quote.expiresAt)<=Date.now()),scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0&&!(quoteHasExpired(d.quote?.expiresAt)),scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
       id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
-      schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
+      schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),revision:currentScheduleRevision(d.schedule)||1,customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
       payment:paymentVisible?{status:clean(d.commercial?.paymentStatus||'pending'),totalCents:displayTotalCents,paidCents,balanceCents,pix:pixVisible?{key:clean(pix.key),label:clean(pix.label),instructions:clean(pix.instructions)}:null}:null,
       warranty:completed&&clean(d.warranty?.until)?{until:clean(d.warranty.until),notes:clean(d.warranty?.notes)}:null,
       nextReturn:completed&&clean(d.return?.nextServiceDate)?{date:clean(d.return.nextServiceDate),reason:clean(d.return?.reason)}:null
@@ -1199,7 +1200,7 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
       }
       if(['scheduled','in_progress','completed','cancelled','no_show'].includes(current.status))throw new TypeError('DECISION_LOCKED');
       const displayTotalCents=Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):null;
-      if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');if(decision==='accepted'&&current.quote?.expiresAt&&Date.parse(current.quote.expiresAt)<=Date.now())throw new TypeError('QUOTE_EXPIRED');
+      if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');if(decision==='accepted'&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
       const nextStatus=decision,at=admin.firestore.Timestamp.now(),decisionUpdate={status:nextStatus,decision:{status:decision,at,source:'public_tracking',quoteVersion:Number(current.quote?.version||1),quoteTotalCents:displayTotalCents},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       if(decision==='accepted'&&current.lastAssistance?.actionType==='quote_followup'&&freshAssistance(current.lastAssistance,30))decisionUpdate.assistedConversion={actionEventId:clean(current.lastAssistance.id),actionType:current.lastAssistance.actionType,channel:current.lastAssistance.channel,at:current.lastAssistance.at};
       tx.update(ref,decisionUpdate);
@@ -1223,11 +1224,12 @@ app.post('/api/public/requests/:requestId/schedule-confirmation',async(req,res)=
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
       const current=snap.data()||{};if(current.status!=='scheduled'||!clean(current.schedule?.date))throw new TypeError('SCHEDULE_CONFIRMATION_NOT_READY');
+      const revision=currentScheduleRevision(current.schedule)||1,requestedRevision=Number(req.body?.revision||1);if(!Number.isSafeInteger(requestedRevision)||requestedRevision!==revision)throw new TypeError('SCHEDULE_REVISION_CHANGED');
       const existing=clean(current.schedule?.customerConfirmation?.status);if(existing===decision){result={ok:true,status:decision,idempotent:true};return}
-      const at=admin.firestore.Timestamp.now();tx.update(ref,{'schedule.customerConfirmation':{status:decision,at,source:'public_tracking'},updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={ok:true,status:decision,idempotent:false};
+      const at=admin.firestore.Timestamp.now();tx.update(ref,{'schedule.customerConfirmation':{status:decision,at,source:'public_tracking',revision},updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={ok:true,status:decision,idempotent:false};
     });
     res.status(result.idempotent?200:201).json(result);
-  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(code==='SCHEDULE_CONFIRMATION_NOT_READY')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(['SCHEDULE_CONFIRMATION_NOT_READY','SCHEDULE_REVISION_CHANGED'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.get('/api/public/reviews/:requestId',async(req,res)=>{
@@ -2268,6 +2270,14 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         const value=clean(b.scheduledWindow);if(value&&!serviceWindows.has(value))throw new TypeError('INVALID_SCHEDULE_WINDOW');update['schedule.window']=value;
       }
       if(b.assignedTo!==undefined)update['schedule.assignedTo']=clean(b.assignedTo).slice(0,100);
+      const appointment= scheduleRevisionAfterPatch(current.schedule||{},b);
+      if(appointment.changed){
+        update['schedule.revision']=appointment.revision;
+        if(current.schedule?.customerConfirmation){
+          update['schedule.confirmationHistory']=admin.firestore.FieldValue.arrayUnion({...current.schedule.customerConfirmation,revision:currentScheduleRevision(current.schedule)||1});
+        }
+        update['schedule.customerConfirmation']=null;
+      }
       if(b.executionNotes!==undefined)update['execution.notes']=clean(b.executionNotes).slice(0,1500);
       if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
       if(b.warrantyNotes!==undefined)update['warranty.notes']=clean(b.warrantyNotes).slice(0,500);
