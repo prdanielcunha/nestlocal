@@ -32,7 +32,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',operationalLoadedAt:0,operationalRefreshing:false,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -46,6 +46,9 @@ Object.assign(D.es,{pendingPublication:'Cambios pendientes de publicación'});
 Object.assign(D.pt,{publicUnavailable:'Serviço temporariamente indisponível',publicUnavailableHelp:'Não conseguimos carregar as informações agora. Tente novamente sem perder seu pedido.',tryAgain:'Tentar novamente'});
 Object.assign(D.en,{publicUnavailable:'Service temporarily unavailable',publicUnavailableHelp:'We could not load this page right now. Please try again.',tryAgain:'Try again'});
 Object.assign(D.es,{publicUnavailable:'Servicio temporalmente no disponible',publicUnavailableHelp:'No pudimos cargar esta página ahora. Inténtalo de nuevo.',tryAgain:'Reintentar'});
+Object.assign(D.pt,{dataUpdatedNow:'Dados atualizados agora',dataUpdatedAgo:'Atualizado há',refresh:'Atualizar'});
+Object.assign(D.en,{dataUpdatedNow:'Data updated now',dataUpdatedAgo:'Updated',refresh:'Refresh'});
+Object.assign(D.es,{dataUpdatedNow:'Datos actualizados ahora',dataUpdatedAgo:'Actualizado hace',refresh:'Actualizar'});
 Object.assign(D.pt,{agendaMore:'Mais compromissos',agendaIncomplete:'Agenda parcialmente carregada. Tente novamente.',agendaSlots:'Reservas na agenda'});
 Object.assign(D.en,{agendaMore:'More appointments',agendaIncomplete:'Schedule partially loaded. Please retry.',agendaSlots:'Scheduled reservations'});
 Object.assign(D.es,{agendaMore:'Más citas',agendaIncomplete:'Agenda cargada parcialmente. Vuelva a intentarlo.',agendaSlots:'Reservas en agenda'});
@@ -715,11 +718,16 @@ function draftsPanel(limit=50){
         <button class="button small primary" data-prepare-draft="${esc(d.id)}">${t('prepareDraft')}</button>
         <button class="button small" data-archive-draft="${esc(d.id)}" data-draft-version="${Number(d.version)||1}">${t('draftArchive')}</button></div></div>`).join('')}</article>`;
 }
+function operationalFreshness(){
+  if(!S.operationalLoadedAt)return '';
+  const ago=Math.floor((Date.now()-S.operationalLoadedAt)/60000);
+  return `<div class="operational-freshness" role="status"><span>${ago<1?t('dataUpdatedNow'):`${t('dataUpdatedAgo')} ${ago} min`}</span><button class="button small" type="button" data-refresh-operations>${t('refresh')}</button></div>`;
+}
 function today(){
-  if(S.data?.features?.opportunityDrafts!==true)return todayLegacy();
+  if(S.data?.features?.opportunityDrafts!==true)return operationalFreshness()+todayLegacy();
   const prioritized=buildFocusQueue(nextBestActions(),organizationDateIso()),actions=[prioritized.focus,...prioritized.next].filter(Boolean).slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
   const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
-  return `<div class="page-stack nestlocal-today-v2">${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
+  return `<div class="page-stack nestlocal-today-v2">${operationalFreshness()}${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
       ${draftsPanel(3)}</article>
@@ -1116,7 +1124,7 @@ async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/
     S.data.agendaHasMore=appointments.hasMore===true;S.data.agendaCursor=appointments.nextCursor||'';
     S.data.agendaTotalSlots=appointments.totalSlots||0;S.data.agendaLoadError='';
   }catch(error){S.data.agendaRequests=[];S.data.agendaHasMore=false;S.data.agendaLoadError=String(error?.message||'AGENDA_UNAVAILABLE')}
-  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';checkTaskNotifications();}
+  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';S.operationalLoadedAt=Date.now();checkTaskNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
@@ -1471,6 +1479,10 @@ function bind(){
   document.querySelector('#playbook-add')?.addEventListener('click',async e=>{const button=e.currentTarget,template=document.querySelector('#playbook-add-select')?.value||'general';button.disabled=true;try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/playbooks/${encodeURIComponent(template)}/apply`,{method:'POST',body:'{}'});await loadData();render();toast(result.addedCount?(`${result.addedCount} ${t('playbookAdded')}`):t('playbookAlreadyPresent'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelector('#publish')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/publish`,{method:'POST',body:'{}'});await loadData();render();toast(t('published'))}catch(err){button.disabled=false;toast(err.message==='PUBLISH_NOT_READY'?t('publishBlocked'):err.message)}});
 
+  document.querySelectorAll('[data-refresh-operations]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{await loadData();render()}catch(error){button.disabled=false;toast(error.message)}
+  });
   document.querySelectorAll('[data-load-agenda]').forEach(button=>button.onclick=async()=>{
     if(!S.data?.agendaCursor)return;
     button.disabled=true;
@@ -1641,6 +1653,14 @@ async function startAuthBootstrap(){
     clearTimeout(hardWatchdog);
   }
 }
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkTaskNotifications()});
+async function refreshOperationalOnResume(){
+  if(!S.data||!S.orgId||S.loading||S.operationalRefreshing||!S.operationalLoadedAt||Date.now()-S.operationalLoadedAt<120000)return;
+  if(S.page!=='today'||document.querySelector('form:focus-within'))return;
+  S.operationalRefreshing=true;
+  try{await loadData();render()}catch(error){console.warn('[NESTLOCAL_OPERATION_REFRESH]',error?.message||'ERROR')}
+  finally{S.operationalRefreshing=false}
+}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){checkTaskNotifications();void refreshOperationalOnResume()}});
+window.addEventListener('focus',()=>{void refreshOperationalOnResume()});
 setInterval(checkTaskNotifications,15*60*1000);
 if(isLegal()||isRevenueXray()){S.loading=false;render()}else if(isReview())loadReview();else if(isPublicStore()||location.pathname.startsWith('/s/'))loadPublic();else if(location.pathname.startsWith('/track/'))loadTracking();else startAuthBootstrap();
