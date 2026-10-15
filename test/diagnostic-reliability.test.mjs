@@ -43,6 +43,7 @@ test('C08: completed corrections are delta-based and retries do not double-count
  assert.equal(completedAmountAdjustment({...request,status:'scheduled'},{finalAmountCents:12000}).changed,false);
  assert.equal(completedAmountAdjustment({...request,commercial:{finalAmountCents:12000}},{finalAmountCents:12000}).deltaCents,0);
  assert.equal(completedAmountAdjustment(request,{finalAmountCents:9000}).deltaCents,-1000);
+ assert.throws(()=>completedAmountAdjustment({status:'completed',commercial:{finalAmountCents:10000}},{finalAmountCents:11000}),{message:'FINANCIAL_RECONCILIATION_REQUIRED'});
  assert.throws(()=>completedAmountAdjustment({...request,commercial:{finalAmountCents:null},quote:{totalCents:null}},{finalAmountCents:9000}),{message:'FINANCIAL_RECONCILIATION_REQUIRED'});
 });
 test('C08: API persists audited amount corrections and never adjusts cash received',()=>{
@@ -126,7 +127,7 @@ test('C08: payment ledger is operator-entered and audited only after transaction
  const start=server.indexOf("app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId'");
  const block=server.slice(start,server.indexOf('\napp.',start+10));
  assert.match(block,/paymentCorrection=manualPaymentAdjustment\(current,b\)/);
- assert.match(block,/nestlocal_payment_events/);
+ assert.match(block,/ref\.collection\('payment_events'\)/);
  assert.match(block,/source:'operator_entry'/);
  assert.match(block,/paymentRevision/);
  assert.ok(block.indexOf('await Promise.all([')<block.indexOf('tx.create(paymentEvent'), 'reads precede ledger writes');
