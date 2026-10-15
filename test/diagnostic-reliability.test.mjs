@@ -52,3 +52,31 @@ test('C08: API persists audited amount corrections and never adjusts cash receiv
  assert.match(server,/assistedRevenueCents:admin\.firestore\.FieldValue\.increment\(delta\)/);
  assert.match(server,/FINANCIAL_RECONCILIATION_REQUIRED/);
 });
+
+test('C02: operational pages are tenant-scoped, paginated, and old records remain directly readable',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ for(const phrase of [
+   "nestlocal/agenda/page',authenticate,authorize",
+   "nestlocal/lists/:kind/page',authenticate,authorize",
+   "nestlocal/requests/:requestId',authenticate,authorize",
+   "collection('INVALID')"
+ ].slice(0,3))assert.ok(server.includes(phrase),phrase);
+ assert.match(ui,/request-status-filter/);
+ assert.match(ui,/agendaRequests/);
+ assert.match(ui,/agendaHasMore/);
+ assert.match(ui,/requestsHasMore/);
+});
+test('C06 C21: public decisions reject stale revisions and management routes check server RBAC',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(server,/expectedQuoteVersion!==currentQuoteVersion/);
+ assert.match(server,/QUOTE_REVISION_CHANGED/);
+ assert.match(ui,/JSON\.stringify\(\{decision,quoteVersion\}\)/);
+ for(const path of ['settings','capacity','services/:serviceId','publish']){
+   const method=path==='publish'?'post':'put';
+   const i=server.indexOf(`app.${method}('/api/organizations/:orgId/nestlocal/${path}'`);
+   assert.ok(i>0,path);
+   assert.match(server.slice(i,i+350),/if\(!canManageNestLocal\(req\.access\)\)return sendError\(res,403,'ACCESS_DENIED'\)/);
+ }
+});
