@@ -1128,7 +1128,12 @@ function render(){
     }
   }
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});
+  if(S.requestListFilter!=='all'){
+    try{S.requestList=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/lists/requests/page?status=${encodeURIComponent(S.requestListFilter)}&limit=50`,{timeoutMs:6500})}
+    catch(error){S.requestList=null;S.requestListFilter='all'}
+  }
+  if(S.data?.features?.opportunityDrafts===true){try{const drafts=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/opportunity-drafts`,{timeoutMs:6000});S.data.opportunityDrafts=Array.isArray(drafts.items)?drafts.items:[]}catch(error){S.data.opportunityDrafts=[];S.data.draftLoadError=String(error?.message||'ERROR')}
     try{const tasks=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/action-tasks`,{timeoutMs:6000});S.data.actionTasks=Array.isArray(tasks.items)?tasks.items:[]}
     catch(error){S.data.actionTasks=[];S.data.tasksLoadError=String(error?.message||'ERROR')}
   }try{const appointments=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/agenda/page?limit=50`,{timeoutMs:7500});
@@ -1435,7 +1440,22 @@ function bind(){
   });
   document.querySelectorAll('[data-action-page]').forEach(x=>x.onclick=()=>{S.focusRequestId='';S.page=x.dataset.actionPage;render()});
   document.querySelectorAll('[data-return-autopilot]').forEach(x=>x.onclick=()=>returnToAutopilotQueue());
-  document.querySelectorAll('[data-open-request]').forEach(x=>x.onclick=()=>{const id=x.dataset.openRequest;if(!id)return;const fromAutopilot=S.page==='today';S.actionAssist=null;S.page='requests';S.focusRequestId=id;S.autopilotRequestId=fromAutopilot?id:'';render()});
+  document.querySelectorAll('[data-open-request]').forEach(x=>x.onclick=async()=>{
+  const id=x.dataset.openRequest;if(!id)return;
+  if(!(S.data?.requests||[]).some(item=>item.id===id)){
+    x.disabled=true;
+    try{
+      const response=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/requests/${encodeURIComponent(id)}`);
+      if(!response.item)throw Error('REQUEST_NOT_FOUND');
+      S.data.requests=[response.item,...(S.data.requests||[])];
+    }catch(error){x.disabled=false;toast(error.message);return}
+  }
+  if(S.requestListFilter!=='all'&&S.requestList&&!(S.requestList.items||[]).some(item=>item.id===id)){
+    const item=S.data.requests.find(entry=>entry.id===id);
+    S.requestList.items=[item,...(S.requestList.items||[])];
+  }
+  const fromAutopilot=S.page==='today';S.actionAssist=null;S.page='requests';S.focusRequestId=id;S.autopilotRequestId=fromAutopilot?id:'';render();
+});
   if(S.page==='requests'&&S.focusRequestId){const target=document.querySelector(`[data-request-card="${CSS.escape(S.focusRequestId)}"]`);if(target){target.open=true;target.classList.add('focused-request');target.scrollIntoView({behavior:'smooth',block:'center'});setTimeout(()=>target.classList.remove('focused-request'),1800)}}
   document.querySelectorAll('[data-pulse-feedback]').forEach(button=>button.onclick=async()=>{
     const actionId=button.dataset.actionId,outcome=button.dataset.pulseFeedback;
@@ -1475,7 +1495,7 @@ function bind(){
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
       try{await ensureNativeNestAiSession()}
