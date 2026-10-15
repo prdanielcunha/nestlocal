@@ -160,3 +160,11 @@ test('C14: official outbound remains unsent until Connect implements real dispat
  for(const label of ['Preparada · não enviada','Prepared · not sent','Preparada · no enviada'])assert.ok(ui.includes(label));
  assert.match(ui,/connectValidationOnly/);
 });
+
+test('C02: first page of stale reservation slots never hides pagination',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ const start=ui.indexOf('function agenda(){'),end=ui.indexOf('const trustStartCopy=',start);
+ const agenda=ui.slice(start,end);
+ assert.match(agenda,/if\(!a\.length\)return/);
+ assert.match(agenda,/S\.data\.agendaHasMore\|\|legacyMore\?\x60<button type="button" class="button wide" data-load-agenda>/);
+});
