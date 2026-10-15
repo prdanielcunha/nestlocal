@@ -147,3 +147,13 @@ test('C21: field workers can complete jobs but cannot change financial amounts w
  assert.match(live,/data-payment-history=/);
  assert.match(server,/gatewayVerified:false/);
 });
+
+test('C14: official outbound remains unsent until Connect implements real dispatch',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(server,/dispatch:'not_implemented',delivery:'manual_only',providerVerified:false/);
+ assert.match(server,/providerPolicy:'PROVIDER_POLICY_BLOCKED'/);
+ assert.match(server,/sent:false/);
+ for(const label of ['Preparada · não enviada','Prepared · not sent','Preparada · no enviada'])assert.ok(ui.includes(label));
+ assert.match(ui,/connectValidationOnly/);
+});
