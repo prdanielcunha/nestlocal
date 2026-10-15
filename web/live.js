@@ -1186,7 +1186,7 @@ async function loadOperationalPriorities({append=false}={}){
   S.data.priorityHasMore=Object.values(pages).some(page=>page.hasMore===true);
   S.data.priorityLoadError=errors.length?errors.join(','):'';
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});await loadOperationalPriorities();
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});const priorityLoad=loadOperationalPriorities();
   if(S.requestListFilter!=='all'){
     try{S.requestList=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/lists/requests/page?status=${encodeURIComponent(S.requestListFilter)}&limit=50`,{timeoutMs:6500})}
     catch(error){S.requestList=null;S.requestListFilter='all'}
@@ -1199,7 +1199,7 @@ async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/
     S.data.agendaHasMore=appointments.hasMore===true;S.data.agendaCursor=appointments.nextCursor||'';
     S.data.agendaTotalSlots=appointments.totalSlots||0;S.data.agendaLoadError='';
   }catch(error){S.data.agendaRequests=[];S.data.agendaHasMore=false;S.data.agendaLoadError=String(error?.message||'AGENDA_UNAVAILABLE')}
-  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';S.operationalLoadedAt=Date.now();checkTaskNotifications();}
+  S.privacyPermissions=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/privacy/permissions`,{timeoutMs:4000}).catch(()=>null);const pulseFeedback=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]}));S.pulseFeedback=Array.isArray(pulseFeedback?.items)?pulseFeedback.items:[];const calendarStatus=await api('/api/organizations/'+encodeURIComponent(S.orgId)+'/nestlocal/calendar/feed/status',{timeoutMs:4000}).catch(()=>null);S.calendarFeedActive=calendarStatus?.active===true;S.calendarFeedUrl='';await priorityLoad;S.operationalLoadedAt=Date.now();checkTaskNotifications();}
 async function syncGrowthRadar(){
   if(!isGrowthAdmin()||S.radarSyncing)return;
   S.radarSyncing=true;render();
