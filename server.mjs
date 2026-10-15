@@ -2378,7 +2378,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
       const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b);
       if(b.status!==undefined){
-        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');
+        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');if(status==='accepted'&&status!==current.status&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
         update.status=status;
         if(status!==current.status){
           update.statusHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.identity.uid});
@@ -2516,7 +2516,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
