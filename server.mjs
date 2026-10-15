@@ -1330,19 +1330,20 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
 app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,authorize,async(req,res)=>{
   const kind=clean(req.params.kind),collection=kind==='requests'?'nestlocal_requests':kind==='customers'?'nestlocal_customers':null;
   if(!collection)return sendError(res,404,'UNKNOWN_LIST');
-  const cursor=clean(req.query.cursor),n=Number(req.query.limit||50),limit=Number.isSafeInteger(n)?Math.min(100,Math.max(1,n)):50;
+  const cursor=clean(req.query.cursor),status=clean(req.query.status),n=Number(req.query.limit||50),limit=Number.isSafeInteger(n)?Math.min(100,Math.max(1,n)):50;
+  if(status&&(kind!=='requests'||!requestStatuses.has(status)))return sendError(res,400,'INVALID_STATUS_FILTER');
   if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_CURSOR');
   try{
     const root=`organizations/${req.access.orgId}/${collection}`,col=db.collection(root);
-    let query=kind==='requests'?col.orderBy('createdAt','desc'):col.orderBy(admin.firestore.FieldPath.documentId());
+    let query=kind==='requests'&&!status?col.orderBy('createdAt','desc'):status?col.where('status','==',status).orderBy(admin.firestore.FieldPath.documentId()):col.orderBy(admin.firestore.FieldPath.documentId());
     if(cursor){
-      if(kind==='requests'){
+      if(kind==='requests'&&!status){
         const last=await col.doc(cursor).get();
         if(!last.exists)return sendError(res,400,'INVALID_CURSOR');
         query=query.startAfter(last);
       }else query=query.startAfter(cursor);
     }
-    const result=await query.limit(limit+1).get(),docs=result.docs.slice(0,limit);
+    const [result,countResult]=await Promise.all([query.limit(limit+1).get(),status?col.where('status','==',status).count().get():Promise.resolve(null)]),docs=result.docs.slice(0,limit);
     const items=docs.map(doc=>{
       const row={id:doc.id,...doc.data()};
       if(kind==='requests'){
@@ -1351,7 +1352,7 @@ app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,auth
       return row;
     });
     res.set('Cache-Control','private, no-store');
-    return res.json({items,hasMore:result.size>limit,nextCursor:result.size>limit?docs.at(-1)?.id||null:null,limit});
+    return res.json({items,hasMore:result.size>limit,nextCursor:result.size>limit?docs.at(-1)?.id||null:null,limit,totalCount:countResult?.data()?.count??null,status:status||null});
   }catch(error){console.error('NESTLOCAL_PAGE_QUERY_FAILED',error?.code||error?.name);return sendError(res,500,'LIST_UNAVAILABLE')}
 });
 
