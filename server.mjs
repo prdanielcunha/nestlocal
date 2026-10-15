@@ -2398,6 +2398,23 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,a
   }catch(error){console.error('NESTLOCAL_REQUEST_DETAIL_FAILED',error?.code||error?.name);return sendError(res,500,'REQUEST_UNAVAILABLE')}
 });
 
+// An explicitly authorized audit view; never treats operator entries as gateway receipts.
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/payment-events',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+  const requestId=safeId(req.params.requestId);
+  if(!requestId)return sendError(res,404,'REQUEST_NOT_FOUND');
+  try{
+    const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`);
+    const snap=await ref.get();
+    if(!snap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const events=await ref.collection('payment_events').orderBy('createdAt','desc').limit(50).get();
+    res.set('Cache-Control','private, no-store');
+    return res.json({items:events.docs.map(doc=>({id:doc.id,...doc.data()})),hasMore:events.size===50,
+      source:'operator_entry',gatewayVerified:false});
+  }catch(error){console.error('NESTLOCAL_PAYMENT_HISTORY_FAILED',error?.code||error?.name);
+    return sendError(res,500,'PAYMENT_HISTORY_UNAVAILABLE')}
+});
+
 app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),b=req.body||{};if(!requestId)return sendError(res,400,'INVALID_REQUEST');
@@ -2505,7 +2522,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(paymentCorrection.changed){
         update['commercial.paymentRevision']=paymentCorrection.revision;
         // Audit is a manually entered cash record, not confirmation of a gateway payment.
-        const paymentEvent=db.collection(`organizations/${req.access.orgId}/nestlocal_payment_events`).doc();
+        const paymentEvent=ref.collection('payment_events').doc();
         tx.create(paymentEvent,{requestId,actorUid:req.identity.uid,
           kind:'manual_payment_adjustment',
           oldAmountCents:paymentCorrection.oldAmountCents,
