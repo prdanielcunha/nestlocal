@@ -811,13 +811,13 @@ function customerImportPanel(){
 }
 function customers(){const a=S.data.customers||[];return `<div class="page-stack">${customerImportPanel()}<article class="card"><div class="section-title"><h2>${t('customers')}</h2><span>${esc(S.data.customerCount??a.length)}</span></div><div class="customer-list">${a.length?a.map(customerCard).join(''):emptyAction('noCustomersTitle','noCustomersHelp','createRequest','requests')}</div>${S.data.customersHasMore?`<button type="button" class="button wide" data-load-list="customers">${t('loadMore')}</button>`:''}</article></div>`}
 function agenda(){
-  const combined=new Map((S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)).map(x=>[x.id,x]));for(const item of S.data.agendaRequests||[])combined.set(item.id,item);
-  const all=[...combined.values()];
+  const all=mergeOperationalRows((S.data.requests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)),(S.data.priorityRequests||[]).filter(x=>['scheduled','in_progress'].includes(x.status)),S.data.agendaRequests);
+  const legacyMore=['scheduled','in_progress'].some(status=>S.data.priorityPages?.[status]?.hasMore===true);
   const intro=renderCalendarIntro({requests:all,locale:S.lang,today:organizationDateIso(),esc,active:S.calendarFeedActive,hasLink:Boolean(S.calendarFeedUrl)});
   const a=all.filter(x=>['scheduled','in_progress'].includes(x.status)).sort((x,y)=>String(x.schedule?.date||'').localeCompare(String(y.schedule?.date||'')));
   if(!a.length)return intro+`<article class="card"><div class="section-title"><h2>${t('agenda')}</h2><span>0</span></div>${S.data.agendaLoadError?`<p class="help" role="status">${t('agendaIncomplete')}</p>`:emptyAction('noAgendaTitle','noAgendaHelp','goToRequests','requests')}</article>`;
   const groups=new Map();for(const item of a){const key=item.schedule?.date||item.preference?.date||'—';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(item)}
-  return intro+`<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button><button type="button" class="button small" data-calendar-google="${esc(r.id)}">${cw(S.lang,'google')}</button><button type="button" class="button small" data-calendar-ics="${esc(r.id)}">${cw(S.lang,'file')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}${S.data.agendaHasMore?`<button type="button" class="button wide" data-load-agenda>${t('agendaMore')}</button>`:''}${S.data.agendaLoadError?`<p class="help" role="status">${t('agendaIncomplete')}</p>`:''}</div>`;
+  return intro+`<div class="agenda-groups">${[...groups.entries()].map(([date,items])=>`<article class="card agenda-day"><div class="section-title"><h2>${esc(date)}</h2><span>${items.length}</span></div><div class="agenda-list">${items.map(r=>{const member=(S.data.team||[]).find(m=>m.uid===r.schedule?.assignedTo);return `<div class="agenda-item"><div><span class="tag">${t(r.status)}</span><strong>${esc(r.customer?.name||'—')}</strong><small>${t(r.schedule?.window||'flexible')} · ${esc(member?.name||member?.email||'—')}${r.schedule?.customerConfirmation?.status?` · ${t(r.schedule.customerConfirmation.status==='confirmed'?'scheduleConfirmed':'scheduleChangeRequested')}`:''}</small></div><div class="agenda-actions">${routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · '))?`<a class="button small" target="_blank" rel="noopener" href="${esc(routeUrl([r.address?.line,r.address?.city||r.address?.coverageCode].filter(Boolean).join(' · ')))}">${t('route')}</a>`:''}<button class="button small" data-open-request="${esc(r.id)}">${t('openRequests')}</button><button type="button" class="button small" data-calendar-google="${esc(r.id)}">${cw(S.lang,'google')}</button><button type="button" class="button small" data-calendar-ics="${esc(r.id)}">${cw(S.lang,'file')}</button>${r.status==='scheduled'?`<button class="button primary small" data-request-status="in_progress" data-request-id="${esc(r.id)}">${t('startService')}</button>`:''}</div></div>`}).join('')}</div></article>`).join('')}${S.data.agendaHasMore||legacyMore?`<button type="button" class="button wide" data-load-agenda>${t('agendaMore')}</button>`:''}${S.data.agendaLoadError?`<p class="help" role="status">${t('agendaIncomplete')}</p>`:''}</div>`;
 }
 
 const trustStartCopy={
@@ -1171,10 +1171,10 @@ function render(){
 }
 
 const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'];
-async function loadOperationalPriorities({append=false,targetData=S.data,orgId=S.orgId}={}){
+async function loadOperationalPriorities({append=false,targetData=S.data,orgId=S.orgId,statusAllowList=null}={}){
   if(!orgId||!targetData)return;
   const previous=append?(targetData.priorityPages||{}):{},pageSize=25;
-  const statuses=priorityStatusOptions.filter(status=>!append||previous[status]?.hasMore===true);
+  const statuses=priorityStatusOptions.filter(status=>(!statusAllowList||statusAllowList.includes(status))&&(!append||previous[status]?.hasMore===true));
   const values=await Promise.allSettled(statuses.map(status=>{
     const cursor=append?previous[status]?.nextCursor:'';
     const query=`?limit=${pageSize}&status=${encodeURIComponent(status)}${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`;
@@ -1487,13 +1487,13 @@ function bind(){
   });
 
   document.querySelectorAll('[data-calendar-google]').forEach(b=>b.onclick=()=>{
-    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[])].find(x=>x.id===b.dataset.calendarGoogle);
+    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[]),...(S.data?.priorityRequests||[])].find(x=>x.id===b.dataset.calendarGoogle);
     if(!r)return;
     const url=makeGoogleCalendarUrl(r,calendarRequest(r));
     if(url)window.open(url,'_blank','noopener,noreferrer');
   });
   document.querySelectorAll('[data-calendar-ics]').forEach(b=>b.onclick=()=>{
-    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[])].find(x=>x.id===b.dataset.calendarIcs);
+    const r=[...(S.data?.requests||[]),...(S.data?.agendaRequests||[]),...(S.data?.priorityRequests||[])].find(x=>x.id===b.dataset.calendarIcs);
     if(r)calendarDownload(r);
   });
   document.querySelectorAll('[data-calendar-feed-create]').forEach(button=>button.onclick=async()=>{
@@ -1610,17 +1610,26 @@ function bind(){
     try{await loadData();render()}catch(error){button.disabled=false;toast(error.message)}
   });
   document.querySelectorAll('[data-load-agenda]').forEach(button=>button.onclick=async()=>{
-    if(!S.data?.agendaCursor)return;
+    const data=S.data;if(!data)return;
+    const legacyMore=['scheduled','in_progress'].some(status=>data.priorityPages?.[status]?.hasMore===true);
+    if(!data.agendaCursor&&!legacyMore)return;
     button.disabled=true;
     try{
-      const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/agenda/page?limit=50&cursor=${encodeURIComponent(S.data.agendaCursor)}`);
-      const current=S.data.agendaRequests||[],seen=new Set(current.map(r=>r.id));
-      S.data.agendaRequests=[...current,...(result.items||[]).filter(r=>!seen.has(r.id))];
-      S.data.agendaCursor=result.nextCursor||'';S.data.agendaHasMore=result.hasMore===true;
+      const org=S.orgId;
+      const [result]=await Promise.all([
+        data.agendaCursor?api(`/api/organizations/${encodeURIComponent(org)}/nestlocal/agenda/page?limit=50&cursor=${encodeURIComponent(data.agendaCursor)}`):Promise.resolve(null),
+        legacyMore?loadOperationalPriorities({append:true,targetData:data,orgId:org,statusAllowList:['scheduled','in_progress']}):Promise.resolve()
+      ]);
+      if(org!==S.orgId||data!==S.data)return;
+      if(result){
+        const current=data.agendaRequests||[],seen=new Set(current.map(row=>row.id));
+        data.agendaRequests=[...current,...(result.items||[]).filter(row=>!seen.has(row.id))];
+        data.agendaCursor=result.nextCursor||'';data.agendaHasMore=result.hasMore===true;
+      }
       render();
     }catch(error){button.disabled=false;toast(error.message)}
   });
-  document.querySelector('#request-status-filter')?.addEventListener('change',async event=>{
+    document.querySelector('#request-status-filter')?.addEventListener('change',async event=>{
     const filter=event.target.value;
     S.requestListFilter=filter;S.requestList=null;
     if(filter==='all'){render();return}
