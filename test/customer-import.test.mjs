@@ -31,6 +31,8 @@ test('C19: customer import preflight is checked again before writing and audit e
   assert.match(route,/await db\.runTransaction\(async tx=>/);
   assert.match(route,/await Promise\.all\(refs\.map\(ref=>tx\.get\(ref\)\)\)/);
   assert.match(route,/prediction\.customerKey!==prepared\[i\]\.id/);
+  assert.match(route,/recordVersion:docs\[i\]/);
+  assert.match(route,/Number\(prediction\.recordVersion\|\|0\)/);
   assert.match(route,/customers\.batch_import/);
   assert.match(ui,/preflightRows:S\.customerBatchPreview\.rows/);
 });
