@@ -4,12 +4,14 @@ import { readFileSync } from 'node:fs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 
-test('service return rule is explicit and bounded', () => {
+test('service return rule is explicit, bounded, and keeps published catalog online', () => {
   const server = read('../server.mjs');
   for (const token of [
     "returnAfterDays=Number(b.returnAfterDays||0)",
     "returnAfterDays<0||returnAfterDays>730",
-    "returnAfterDays,published:false",
+    "const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays};",
+    "draft:data,draftUpdatedAt:",
+    "else{await ref.set({...data,published:false}",
   ]) assert.ok(server.includes(token), `missing ${token}`);
 });
 
