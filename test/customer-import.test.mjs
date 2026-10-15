@@ -10,7 +10,7 @@ test('customer spreadsheet import is tenant-scoped and does not fabricate messag
   const end=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/bootstrap'",start);
   const block=server.slice(start,end);
   assert.ok(start>=0);
-  for(const token of ['INVALID_CUSTOMER_BATCH','customer_import','nextServiceDate','lastServiceLabel','db.getAll','batch.set']) assert.ok(block.includes(token),`missing ${token}`);
+  for(const token of ['INVALID_CUSTOMER_BATCH','customer_import','nextServiceDate','lastServiceLabel','db.runTransaction','tx.get(ref)','tx.set']) assert.ok(block.includes(token),`missing ${token}`);
   assert.equal(block.includes('messaging.consents'),false);
   assert.equal(block.includes('maintenanceReminders'),false);
 });
@@ -28,6 +28,8 @@ test('C19: customer import preflight is checked again before writing and audit e
   const route=server.slice(begin,end);
   assert.match(route,/customerKey:row\.id/);
   assert.match(route,/CUSTOMER_IMPORT_PREVIEW_STALE/);
+  assert.match(route,/await db\.runTransaction\(async tx=>/);
+  assert.match(route,/await Promise\.all\(refs\.map\(ref=>tx\.get\(ref\)\)\)/);
   assert.match(route,/prediction\.customerKey!==prepared\[i\]\.id/);
   assert.match(route,/customers\.batch_import/);
   assert.match(ui,/preflightRows:S\.customerBatchPreview\.rows/);
