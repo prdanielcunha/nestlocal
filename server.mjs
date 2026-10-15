@@ -1724,6 +1724,35 @@ app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,autho
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{'appAccess.nestlocal':appAccess}, {merge:true});tx.set(legacyRef,{'appAccess.nestlocal':appAccess}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
+// Preview never modifies customer records. Existing phone matches are marked as updates,
+// not treated as brand new people. A preview is advisory: the write path revalidates.
+app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authenticate,authorize,async(req,res)=>{
+  try{
+    const rows=Array.isArray(req.body?.customers)?req.body.customers:[];
+    if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
+    const seen=new Set(),valid=[],results=[];
+    for(const [index,row] of rows.entries()){
+      const name=clean(row?.name).slice(0,100),normalized=phone(row?.phone),
+        lastDate=clean(row?.lastServiceDate).slice(0,10),nextDate=clean(row?.nextServiceDate).slice(0,10),
+        invalid=name.length<2||normalized.length<10||(lastDate&&!/^\d{4}-\d{2}-\d{2}$/.test(lastDate))||(nextDate&&!/^\d{4}-\d{2}-\d{2}$/.test(nextDate));
+      if(invalid){results.push({index,name,status:'invalid',reason:'INVALID_CUSTOMER'});continue}
+      const id=hash(normalized).slice(0,28);
+      if(seen.has(id)){results.push({index,name,status:'duplicate',reason:'DUPLICATE_IN_BATCH'});continue}
+      seen.add(id);valid.push({index,id,name,phoneEnding:normalized.slice(-4)});
+    }
+    const root=`organizations/${req.access.orgId}`,docs=valid.length?await db.getAll(...valid.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`))):[];
+    for(let i=0;i<valid.length;i++){
+      const row=valid[i],state=docs[i]?.exists?'update':'create';
+      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,status:state});
+    }
+    results.sort((a,b)=>a.index-b.index);
+    const counts={create:0,update:0,invalid:0,duplicate:0};
+    for(const row of results)counts[row.status]++;
+    res.set('Cache-Control','private, no-store');
+    return res.json({rows:results,counts,canImport:counts.create+counts.update>0,requiresConfirmation:true});
+  }catch(error){console.error('NESTLOCAL_IMPORT_PREVIEW_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_PREVIEW_UNAVAILABLE')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,authorize,async(req,res)=>{
   try{
     const rows=Array.isArray(req.body?.customers)?req.body.customers:[];if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
