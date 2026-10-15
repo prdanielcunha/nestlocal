@@ -6,7 +6,7 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
-import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment } from './src/domain/operational-integrity.mjs';
+import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment, manualPaymentAdjustment } from './src/domain/operational-integrity.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -2405,7 +2405,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     let response={ok:true};
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
-      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b);
+      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b),paymentCorrection=manualPaymentAdjustment(current,b);
       if(b.status!==undefined){
         const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');if(status==='accepted'&&status!==current.status&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
         update.status=status;
@@ -2437,6 +2437,20 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(b.finalAmountCents!==undefined){
         const value=Number(b.finalAmountCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.finalAmountCents']=value;
       }
+      if(paymentCorrection.changed){
+        update['commercial.paymentRevision']=paymentCorrection.revision;
+        // Audit is a manually entered cash record, not confirmation of a gateway payment.
+        const paymentEvent=db.collection(`organizations/${req.access.orgId}/nestlocal_payment_events`).doc();
+        tx.create(paymentEvent,{requestId,actorUid:req.identity.uid,
+          kind:'manual_payment_adjustment',
+          oldAmountCents:paymentCorrection.oldAmountCents,
+          newAmountCents:paymentCorrection.newAmountCents,
+          deltaCents:paymentCorrection.deltaCents,
+          previousStatus:paymentCorrection.oldStatus,
+          nextStatus:paymentCorrection.newStatus,
+          revision:paymentCorrection.revision,
+          source:'operator_entry',createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      }
       if(b.amountPaidCents!==undefined){
         const value=Number(b.amountPaidCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.amountPaidCents']=value;
       }
@@ -2454,7 +2468,8 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         if(!Number.isSafeInteger(nextFinal)||nextFinal<0||!Number.isSafeInteger(nextPaid)||nextPaid<0||nextPaid>nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='pending'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='partial'&&!(nextPaid>0&&nextPaid<nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
-        if(nextPayment==='paid'&&nextPaid!==nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&(nextFinal<=0||nextPaid!==nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='cancelled'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
       }
       const nextSchedule={
         date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
@@ -2462,7 +2477,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         assignedTo:b.assignedTo!==undefined?safeId(b.assignedTo):safeId(current.schedule?.assignedTo)
       };
       const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus),currentSlotId=clean(current.schedule?.slotId);
-      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
+      const completedNow=nextStatus==='completed'&&clean(current.status)!=='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
       let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null,serviceRef=null,settingsRef=null;
       if(shouldHoldSlot){
         if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
@@ -2545,7 +2560,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','PAYMENT_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
