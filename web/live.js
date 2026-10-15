@@ -46,6 +46,9 @@ Object.assign(D.es,{pendingPublication:'Cambios pendientes de publicación'});
 Object.assign(D.pt,{publicUnavailable:'Serviço temporariamente indisponível',publicUnavailableHelp:'Não conseguimos carregar as informações agora. Tente novamente sem perder seu pedido.',tryAgain:'Tentar novamente'});
 Object.assign(D.en,{publicUnavailable:'Service temporarily unavailable',publicUnavailableHelp:'We could not load this page right now. Please try again.',tryAgain:'Try again'});
 Object.assign(D.es,{publicUnavailable:'Servicio temporalmente no disponible',publicUnavailableHelp:'No pudimos cargar esta página ahora. Inténtalo de nuevo.',tryAgain:'Reintentar'});
+Object.assign(D.pt,{catalogReadOnly:'Somente administradores podem alterar ou publicar o catálogo.'});
+Object.assign(D.en,{catalogReadOnly:'Only administrators can edit or publish the catalog.'});
+Object.assign(D.es,{catalogReadOnly:'Solo los administradores pueden editar o publicar el catálogo.'});
 Object.assign(D.pt,{allStatuses:'Todos os estados',filterStatus:'Filtrar por situação',dataPartial:'Indicadores baseados nos pedidos carregados; há registros adicionais.'});
 Object.assign(D.en,{allStatuses:'All statuses',filterStatus:'Filter by status',dataPartial:'Indicators use loaded requests; there are more records.'});
 Object.assign(D.es,{allStatuses:'Todos los estados',filterStatus:'Filtrar por estado',dataPartial:'Indicadores basados en pedidos cargados; hay más registros.'});
@@ -1106,6 +1109,13 @@ function render(){
   if(!S.loading&&window.__nestLocalBootGuard){clearTimeout(window.__nestLocalBootGuard);window.__nestLocalBootGuard=null}
   document.documentElement.dataset.nlBuild='20261012-radar-verticals-v1';
   try{bind()}catch(e){console.error('[NESTLOCAL_BIND]',e)}
+  if(S.data?.canManageCatalog===false){
+    for(const form of document.querySelectorAll('#settings, #capacity-settings, .service-editor')){
+      form.querySelectorAll('input,textarea,select,button').forEach(control=>{control.disabled=true});
+      form.setAttribute('aria-label',t('catalogReadOnly'));
+    }
+    const publish=document.querySelector('#publish');if(publish){publish.disabled=true;publish.title=t('catalogReadOnly')}
+  }
   if(S.data?.entitlement?.readOnly===true){
     const captureButton=document.querySelector('.opportunity-fab');
     if(captureButton){captureButton.disabled=true;captureButton.title=t('readOnlyRequest')}
