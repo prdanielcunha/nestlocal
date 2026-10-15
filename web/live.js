@@ -64,6 +64,9 @@ Object.assign(D.es,{allStatuses:'Todos los estados',filterStatus:'Filtrar por es
 Object.assign(D.pt,{dataUpdatedNow:'Dados atualizados agora',dataUpdatedAgo:'Atualizado há',refresh:'Atualizar'});
 Object.assign(D.en,{dataUpdatedNow:'Data updated now',dataUpdatedAgo:'Updated',refresh:'Refresh'});
 Object.assign(D.es,{dataUpdatedNow:'Datos actualizados ahora',dataUpdatedAgo:'Actualizado hace',refresh:'Actualizar'});
+Object.assign(D.pt,{priorityPartial:'Existem outras pendências. Consulte os filtros em Pedidos para revisar todos os casos.',priorityUnavailable:'Não foi possível atualizar todas as prioridades. Verifique os pedidos.',allRequests:'Ver todos os pedidos'});
+Object.assign(D.en,{priorityPartial:'There are more pending cases. Use Requests filters to review the full list.',priorityUnavailable:'Some priority lists could not be refreshed. Check Requests.',allRequests:'See all requests'});
+Object.assign(D.es,{priorityPartial:'Hay más pendientes. Use los filtros de Pedidos para revisar todos los casos.',priorityUnavailable:'No se pudieron actualizar todas las prioridades. Revise Pedidos.',allRequests:'Ver todos los pedidos'});
 Object.assign(D.pt,{agendaMore:'Mais compromissos',agendaIncomplete:'Agenda parcialmente carregada. Tente novamente.',agendaSlots:'Reservas na agenda'});
 Object.assign(D.en,{agendaMore:'More appointments',agendaIncomplete:'Schedule partially loaded. Please retry.',agendaSlots:'Scheduled reservations'});
 Object.assign(D.es,{agendaMore:'Más citas',agendaIncomplete:'Agenda cargada parcialmente. Vuelva a intentarlo.',agendaSlots:'Reservas en agenda'});
@@ -495,7 +498,7 @@ function opportunityPulseCard(){
 function outcomeLearningCard(){const learning=renderOutcomeLearning({snapshot:S.data.actionOutcomeMetrics||{},t,esc}),experiment=renderGuidedExperiment({experiments:S.data.guidedExperiments||[],decisionMemory:S.data.decisionMemory||{},snapshot:S.data.actionOutcomeMetrics||{},canManage:S.data.experimentAccess?.canManage===true,t,esc});return `<div class="learning-stack">${learning}<article class="card experiment-card">${experiment}</article></div>`}
 
 function nextBestActions(){
-  const requests=S.data.requests||[],customers=S.data.customers||[],today=organizationDateIso(),now=Date.now(),actions=[];
+  const requestMap=new Map((S.data.requests||[]).map(r=>[r.id,r]));for(const r of S.data.priorityRequests||[])requestMap.set(r.id,r);const requests=[...requestMap.values()],customerMap=new Map((S.data.customers||[]).map(c=>[c.id,c]));for(const c of S.data.dueCustomers||[])customerMap.set(c.id,c);const customers=[...customerMap.values()],today=organizationDateIso(),now=Date.now(),actions=[];
   for(const r of requests){
     const customerName=r.customer?.name||'—',amount=r.commercial?.finalAmountCents??r.quote?.totalCents??0,phone=r.customer?.phone||'';
     if(r.status==='in_progress')actions.push({type:'finish',priority:100,requestId:r.id,customerName,amount});
@@ -752,7 +755,7 @@ function today(){
   return `<div class="page-stack nestlocal-today-v2">${operationalFreshness()}${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
-      ${draftsPanel(3)}</article>
+      ${draftsPanel(3)}${S.data.priorityHasMore?`<p class="help" role="status">${t('priorityPartial')}</p><button class="button small" type="button" data-action-page="requests">${t('allRequests')}</button>`:''}${S.data.priorityLoadError?`<p class="help" role="status">${t('priorityUnavailable')}</p>`:''}</article>
     <article class="card"><div class="section-title"><h2>${t('taskQuestion')}</h2><button class="button small" data-action-page="agenda">${t('agenda')}</button></div>
       ${visits.length?`<p class="help">${visits.length} ${t('agenda')} · ${esc(organizationDateIso())}</p>`:!followups?`<p class="help">${t('taskEmpty')}</p>`:''}${followups}</article>
     <details class="today-advanced"><summary>${t('detailsMore')}</summary>${todayLegacy(false)}</details></div>`;
@@ -1159,7 +1162,31 @@ function render(){
     }
   }
 }
-async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});
+
+const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'];
+async function loadOperationalPriorities({append=false}={}){
+  if(!S.orgId||!S.data)return;
+  const org=S.orgId,previous=append?(S.data.priorityPages||{}):{},pageSize=25;
+  const statuses=priorityStatusOptions.filter(status=>!append||previous[status]?.hasMore===true);
+  const values=await Promise.allSettled(statuses.map(status=>{
+    const cursor=append?previous[status]?.nextCursor:'';
+    const query=`?limit=${pageSize}&status=${encodeURIComponent(status)}${cursor?`&cursor=${encodeURIComponent(cursor)}`:''}`;
+    return api(`/api/organizations/${encodeURIComponent(org)}/nestlocal/lists/requests/page${query}`,{timeoutMs:7500});
+  }));
+  if(org!==S.orgId||!S.data)return;
+  const pages={...previous},errors=[];
+  for(let i=0;i<statuses.length;i++){
+    const status=statuses[i],result=values[i];
+    if(result.status!=='fulfilled'){errors.push(status);continue}
+    const page=result.value,already=append?(pages[status]?.items||[]):[],seen=new Set(already.map(x=>x.id));
+    pages[status]={...page,items:[...already,...(page.items||[]).filter(row=>!seen.has(row.id))]};
+  }
+  S.data.priorityPages=pages;
+  S.data.priorityRequests=Object.values(pages).flatMap(page=>page.items||[]);
+  S.data.priorityHasMore=Object.values(pages).some(page=>page.hasMore===true);
+  S.data.priorityLoadError=errors.length?errors.join(','):'';
+}
+async function loadData(){setAuthStage('operation_data');S.data=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal`,{timeoutMs:12000});await loadOperationalPriorities();
   if(S.requestListFilter!=='all'){
     try{S.requestList=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/lists/requests/page?status=${encodeURIComponent(S.requestListFilter)}&limit=50`,{timeoutMs:6500})}
     catch(error){S.requestList=null;S.requestListFilter='all'}
