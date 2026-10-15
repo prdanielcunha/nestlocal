@@ -1681,7 +1681,7 @@ function bind(){
       render();return;
     }
     if(!S.customerBatchPreview.canImport)return;
-    const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/customers/batch`,{method:'POST',body:JSON.stringify({customers})});
+    const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/customers/batch`,{method:'POST',body:JSON.stringify({customers,preflightRows:S.customerBatchPreview.rows||[]})});
     S.customerBatchPreview=null;await loadData();render();
     toast(`${result.importedCount||0} ${t('importedCustomers')} · ${result.skippedCount||0} ${t('customerImportSkipped')}`);
   }catch(error){button.disabled=false;toast(error.message)}
