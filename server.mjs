@@ -1355,6 +1355,39 @@ app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,auth
   }catch(error){console.error('NESTLOCAL_PAGE_QUERY_FAILED',error?.code||error?.name);return sendError(res,500,'LIST_UNAVAILABLE')}
 });
 
+// Appointment query is independent of the most recent 100 requests.
+// Schedule slot records are written atomically when appointments are reserved.
+app.get('/api/organizations/:orgId/nestlocal/agenda/page',authenticate,authorize,async(req,res)=>{
+  const cursor=clean(req.query.cursor),requested=Number(req.query.limit||50),
+    limit=Number.isSafeInteger(requested)?Math.min(100,Math.max(1,requested)):50;
+  if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_CURSOR');
+  try{
+    const root=`organizations/${req.access.orgId}`,slots=db.collection(`${root}/nestlocal_schedule_slots`);
+    let query=slots.orderBy('date').orderBy(admin.firestore.FieldPath.documentId());
+    if(cursor){
+      const previous=await slots.doc(cursor).get();
+      if(!previous.exists)return sendError(res,400,'INVALID_CURSOR');
+      query=query.startAfter(previous);
+    }
+    const [result,countResult]=await Promise.all([query.limit(limit+1).get(),slots.count().get()]);
+    const chosen=result.docs.slice(0,limit),documents=await Promise.all(chosen.map(doc=>db.doc(`${root}/nestlocal_requests/${safeId(doc.data()?.requestId)||'__invalid__'}`).get()));
+    const items=[];
+    for(let i=0;i<chosen.length;i++){
+      const request=documents[i],slot=chosen[i].data()||{};
+      if(!request.exists||request.id!==slot.requestId)continue;
+      const value=request.data()||{};
+      if(!['scheduled','in_progress'].includes(value.status))continue;
+      const row={id:request.id,...value};
+      delete row.trackingTokenHash;delete row.trackingTokenHashes;
+      delete row.reviewTokenHash;delete row.reviewTokenHashes;
+      items.push(row);
+    }
+    res.set('Cache-Control','private, no-store');
+    return res.json({items,totalSlots:countResult.data().count,
+      hasMore:result.size>limit,nextCursor:result.size>limit?chosen.at(-1)?.id||null:null});
+  }catch(error){console.error('NESTLOCAL_AGENDA_PAGE_FAILED',error?.code||error?.name);return sendError(res,500,'AGENDA_UNAVAILABLE')}
+});
+
 // F1: read-only data portability, bounded and tenant-scoped. No billing mutation.
 const exportCollections=Object.freeze({
   requests:'nestlocal_requests',customers:'nestlocal_customers',services:'nestlocal_services',
