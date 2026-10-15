@@ -32,3 +32,29 @@ export function completedAmountAdjustment(record,patch={}){
     throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
   return {changed:oldAmountCents!==newAmountCents,deltaCents:newAmountCents-oldAmountCents,oldAmountCents,newAmountCents};
 }
+
+/**
+ * Returns manual cash-record corrections; not a payment processor confirmation.
+ * Recording signed deltas (including reversals) is idempotent under Firestore
+ * transactions because the request revision is advanced with the event.
+ */
+export function manualPaymentAdjustment(record={},patch={}){
+  const hasChange=patch.amountPaidCents!==undefined||patch.paymentStatus!==undefined;
+  const oldStatus=String(record.commercial?.paymentStatus||'pending');
+  const rawOld=record.commercial?.amountPaidCents;
+  if(hasChange&&rawOld==null&&['partial','paid'].includes(oldStatus))
+    throw new TypeError('PAYMENT_RECONCILIATION_REQUIRED');
+  const oldAmountCents=rawOld==null?0:Number(rawOld);
+  const nextAmountCents=patch.amountPaidCents===undefined?oldAmountCents:Number(patch.amountPaidCents);
+  const nextStatus=patch.paymentStatus===undefined?oldStatus:String(patch.paymentStatus);
+  if(!Number.isSafeInteger(oldAmountCents)||oldAmountCents<0||
+     !Number.isSafeInteger(nextAmountCents)||nextAmountCents<0||nextAmountCents>100000000)
+    throw new TypeError('PAYMENT_RECONCILIATION_REQUIRED');
+  const changed=hasChange&&(oldAmountCents!==nextAmountCents||oldStatus!==nextStatus);
+  const version=Number(record.commercial?.paymentRevision||0);
+  if(changed&&(!Number.isSafeInteger(version)||version<0))
+    throw new TypeError('PAYMENT_RECONCILIATION_REQUIRED');
+  return {changed,oldAmountCents,newAmountCents:nextAmountCents,
+    deltaCents:nextAmountCents-oldAmountCents,oldStatus,newStatus:nextStatus,
+    revision:changed?version+1:version};
+}
