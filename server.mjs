@@ -2454,7 +2454,8 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         if(!Number.isSafeInteger(nextFinal)||nextFinal<0||!Number.isSafeInteger(nextPaid)||nextPaid<0||nextPaid>nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='pending'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='partial'&&!(nextPaid>0&&nextPaid<nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
-        if(nextPayment==='paid'&&(nextFinal<=0||nextPaid!==nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&nextPaid!==nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&nextFinal<=0)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='cancelled'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
       }
       const nextSchedule={
@@ -2463,7 +2464,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         assignedTo:b.assignedTo!==undefined?safeId(b.assignedTo):safeId(current.schedule?.assignedTo)
       };
       const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus),currentSlotId=clean(current.schedule?.slotId);
-      const completedNow=nextStatus==='completed'&&clean(current.status)!=='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
+      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt&&clean(current.status)!=='completed',customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
       let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null,serviceRef=null,settingsRef=null;
       if(shouldHoldSlot){
         if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
