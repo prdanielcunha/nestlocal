@@ -1743,7 +1743,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authentic
     const root=`organizations/${req.access.orgId}`,docs=valid.length?await db.getAll(...valid.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`))):[];
     for(let i=0;i<valid.length;i++){
       const row=valid[i],state=docs[i]?.exists?'update':'create';
-      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,status:state});
+      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,customerKey:row.id,status:state});
     }
     results.sort((a,b)=>a.index-b.index);
     const counts={create:0,update:0,invalid:0,duplicate:0};
@@ -1765,6 +1765,16 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
     }
     if(!prepared.length)return res.status(400).json({error:'INVALID_CUSTOMER_BATCH',importedCount:0,skippedCount:skipped.length,skipped});
     const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),existing=await db.getAll(...refs),batch=db.batch();let createdCount=0,updatedCount=0;
+    const expected=Array.isArray(req.body?.preflightRows)?req.body.preflightRows:null;
+    if(expected){
+      const keyed=new Map(expected.filter(row=>row&&['create','update'].includes(row.status)).map(row=>[Number(row.index),row]));
+      if(keyed.size!==prepared.length)return sendError(res,409,'CUSTOMER_IMPORT_PREVIEW_STALE');
+      for(let i=0;i<prepared.length;i++){
+        const prediction=keyed.get(prepared[i].index),state=existing[i]?.exists?'update':'create';
+        if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state)
+          return sendError(res,409,'CUSTOMER_IMPORT_PREVIEW_STALE');
+      }
+    }
     for(const [i,item] of prepared.entries()){
       if(existing[i]?.exists)updatedCount++;else createdCount++;
       const data={name:item.name,phone:item.phone,source:'customer_import',updatedAt:admin.firestore.FieldValue.serverTimestamp(),importedAt:admin.firestore.FieldValue.serverTimestamp()};
@@ -1774,6 +1784,10 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
       if(item.nextServiceDate){data.nextServiceDate=item.nextServiceDate;data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';data.nextServiceSource='customer_import'}
       batch.set(refs[i],data,{merge:true});
     }
+    batch.create(db.collection(`${root}/nestlocal_audit`).doc(),{
+      action:'customers.batch_import',createdCount,updatedCount,skippedCount:skipped.length,
+      actorUid:req.identity.uid,at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:2
+    });
     await batch.commit();
     res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
