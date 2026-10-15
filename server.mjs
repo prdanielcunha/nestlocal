@@ -1176,7 +1176,7 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0&&!(quoteHasExpired(d.quote?.expiresAt)),scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
-      id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
+      id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,quoteVersion:Number(d.quote?.version||1),displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
       schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),revision:currentScheduleRevision(d.schedule)||1,customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
       payment:paymentVisible?{status:clean(d.commercial?.paymentStatus||'pending'),totalCents:displayTotalCents,paidCents,balanceCents,pix:pixVisible?{key:clean(pix.key),label:clean(pix.label),instructions:clean(pix.instructions)}:null}:null,
       warranty:completed&&clean(d.warranty?.until)?{until:clean(d.warranty.until),notes:clean(d.warranty?.notes)}:null,
@@ -1193,12 +1193,13 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
     let result=null;
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
-      const current=snap.data(),existing=clean(current.decision?.status);
+      const current=snap.data(),existing=clean(current.decision?.status),expectedQuoteVersion=Number(req.body?.quoteVersion||1),currentQuoteVersion=Number(current.quote?.version||1);
       if(existing){
         if(existing===decision){result={ok:true,status:current.status,decision:existing,idempotent:true};return}
         throw new TypeError('DECISION_LOCKED');
       }
       if(['scheduled','in_progress','completed','cancelled','no_show'].includes(current.status))throw new TypeError('DECISION_LOCKED');
+      if(!Number.isSafeInteger(expectedQuoteVersion)||expectedQuoteVersion!==currentQuoteVersion)throw new TypeError('QUOTE_REVISION_CHANGED');
       const displayTotalCents=Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):null;
       if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');if(decision==='accepted'&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
       const nextStatus=decision,at=admin.firestore.Timestamp.now(),decisionUpdate={status:nextStatus,decision:{status:decision,at,source:'public_tracking',quoteVersion:Number(current.quote?.version||1),quoteTotalCents:displayTotalCents},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
@@ -1210,7 +1211,7 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
   }catch(e){
     console.error(e);const code=e?.message;
     if(code==='NOT_FOUND')return sendError(res,404,'NOT_FOUND');
-    if(['INVALID_DECISION','DECISION_LOCKED','QUOTE_NOT_READY','QUOTE_EXPIRED'].includes(code))return sendError(res,409,code);
+    if(['INVALID_DECISION','DECISION_LOCKED','QUOTE_NOT_READY','QUOTE_EXPIRED','QUOTE_REVISION_CHANGED'].includes(code))return sendError(res,409,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
