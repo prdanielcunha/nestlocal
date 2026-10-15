@@ -86,8 +86,8 @@ test('C02: operational priorities query every actionable status independently an
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  assert.match(live,/priorityStatusOptions=\['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'\]/);
  assert.match(live,/await Promise\.allSettled\(statuses\.map/);
- assert.match(live,/S\.data\.priorityRequests=/);
- assert.match(live,/S\.data\.priorityHasMore=/);
+ assert.match(live,/targetData\.priorityRequests=/);
+ assert.match(live,/targetData\.priorityHasMore=/);
  assert.match(live,/mergeOperationalRows\(S\.data\.customers,S\.data\.dueCustomers\)/);
  assert.match(server,/dueCustomers:dueRows/);
  assert.match(server,/dueCustomersHasMore:/);
@@ -98,4 +98,12 @@ test('C04/C05: catalog readiness accounts for draft changes and review services 
  assert.match(server,/effectiveSettings=settingsData\?\.draftSettings\?/);
  assert.match(server,/setupReadiness=catalogReadiness\(effectiveSettings,serviceRows\)/);
  assert.match(server,/mode:b\.mode,returnAfterDays,inclusions:clean\(b\.inclusions\)/);
+});
+
+test('C21: late dashboard responses cannot overwrite a newly selected organization',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(ui,/const orgId=S\.orgId,run=\+\+S\.dataLoadSequence/);
+ assert.match(ui,/if\(orgId!==S\.orgId\|\|run!==S\.dataLoadSequence\)return/);
+ assert.match(ui,/S\.data=data;S\.privacyPermissions=permissions/);
+ assert.match(ui,/const priorityLoad=loadOperationalPriorities\(\{targetData:data,orgId\}\)/);
 });
