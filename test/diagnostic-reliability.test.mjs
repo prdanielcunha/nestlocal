@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {quoteHasExpired,currentScheduleRevision,scheduleRevisionAfterPatch,completedAmountAdjustment} from '../src/domain/operational-integrity.mjs';
+import {quoteHasExpired,currentScheduleRevision,scheduleRevisionAfterPatch,completedAmountAdjustment,manualPaymentAdjustment} from '../src/domain/operational-integrity.mjs';
 
 test('C06: expired quotes are rejected at the exact deadline',()=>{
  const expiry='2026-10-15T12:00:00.000Z';
@@ -106,4 +106,30 @@ test('C21: late dashboard responses cannot overwrite a newly selected organizati
  assert.match(ui,/if\(orgId!==S\.orgId\|\|run!==S\.dataLoadSequence\)return/);
  assert.match(ui,/S\.data=data;S\.privacyPermissions=permissions/);
  assert.match(ui,/const priorityLoad=loadOperationalPriorities\(\{targetData:data,orgId\}\)/);
+});
+
+test('C08: payment entry corrections are signed, versioned, and repeat-safe',()=>{
+ const old={status:'completed',commercial:{finalAmountCents:20000,amountPaidCents:8000,paymentStatus:'partial',paymentRevision:2}};
+ assert.deepEqual(manualPaymentAdjustment(old,{amountPaidCents:11000}),{
+  changed:true,oldAmountCents:8000,newAmountCents:11000,deltaCents:3000,
+  oldStatus:'partial',newStatus:'partial',revision:3
+ });
+ const revised={...old,commercial:{...old.commercial,amountPaidCents:11000,paymentRevision:3}};
+ assert.equal(manualPaymentAdjustment(revised,{amountPaidCents:11000}).changed,false);
+ assert.equal(manualPaymentAdjustment(revised,{amountPaidCents:4000}).deltaCents,-7000);
+ assert.equal(manualPaymentAdjustment(revised,{paymentStatus:'paid'}).changed,true);
+ assert.throws(()=>manualPaymentAdjustment({commercial:{paymentStatus:'paid'}},{amountPaidCents:1000}),{message:'PAYMENT_RECONCILIATION_REQUIRED'});
+ assert.equal(manualPaymentAdjustment({commercial:{}},{amountPaidCents:0}).changed,false);
+});
+test('C08: payment ledger is operator-entered and audited only after transactional reads',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const start=server.indexOf("app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId'");
+ const block=server.slice(start,server.indexOf('\napp.',start+10));
+ assert.match(block,/paymentCorrection=manualPaymentAdjustment\(current,b\)/);
+ assert.match(block,/nestlocal_payment_events/);
+ assert.match(block,/source:'operator_entry'/);
+ assert.match(block,/paymentRevision/);
+ assert.ok(block.indexOf('await Promise.all([')<block.indexOf('tx.create(paymentEvent'), 'reads precede ledger writes');
+ assert.match(block,/nextPayment==='cancelled'&&nextPaid!==0/);
+ assert.match(block,/FINANCIAL_RECONCILIATION_REQUIRED/);
 });
