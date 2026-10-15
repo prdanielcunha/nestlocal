@@ -25,3 +25,13 @@ test('C02: separately queried due customers survive an unrelated customer-page l
   assert.equal(all.length,101);
   assert.equal(all.at(-1).id,due.id);
 });
+
+test('C02: legacy scheduled work without a slot remains in the agenda view',()=>{
+ const newest=Array.from({length:140},(_,i)=>({id:'finished-'+i,status:'completed'}));
+ const legacy={id:'historic-booking',status:'scheduled',schedule:{date:'2026-10-20',window:'morning'}};
+ const agendaSlots=[];
+ const agenda=mergeOperationalRows(newest.filter(item=>['scheduled','in_progress'].includes(item.status)),
+  [legacy].filter(item=>['scheduled','in_progress'].includes(item.status)),agendaSlots);
+ assert.equal(agenda.length,1);
+ assert.deepEqual(agenda[0],legacy);
+});
