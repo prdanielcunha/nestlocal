@@ -1764,33 +1764,48 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
       prepared.push({index,id,name,phone:customerPhone,city,addressLine,lastServiceLabel,lastServiceDate,nextServiceDate,nextServiceReason});
     }
     if(!prepared.length)return res.status(400).json({error:'INVALID_CUSTOMER_BATCH',importedCount:0,skippedCount:skipped.length,skipped});
-    const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),existing=await db.getAll(...refs),batch=db.batch();let createdCount=0,updatedCount=0;
-    const expected=Array.isArray(req.body?.preflightRows)?req.body.preflightRows:null;
-    if(expected){
-      const keyed=new Map(expected.filter(row=>row&&['create','update'].includes(row.status)).map(row=>[Number(row.index),row]));
-      if(keyed.size!==prepared.length)return sendError(res,409,'CUSTOMER_IMPORT_PREVIEW_STALE');
-      for(let i=0;i<prepared.length;i++){
-        const prediction=keyed.get(prepared[i].index),state=existing[i]?.exists?'update':'create';
-        if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state)
-          return sendError(res,409,'CUSTOMER_IMPORT_PREVIEW_STALE');
+
+    const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),
+      expected=Array.isArray(req.body?.preflightRows)?req.body.preflightRows:null;
+    const expectedByIndex=expected?new Map(expected.filter(row=>row&&['create','update'].includes(row.status))
+      .map(row=>[Number(row.index),row])):null;
+    const auditRef=db.collection(`${root}/nestlocal_audit`).doc();
+    let createdCount=0,updatedCount=0;
+    await db.runTransaction(async tx=>{
+      // Read every source document before any write; status changes between preview
+      // and commit trigger a conflict and Firestore retries the transaction.
+      const existing=await Promise.all(refs.map(ref=>tx.get(ref)));
+      if(expectedByIndex){
+        if(expectedByIndex.size!==prepared.length)throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
+        for(let i=0;i<prepared.length;i++){
+          const prediction=expectedByIndex.get(prepared[i].index),state=existing[i]?.exists?'update':'create';
+          if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state)
+            throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
+        }
       }
-    }
-    for(const [i,item] of prepared.entries()){
-      if(existing[i]?.exists)updatedCount++;else createdCount++;
-      const data={name:item.name,phone:item.phone,source:'customer_import',updatedAt:admin.firestore.FieldValue.serverTimestamp(),importedAt:admin.firestore.FieldValue.serverTimestamp()};
-      if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
-      if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
-      if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
-      if(item.nextServiceDate){data.nextServiceDate=item.nextServiceDate;data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';data.nextServiceSource='customer_import'}
-      batch.set(refs[i],data,{merge:true});
-    }
-    batch.create(db.collection(`${root}/nestlocal_audit`).doc(),{
-      action:'customers.batch_import',createdCount,updatedCount,skippedCount:skipped.length,
-      actorUid:req.identity.uid,at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:2
+      let creates=0,updates=0;
+      for(const [i,item] of prepared.entries()){
+        if(existing[i]?.exists)updates++;else creates++;
+        const data={name:item.name,phone:item.phone,source:'customer_import',
+          updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+          importedAt:admin.firestore.FieldValue.serverTimestamp()};
+        if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
+        if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
+        if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
+        if(item.nextServiceDate){
+          data.nextServiceDate=item.nextServiceDate;
+          data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';
+          data.nextServiceSource='customer_import';
+        }
+        tx.set(refs[i],data,{merge:true});
+      }
+      tx.create(auditRef,{action:'customers.batch_import',createdCount:creates,updatedCount:updates,
+        skippedCount:skipped.length,actorUid:req.identity.uid,
+        at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:2});
+      createdCount=creates;updatedCount=updates;
     });
-    await batch.commit();
     res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
-  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){if(e?.message==='CUSTOMER_IMPORT_PREVIEW_STALE')return sendError(res,409,e.message);console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-plan',authenticate,authorize,async(req,res)=>{
