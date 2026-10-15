@@ -6,6 +6,7 @@ import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
 import {chooseOperationalFocus} from './operational-focus.js';
+import {mergeOperationalRows} from './operational-data.js';
 import {makeTaskReminderIcs} from './task-calendar.js';
 import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
@@ -498,7 +499,7 @@ function opportunityPulseCard(){
 function outcomeLearningCard(){const learning=renderOutcomeLearning({snapshot:S.data.actionOutcomeMetrics||{},t,esc}),experiment=renderGuidedExperiment({experiments:S.data.guidedExperiments||[],decisionMemory:S.data.decisionMemory||{},snapshot:S.data.actionOutcomeMetrics||{},canManage:S.data.experimentAccess?.canManage===true,t,esc});return `<div class="learning-stack">${learning}<article class="card experiment-card">${experiment}</article></div>`}
 
 function nextBestActions(){
-  const requestMap=new Map((S.data.requests||[]).map(r=>[r.id,r]));for(const r of S.data.priorityRequests||[])requestMap.set(r.id,r);const requests=[...requestMap.values()],customerMap=new Map((S.data.customers||[]).map(c=>[c.id,c]));for(const c of S.data.dueCustomers||[])customerMap.set(c.id,c);const customers=[...customerMap.values()],today=organizationDateIso(),now=Date.now(),actions=[];
+  const requests=mergeOperationalRows(S.data.requests,S.data.priorityRequests),customers=mergeOperationalRows(S.data.customers,S.data.dueCustomers),today=organizationDateIso(),now=Date.now(),actions=[];
   for(const r of requests){
     const customerName=r.customer?.name||'—',amount=r.commercial?.finalAmountCents??r.quote?.totalCents??0,phone=r.customer?.phone||'';
     if(r.status==='in_progress')actions.push({type:'finish',priority:100,requestId:r.id,customerName,amount});
