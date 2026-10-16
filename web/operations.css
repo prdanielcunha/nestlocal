@@ -655,3 +655,15 @@
 .execution-checklist-row:focus-within{outline:2px solid rgba(99,227,180,.32);outline-offset:2px}
 @media(max-width:680px){.execution-checklist{padding:13px}.execution-checklist-row{grid-template-columns:1fr auto}.execution-checklist-done{grid-column:1}.execution-checklist-row>[data-checklist-label]{grid-column:1/-1;grid-row:2}.execution-checklist-row>[data-remove-checklist]{grid-column:2;grid-row:1;min-width:82px}}
 @media(prefers-reduced-motion:reduce){.execution-checklist *, .execution-checklist *::before,.execution-checklist *::after{transition:none!important}}
+
+/* Scoped, itemized quote builder. Existing single-value estimates remain valid. */
+.quote-lineitems{border:1px solid rgba(127,210,174,.22);border-radius:16px;padding:13px 15px;min-width:0;background:rgba(71,143,111,.035)}
+.quote-lineitems summary{cursor:pointer;font-size:14px;font-weight:750;color:#e4fff0;min-height:44px;display:flex;align-items:center}
+.quote-lineitems>.help{font-size:13px;margin:0 0 12px}
+.quote-lineitems-list{display:grid;gap:8px}
+.quote-lineitem{display:grid;grid-template-columns:minmax(0,2fr) minmax(70px,.6fr) minmax(100px,.9fr) auto;gap:8px;align-items:center;padding:10px;border-radius:12px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.07)}
+.quote-lineitem input{width:100%;min-width:0;min-height:44px;padding:9px 10px;background:#0e1d18;border:1px solid rgba(255,255,255,.13);border-radius:9px;color:#f2fff8}
+.quote-lineitem button,.quote-lineitems-actions button{min-height:44px}
+.quote-lineitems-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:12px}
+.quote-lineitems-actions .help{font-variant-numeric:tabular-nums}
+@media(max-width:680px){.quote-lineitem{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.quote-lineitem [data-quote-desc]{grid-column:1/-1}.quote-lineitem [data-quote-price]{grid-column:2}.quote-lineitem button{grid-column:1/-1}}
