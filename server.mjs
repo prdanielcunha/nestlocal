@@ -1632,7 +1632,10 @@ app.post('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authori
     if(!(await rateLimit(req,'push_enroll',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
     const ref=pushDeviceRef(req.access.orgId,tokenValue);
     await db.runTransaction(async tx=>{
-      const existing=await tx.get(ref);
+      const [existing,owned]=await Promise.all([tx.get(ref),
+        tx.get(db.collection(`organizations/${req.access.orgId}/nestlocal_push_devices`)
+          .where('uid','==',uid).limit(6))]);
+      if(!existing.exists&&owned.size>=5)throw new TypeError('PUSH_DEVICE_LIMIT');
       if(existing.exists&&existing.data()?.uid!==uid&&existing.data()?.revoked!==true)
         throw new TypeError('PUSH_DEVICE_ALREADY_BOUND');
       tx.set(ref,{uid,token:tokenValue,locale,enabled:true,revoked:false,
@@ -1642,7 +1645,7 @@ app.post('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authori
     res.set('Cache-Control','private, no-store');
     return res.status(201).json({enabled:true,deviceId:ref.id,transport:'firebase_cloud_messaging'});
   }catch(error){
-    if(error?.message==='PUSH_DEVICE_ALREADY_BOUND')return sendError(res,409,error.message);
+    if(error?.message==='PUSH_DEVICE_ALREADY_BOUND'||error?.message==='PUSH_DEVICE_LIMIT')return sendError(res,409,error.message);
     console.error('NESTLOCAL_PUSH_DEVICE_ENROLL_FAILED',error?.code||error?.name);
     return sendError(res,503,'PUSH_DEVICE_UNAVAILABLE');
   }
