@@ -641,3 +641,17 @@
 .message-outbox .slot .tag{max-width:170px;text-align:center;line-height:1.35}
 @media(max-width:620px){.payment-audit{padding:12px}.payment-audit>.button{width:100%}.payment-audit li{font-size:12px}.message-outbox .slot{align-items:flex-start;flex-wrap:wrap}}
 @media(prefers-reduced-motion:reduce){.payment-audit,.payment-audit *{transition:none!important}}
+
+/* Execution checklist: touch-first, screen-reader friendly and opt-in per job. */
+.execution-checklist{border:1px solid rgba(126,218,182,.24);border-radius:16px;padding:16px;margin:10px 0;background:rgba(86,163,123,.04);min-width:0}
+.execution-checklist legend{padding:0 8px;color:#e9fff3;font-weight:720;font-size:15px}
+.execution-checklist>.help{font-size:13px;margin:0 0 12px}
+.execution-checklist-items{display:grid;gap:9px;margin-bottom:12px}
+.execution-checklist-row{display:grid;grid-template-columns:minmax(126px,auto) minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(0,0,0,.12)}
+.execution-checklist-done{display:flex!important;align-items:center;gap:8px;min-height:44px;white-space:nowrap}
+.execution-checklist-done input{width:18px;height:18px;accent-color:#54e3ae;flex:0 0 auto}
+.execution-checklist-row>[data-checklist-label]{width:100%;min-width:0;min-height:44px;padding:10px;border:1px solid rgba(255,255,255,.15);border-radius:10px;background:#101e1b;color:#f1fff8}
+.execution-checklist button{min-height:44px}
+.execution-checklist-row:focus-within{outline:2px solid rgba(99,227,180,.32);outline-offset:2px}
+@media(max-width:680px){.execution-checklist{padding:13px}.execution-checklist-row{grid-template-columns:1fr auto}.execution-checklist-done{grid-column:1}.execution-checklist-row>[data-checklist-label]{grid-column:1/-1;grid-row:2}.execution-checklist-row>[data-remove-checklist]{grid-column:2;grid-row:1;min-width:82px}}
+@media(prefers-reduced-motion:reduce){.execution-checklist *, .execution-checklist *::before,.execution-checklist *::after{transition:none!important}}
