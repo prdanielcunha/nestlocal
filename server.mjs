@@ -1924,23 +1924,32 @@ app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authe
  try{
   const site=validateCustomerSite(req.body),root='organizations/'+req.access.orgId,
     base=db.doc(root+'/nestlocal_customers/'+customerId),
-    ref=base.collection('sites').doc(),audit=db.collection(root+'/nestlocal_audit').doc();
+    siteId=hash(customerId+'|'+site.label.toLowerCase()+'|'+site.line.toLowerCase()+'|'+site.city.toLowerCase()).slice(0,28),
+    ref=base.collection('sites').doc(siteId),audit=db.collection(root+'/nestlocal_audit').doc();
+  let idempotent=false;
   await db.runTransaction(async tx=>{
-    const owner=await tx.get(base);if(!owner.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+    const [owner,existing]=await Promise.all([tx.get(base),tx.get(ref)]);
+    if(!owner.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+    if(existing.exists){
+      if(existing.data()?.intentHash!==hash(JSON.stringify(site)))throw new TypeError('CUSTOMER_SITE_ALREADY_EXISTS');
+      idempotent=true;return;
+    }
+    idempotent=false;
     const currentCount=Number(owner.data()?.siteCount||0);
     if(!Number.isSafeInteger(currentCount)||currentCount<0||currentCount>=20)throw new TypeError('CUSTOMER_SITE_LIMIT');
-    tx.create(ref,{...site,revision:1,createdBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),
+    tx.create(ref,{...site,intentHash:hash(JSON.stringify(site)),revision:1,createdBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),
       updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     tx.update(base,{siteCount:currentCount+1,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
     tx.create(audit,{action:'customers.site_created',customerId,siteId:ref.id,actorUid:req.identity.uid,
       createdAt:admin.firestore.FieldValue.serverTimestamp()});
   });
-  res.status(201).json({id:ref.id,revision:1});
+  res.status(idempotent?200:201).json({id:ref.id,revision:1,idempotent});
  }catch(error){
   const code=error?.message;
   if(code==='CUSTOMER_NOT_FOUND')return sendError(res,404,code);
   if(code==='INVALID_CUSTOMER_SITE')return sendError(res,400,code);
   if(code==='CUSTOMER_SITE_LIMIT')return sendError(res,409,code);
+  if(code==='CUSTOMER_SITE_ALREADY_EXISTS')return sendError(res,409,code);
   console.error('NESTLOCAL_SITES_WRITE_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')
  }
 });
