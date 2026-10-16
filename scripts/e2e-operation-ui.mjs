@@ -63,6 +63,22 @@ try{
     await page.locator('.pulse2-empty').waitFor();
     assert.equal(feedback.length,1);
     await page.screenshot({path:'artifacts/experience/pulse-snoozed-'+width+'.png',fullPage:true});
+    // C16: a synthetic customer's unsaved details survive module navigation
+    // without storing the customer's text in browser storage or on the server.
+    await page.evaluate(()=>document.querySelector('.sidebar button[data-nav="requests"]')?.click());
+    const intakeName=page.locator('#internal-request [name="name"]');
+    await intakeName.waitFor();
+    await page.evaluate(()=>{const details=document.querySelector('#internal-request')?.closest('details');if(details)details.open=true});
+    const unfinished='Rascunho transitório C16 — não enviar';
+    await intakeName.fill(unfinished);
+    await page.evaluate(()=>document.querySelector('.sidebar button[data-nav="agenda"]')?.click());
+    await page.evaluate(()=>document.querySelector('.sidebar button[data-nav="requests"]')?.click());
+    assert.equal(await page.locator('#internal-request [name="name"]').inputValue(),unfinished,
+      'unsaved form did not survive re-render '+width);
+    const leaked=await page.evaluate(text=>[localStorage,sessionStorage].some(storage=>
+      Array.from({length:storage.length},(_,i)=>storage.getItem(storage.key(i))||'').join(' ').includes(text)),unfinished);
+    assert.equal(leaked,false,'customer draft persisted in browser storage '+width);
+    await page.screenshot({path:'artifacts/experience/request-draft-preserved-'+width+'.png',fullPage:true});
     if(width<=980)await page.locator('.bottom-nav .mobile-more > summary').click();
     await page.locator(width<=980?'.bottom-nav .mobile-more-list button[data-nav="privacy"]':'.sidebar button[data-nav="privacy"]').click();
     await page.locator('.privacy-center').waitFor();
