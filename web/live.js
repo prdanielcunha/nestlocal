@@ -8,6 +8,7 @@ import {renderOutcomeLearning} from './outcome-learning.js';
 import {chooseOperationalFocus} from './operational-focus.js';
 import {enrollNestLocalPush,disableNestLocalPush,testNestLocalPush} from './push-notifications.js';
 import {mergeOperationalRows} from './operational-data.js';
+import {captureTransientForm,restoreTransientForm} from './transient-form-drafts.js';
 import {makeTaskReminderIcs} from './task-calendar.js';
 import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
@@ -34,7 +35,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,paymentHistory:{},pushRegistered:false,requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,dataLoadSequence:0,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,paymentHistory:{},pushRegistered:false,requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,dataLoadSequence:0,internalIntakeCache:{},unsavedFormDrafts:new Map(),copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -1144,6 +1145,49 @@ function restorePublicFormDraft(){
   }
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
+
+const trackedFormSelector='#settings,#capacity-settings,#internal-request,[data-request-operation],[data-request-quote],[data-request-schedule],[data-maintenance-plan],[data-service]';
+function transientFormKey(form){
+  if(!form||!S.user||!S.orgId||!S.data||!form.matches(trackedFormSelector))return '';
+  const identity=String(S.user.uid||S.user.id||'user');
+  const scope=form.id||(
+    form.dataset.requestOperation&&'operation:'+form.dataset.requestOperation||
+    form.dataset.requestQuote&&'quote:'+form.dataset.requestQuote||
+    form.dataset.requestSchedule&&'schedule:'+form.dataset.requestSchedule||
+    form.dataset.maintenancePlan&&'maintenance:'+form.dataset.maintenancePlan||
+    form.dataset.service&&'service:'+form.dataset.service
+  );
+  return scope?identity+'|'+S.orgId+'|'+scope:'';
+}
+function clearTransientForm(form){
+  const key=transientFormKey(form);if(key)S.unsavedFormDrafts.delete(key);
+}
+function captureTransientFormChange(event){
+  const form=event.target?.closest?.('form');const key=transientFormKey(form);
+  if(!key||S.data?.entitlement?.readOnly===true)return;
+  const draft=captureTransientForm(form.elements);
+  if(draft.length)S.unsavedFormDrafts.set(key,draft);
+  if(S.unsavedFormDrafts.size>50)S.unsavedFormDrafts.delete(S.unsavedFormDrafts.keys().next().value);
+}
+function restoreUnsavedFormChanges(){
+  if(!S.user||!S.orgId||S.data?.entitlement?.readOnly===true)return;
+  document.querySelectorAll(trackedFormSelector).forEach(form=>{
+    const draft=S.unsavedFormDrafts.get(transientFormKey(form));if(!draft)return;
+    if(form.id==='internal-request'){
+      const savedService=draft.find(x=>x.key==='serviceId|select-one|0')?.value;
+      const chosen=(S.data?.services||[]).find(x=>x.id===savedService);
+      const fieldContainer=form.querySelector('#internal-intake-fields');
+      if(chosen&&fieldContainer&&form.dataset.currentService!==chosen.id){
+        fieldContainer.innerHTML=renderInternalIntakeFields(chosen);
+        form.dataset.currentService=chosen.id;
+      }
+    }
+    restoreTransientForm(form.elements,draft);
+  });
+}
+document.addEventListener('input',captureTransientFormChange);
+document.addEventListener('change',captureTransientFormChange);
+
 function render(){
   const root=document.querySelector('#app');if(!root)return;
   try{
@@ -1195,6 +1239,7 @@ function render(){
       });
     }
   }
+  restoreUnsavedFormChanges();
 }
 
 const priorityStatusOptions=['in_progress','accepted','no_show','new','reviewing','quoted','scheduled'];
