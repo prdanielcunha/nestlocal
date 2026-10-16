@@ -1642,19 +1642,19 @@ function bind(){
     try{
       const orgId=S.orgId,config=S.data?.pushConfig;
       if(!config?.enabled)throw new Error('PUSH_NOT_CONFIGURED');
-      await enrollNestLocalPush({orgId,locale:S.lang,vapidPublicKey:config.vapidPublicKey,api});
+      await enrollNestLocalPush({orgId,locale:S.lang,vapidPublicKey:config.vapidPublicKey,messagingAppId:config.messagingAppId,messagingSenderId:config.messagingSenderId,api});
       if(orgId===S.orgId){S.pushRegistered=true;render();toast(t('pushEnabled'))}
     }catch(error){button.disabled=false;toast(pushErrorMessage(error))}
   });
   document.querySelectorAll('[data-push-test]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
-    try{const result=await testNestLocalPush({orgId:S.orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
+    try{const result=await testNestLocalPush({orgId:S.orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,messagingAppId:S.data?.pushConfig?.messagingAppId,messagingSenderId:S.data?.pushConfig?.messagingSenderId,api});
       toast(result.providerAccepted?t('pushSent'):String(result.error||'PUSH_TEST_UNAVAILABLE'))
     }catch(error){toast(pushErrorMessage(error))}finally{button.disabled=false}
   });
   document.querySelectorAll('[data-push-disable]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
-    try{const orgId=S.orgId;await disableNestLocalPush({orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
+    try{const orgId=S.orgId;await disableNestLocalPush({orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,messagingAppId:S.data?.pushConfig?.messagingAppId,messagingSenderId:S.data?.pushConfig?.messagingSenderId,api});
       if(orgId===S.orgId){S.pushRegistered=false;render()}
     }catch(error){button.disabled=false;toast(pushErrorMessage(error))}
   });
