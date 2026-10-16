@@ -128,3 +128,7 @@ Não declarar push real em segundo plano, envio oficial pelo Connect, sincroniza
 - **QA:** `test/customer-sites.test.mjs` testa formato, limites, isolamento, permissões e controle de concorrência de forma sintética. Ainda não é validação com Firestore real nem implica que equipamentos já estejam ligados automaticamente à agenda, orçamento e execução.
 
 **Não confundir a existência da ferramenta com cobertura completa da gestão de ativos:** múltiplos locais/equipamentos estão disponíveis como registros independentes na branch, mas seleção direta no novo pedido, histórico individual por equipamento, importação em massa e testes de dispositivo real permanecem por desenvolver/homologar.
+
+### Integração incremental locais → pedido
+
+O botão **Criar pedido neste local** na ficha do cliente reaproveita nome/telefone e endereço/cidade registrados, abre a criação de pedido e mantém a escolha do serviço e da área atendida para confirmação humana. Não modifica pedidos anteriores, não força correspondência de cidade com cobertura e preserva o rascunho na memória. Continua faltando associar um equipamento individual a cada execução/contrato e testar end-to-end autenticado com sites antigos.
