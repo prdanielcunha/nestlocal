@@ -31,6 +31,8 @@ test('field checklist is stored under execution and never changes payment status
  assert.match(block,/update\['execution\.checklist'\]=rows/);
  assert.match(block,/EXECUTION_CHECKLIST_LOCKED/);
  assert.match(ui,/function executionChecklistField\(request\)/);
+ assert.match(ui,/S\.checklistDrafts\[requestId\]/);
+ assert.match(ui,/delete S\.checklistDrafts\[id\]/);
  assert.match(ui,/data-add-checklist/);
  assert.match(ui,/payload\.executionChecklist=checklist/);
 });
