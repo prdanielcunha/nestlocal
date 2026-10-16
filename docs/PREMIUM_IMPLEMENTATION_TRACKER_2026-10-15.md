@@ -17,7 +17,7 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | C05 | P1 | Inclusões/exclusões e título editáveis; escopo de serviço sob revisão protegido | Conferir serviços com modo review, campos legados e publicação de versões |
 | C06 | P1 | Validade, aprovação por versão e snapshots imutáveis; proposta opcional com itens, soma em centavos e proteção contra edição simultânea, visível ao cliente/equipe | Testar expiração e edição concorrentes em Firestore, legado e frontend em cache |
 | C07 | P1 | Revisão do compromisso incrementa, confirmação antiga é arquivada e link antigo não confirma versão nova | E2E de reagendamento e múltiplos dispositivos |
-| C08 | P1 | **Parcial**: correção do valor concluído por diferença, trilha de ajustes de caixa manuais com revisão idempotente, histórico protegido por administrador e bloqueio do legado inconsistente | Teste integrado financeiro, reconciliação histórica, parcelas/estornos de provedor e comprovante de pagamento real |
+| C08 | P1 | **Parcial**: correção do valor concluído por diferença, trilha de caixa com revisão, histórico protegido, e verificador read-only de anomalias de execução/recebimento com páginas e eventos assistidos | Executar pré-conciliação com credenciais autorizadas, validar histórico no Firestore, parcelas/estornos de provedor e comprovante real de pagamento |
 | C09 | P1 | Identificador por intenção de cadastro e retentativa idempotente da criação manual | Simulação de concorrência e perda de resposta HTTP |
 | C10 | P1 | `growth` permanece plano e `navRadar` é rótulo independente PT/EN/ES | E2E das 3 línguas |
 | C11 | P1 | Workflow de produção observa `src/nestai.mjs` | Verificar ação somente para alteração do adaptador |
@@ -150,3 +150,9 @@ A criação de um local usa identificador determinístico derivado da identidade
 - O domínio `customerSiteRequestSnapshot` inclui `selectedEquipment` apenas quando a escolha faz parte da lista revisada de equipamentos e a revisão do local coincide; não assume que todos os equipamentos cadastrados serão atendidos.
 - O detalhe do pedido exibe o equipamento escolhido e a lista do local como contexto separado. A rejeição `CUSTOMER_SITE_EQUIPMENT_CHANGED` orienta recarregar o local.
 - **Ainda não homologado:** múltiplos equipamentos no mesmo pedido, catálogo de equipamentos com número de série/foto/histórico, e integração real com Firestore sob concorrência.
+
+## Continuação — 16/10/2026: pré-conciliação C08
+
+- Criados `src/domain/financial-reconciliation.mjs`, `scripts/nestlocal-finance-preflight.mjs` e `test/financial-reconciliation.test.mjs` para detectar divergências de valor executado, pagamento manual, histórico sem marcador e atribuição de receita assistida. O scanner lê páginas de até 100, exige projeto e organização explícitos, e informa quando o limite impede varredura integral. Nunca grava no banco.
+- Verificar a execução operacional no [runbook financeiro](./NESTLOCAL_FINANCIAL_PREFLIGHT_C08_2026-10-16.md). Sem credenciais ADC e dados reais não há reconciliação histórica certificada nem evidência bancária.
+- `npm run check` agora inclui a sintaxe dos novos arquivos. A CI unitária foi exercitada; conferir status no último SHA. **Não promover o PR enquanto C08/C02/C20 e os demais gates críticos permanecerem abertos.**
