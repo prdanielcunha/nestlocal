@@ -67,6 +67,9 @@ Object.assign(D.es,{messageReady:'Preparada · no enviada',connectValidationOnly
 Object.assign(D.pt,{financialReviewRequired:'Este registro financeiro antigo precisa de conferência do responsável antes de ser corrigido.',invalidPaymentValues:'Verifique o valor total, o valor recebido e a situação do pagamento.'});
 Object.assign(D.en,{financialReviewRequired:'This historic financial record needs manager reconciliation before it can be changed.',invalidPaymentValues:'Check the total, received amount and payment status.'});
 Object.assign(D.es,{financialReviewRequired:'Este registro financiero antiguo requiere conciliación del responsable antes de modificarse.',invalidPaymentValues:'Revise el total, lo recibido y el estado del pago.'});
+Object.assign(D.pt,{quoteLineItems:'Itens do orçamento',quoteLineHelp:'Opcional: detalhe materiais e serviços. O valor total é a soma dos itens.',quoteItemDescription:'Descrição',quoteItemQty:'Quantidade',quoteItemUnit:'Valor unitário',addQuoteItem:'Adicionar item',removeQuoteItem:'Excluir item',quoteItemInvalid:'Confira descrições, quantidades e preços dos itens.',quoteItemMax:'Máximo de 20 itens por orçamento.',quoteItemTotal:'Total dos itens'});
+Object.assign(D.en,{quoteLineItems:'Quote line items',quoteLineHelp:'Optional: detail materials and labor. The total is calculated from the items.',quoteItemDescription:'Description',quoteItemQty:'Quantity',quoteItemUnit:'Unit price',addQuoteItem:'Add item',removeQuoteItem:'Remove item',quoteItemInvalid:'Check descriptions, quantities and prices.',quoteItemMax:'Maximum of 20 items per quote.',quoteItemTotal:'Line-item total'});
+Object.assign(D.es,{quoteLineItems:'Conceptos del presupuesto',quoteLineHelp:'Opcional: detalle materiales y servicios. El total es la suma de los conceptos.',quoteItemDescription:'Descripción',quoteItemQty:'Cantidad',quoteItemUnit:'Precio unitario',addQuoteItem:'Añadir concepto',removeQuoteItem:'Eliminar concepto',quoteItemInvalid:'Revise las descripciones, cantidades y precios.',quoteItemMax:'Máximo de 20 conceptos por presupuesto.',quoteItemTotal:'Total de conceptos'});
 Object.assign(D.pt,{workChecklist:'Checklist de execução',workChecklistHelp:'Registre as etapas e marque o que já foi realizado.',workStepPlaceholder:'Ex.: verificar equipamento',addWorkStep:'Adicionar etapa',removeWorkStep:'Excluir etapa',workStepDone:'Concluída',workStepsLimit:'Máximo de 20 etapas por serviço.',workStepRequired:'Preencha o nome de cada etapa.'});
 Object.assign(D.en,{workChecklist:'Service checklist',workChecklistHelp:'Record the job steps and mark each completed task.',workStepPlaceholder:'E.g. inspect equipment',addWorkStep:'Add step',removeWorkStep:'Delete step',workStepDone:'Completed',workStepsLimit:'Maximum 20 steps per service.',workStepRequired:'Enter a name for every step.'});
 Object.assign(D.es,{workChecklist:'Lista de ejecución',workChecklistHelp:'Registre las etapas y marque lo que ya se realizó.',workStepPlaceholder:'Ej.: revisar equipo',addWorkStep:'Añadir etapa',removeWorkStep:'Eliminar etapa',workStepDone:'Terminada',workStepsLimit:'Máximo 20 pasos por servicio.',workStepRequired:'Escriba el nombre de cada paso.'});
@@ -435,11 +438,28 @@ function mobileNav(){
   return main.map(id=>`<button type="button" data-nav="${id}" class="${S.page===id?'active':''}" aria-current="${S.page===id?'page':'false'}">${esc(labels()[id])}</button>`).join('')+
     `<details class="mobile-more"><summary aria-label="${esc(t('moreNav'))}">${esc(t('moreNav'))}</summary><div class="mobile-more-list">${other.map(([id,name])=>`<button type="button" data-nav="${id}" aria-current="${S.page===id?'page':'false'}">${esc(name)}</button>`).join('')}</div></details>`;
 }
+function quoteItemsField(quote){
+  const items=Array.isArray(quote?.items)?quote.items:[];
+  return `<details class="quote-lineitems wide" data-quote-items ${items.length?'open':''}>
+    <summary>${t('quoteLineItems')}</summary>
+    <p class="help">${t('quoteLineHelp')}</p>
+    <div data-quote-items-list class="quote-lineitems-list">
+      ${items.map(item=>`<div class="quote-lineitem" data-quote-item>
+        <input type="text" data-quote-desc maxlength="120" required value="${esc(item.description||'')}" aria-label="${esc(t('quoteItemDescription'))}" placeholder="${esc(t('quoteItemDescription'))}">
+        <input type="number" data-quote-qty min="1" max="1000" step="1" required value="${esc(item.quantity||1)}" aria-label="${esc(t('quoteItemQty'))}">
+        <input type="number" data-quote-price min=".01" max="1000000" step=".01" required value="${esc(Number(item.unitPriceCents||0)/100)}" aria-label="${esc(t('quoteItemUnit'))}">
+        <button type="button" class="button small" data-remove-quote-item aria-label="${esc(t('removeQuoteItem'))}">${t('removeQuoteItem')}</button>
+      </div>`).join('')}
+    </div>
+    <div class="quote-lineitems-actions"><button class="button small" type="button" data-add-quote-item>${t('addQuoteItem')}</button>
+      <span class="help" data-quote-items-total role="status"></span></div>
+  </details>`;
+}
 function quotePanel(r){
   const q=r.quote||{},commercial=r.commercial||{},amount=Number(q.totalCents??commercial.quotedAmountCents??0),quoteReady=Number.isSafeInteger(amount)&&amount>0,editable=['new','reviewing','quoted'].includes(r.status)&&!r.decision?.status;
   if(!editable)return '';
   const aiDraft=S.aiDrafts?.[`quote:${r.id}`]||'';
-  return `<section class="request-stage quote-stage"><div class="stage-head"><div><span>${t('requestFlow')}</span><strong>${t('quoted')}</strong></div>${r.status==='quoted'?'<span class="tag">✓</span>':''}</div><form class="request-quote-form" data-request-quote="${esc(r.id)}"><label>${t('quoteAmount')}<input name="quoteAmount" type="number" min=".01" max="1000000" step=".01" required value="${quoteReady?esc(amount/100):''}"></label><label class="wide">${t('quoteNote')}<input name="quoteNote" maxlength="500" value="${esc(q.manualNote||'')}" placeholder="${esc(t('quoteNotePlaceholder'))}"></label><div class="wide lifecycle-actions"><button class="button primary small" type="submit">${r.status==='quoted'?t('updateQuote'):t('saveQuote')}</button>${S.autopilotRequestId===r.id?`<button class="button small" type="submit" data-save-next="true">${t('saveAndNext')}</button>`:''}${quoteReady?`<button class="button small" type="button" data-ai-quote-draft="${esc(r.id)}">${t('aiDraft')}</button><button class="button small" type="button" data-tracking-link="${esc(r.id)}">${t('copyQuoteLink')}</button>`:''}${r.status==='new'?`<button class="button small" type="button" data-request-status="reviewing" data-request-id="${esc(r.id)}">${t('startReview')}</button>`:''}${r.status==='quoted'?`<button class="button small" type="button" data-request-status="accepted" data-request-id="${esc(r.id)}">${t('markAccepted')}</button><button class="button tiny" type="button" data-request-status="declined" data-request-id="${esc(r.id)}">${t('markDeclined')}</button>`:''}</div>${aiDraft?`<div class="wide assist-message"><span>${t('aiDraftReady')}</span><textarea readonly rows="4">${esc(aiDraft)}</textarea><button class="button tiny" type="button" data-copy="${esc(aiDraft)}">${t('copyMessage')}</button></div>`:''}</form></section>`;
+  return `<section class="request-stage quote-stage"><div class="stage-head"><div><span>${t('requestFlow')}</span><strong>${t('quoted')}</strong></div>${r.status==='quoted'?'<span class="tag">✓</span>':''}</div><form class="request-quote-form" data-request-quote="${esc(r.id)}"><label>${t('quoteAmount')}<input name="quoteAmount" type="number" min=".01" max="1000000" step=".01" required value="${quoteReady?esc(amount/100):''}"></label>${quoteItemsField(q)}<label class="wide">${t('quoteNote')}<input name="quoteNote" maxlength="500" value="${esc(q.manualNote||'')}" placeholder="${esc(t('quoteNotePlaceholder'))}"></label><div class="wide lifecycle-actions"><button class="button primary small" type="submit">${r.status==='quoted'?t('updateQuote'):t('saveQuote')}</button>${S.autopilotRequestId===r.id?`<button class="button small" type="submit" data-save-next="true">${t('saveAndNext')}</button>`:''}${quoteReady?`<button class="button small" type="button" data-ai-quote-draft="${esc(r.id)}">${t('aiDraft')}</button><button class="button small" type="button" data-tracking-link="${esc(r.id)}">${t('copyQuoteLink')}</button>`:''}${r.status==='new'?`<button class="button small" type="button" data-request-status="reviewing" data-request-id="${esc(r.id)}">${t('startReview')}</button>`:''}${r.status==='quoted'?`<button class="button small" type="button" data-request-status="accepted" data-request-id="${esc(r.id)}">${t('markAccepted')}</button><button class="button tiny" type="button" data-request-status="declined" data-request-id="${esc(r.id)}">${t('markDeclined')}</button>`:''}</div>${aiDraft?`<div class="wide assist-message"><span>${t('aiDraftReady')}</span><textarea readonly rows="4">${esc(aiDraft)}</textarea><button class="button tiny" type="button" data-copy="${esc(aiDraft)}">${t('copyMessage')}</button></div>`:''}</form></section>`;
 }
 function schedulePanel(r){
   if(!['accepted','scheduled','no_show'].includes(r.status))return '';
@@ -1781,7 +1801,47 @@ function bind(){
   document.querySelector('#internal-request')?.addEventListener('change',()=>{S.pendingManualRequestKey=''});
   document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={sourceDraftId:S.pendingDraftId||'',name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||'',quantity:Number(f.get('quantity')||1),equipmentType:f.get('equipmentType')||'',safeAccess:f.get('safeAccess')==='true',intake:Object.fromEntries([...f.entries()].filter(([key])=>key.startsWith('intake_')).map(([key,value])=>[key.slice(7),String(value||'').trim()]))};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;S.pendingManualRequestKey ||= (globalThis.crypto?.randomUUID?.()||`request-${Date.now()}-${Math.random().toString(36).slice(2)}`);try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',headers:{'Idempotency-Key':S.pendingManualRequestKey},body:JSON.stringify(payload)});clearTransientForm(form);S.pendingManualRequestKey='';S.pendingDraftId='';S.internalIntakeCache={};await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
 
-  document.querySelectorAll('[data-request-quote]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const goNext=e.submitter?.dataset.saveNext==='true',button=e.submitter||form.querySelector('button[type="submit"]'),f=new FormData(form),amountCents=Math.round(Number(f.get('quoteAmount'))*100);button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||''})});clearTransientForm(form);await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message)}});
+  document.querySelectorAll('[data-quote-items]').forEach(group=>{
+    const totalLabel=group.querySelector('[data-quote-items-total]'),
+      form=group.closest('[data-request-quote]'),totalInput=form?.querySelector('[name="quoteAmount"]');
+    const refresh=()=>{
+      const rows=Array.from(group.querySelectorAll('[data-quote-item]'));
+      let sum=0,ready=rows.length>0;
+      for(const row of rows){
+        const qty=Number(row.querySelector('[data-quote-qty]')?.value),
+          price=Number(row.querySelector('[data-quote-price]')?.value);
+        if(!Number.isSafeInteger(qty)||qty<1||qty>1000||!Number.isFinite(price)||price<=0){ready=false;break}
+        sum+=qty*Math.round(price*100);
+      }
+      if(totalLabel)totalLabel.textContent=ready?`${t('quoteItemTotal')}: ${money(sum)}`:'';
+      if(ready&&totalInput&&sum>0&&sum<=100000000)totalInput.value=(sum/100).toFixed(2);
+    };
+    group.addEventListener('input',refresh);
+    group.addEventListener('click',event=>{
+      const removed=event.target.closest('[data-remove-quote-item]');
+      if(removed){removed.closest('[data-quote-item]')?.remove();refresh();return}
+      if(!event.target.closest('[data-add-quote-item]'))return;
+      const list=group.querySelector('[data-quote-items-list]');
+      if(list.querySelectorAll('[data-quote-item]').length>=20){toast(t('quoteItemMax'));return}
+      const item=document.createElement('div');item.className='quote-lineitem';item.dataset.quoteItem='';
+      item.innerHTML=`<input type="text" data-quote-desc maxlength="120" required placeholder="${esc(t('quoteItemDescription'))}" aria-label="${esc(t('quoteItemDescription'))}">
+        <input type="number" data-quote-qty min="1" max="1000" step="1" required value="1" aria-label="${esc(t('quoteItemQty'))}">
+        <input type="number" data-quote-price min=".01" max="1000000" step=".01" required placeholder="0.00" aria-label="${esc(t('quoteItemUnit'))}">
+        <button type="button" class="button small" data-remove-quote-item aria-label="${esc(t('removeQuoteItem'))}">${esc(t('removeQuoteItem'))}</button>`;
+      list.append(item);item.querySelector('[data-quote-desc]')?.focus();refresh();
+    });
+    refresh();
+  });
+  document.querySelectorAll('[data-request-quote]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const goNext=e.submitter?.dataset.saveNext==='true',button=e.submitter||form.querySelector('button[type="submit"]'),f=new FormData(form),amountCents=Math.round(Number(f.get('quoteAmount'))*100),
+items=Array.from(form.querySelectorAll('[data-quote-item]')).map(row=>({
+  description:row.querySelector('[data-quote-desc]')?.value.trim()||'',
+  quantity:Number(row.querySelector('[data-quote-qty]')?.value),
+  unitPriceCents:Math.round(Number(row.querySelector('[data-quote-price]')?.value)*100)
+}));
+if(items.length>20)return toast(t('quoteItemMax'));
+if(items.some(item=>item.description.length<2||!Number.isSafeInteger(item.quantity)||item.quantity<1||!Number.isSafeInteger(item.unitPriceCents)||item.unitPriceCents<=0))return toast(t('quoteItemInvalid'));
+if(items.length&&items.reduce((sum,item)=>sum+item.quantity*item.unitPriceCents,0)!==amountCents)return toast(t('quoteItemInvalid'));
+button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||'',items})});clearTransientForm(form);await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message)}});
 
   document.querySelectorAll('[data-ai-quote-draft]').forEach(button=>button.onclick=async()=>{const id=button.dataset.aiQuoteDraft;if(!id)return;button.disabled=true;const original=button.textContent;button.textContent=t('aiDraftLoading');try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/ai/quote-compose`,{method:'POST',body:JSON.stringify({requestId:id,locale:S.lang})});S.aiDrafts[`quote:${id}`]=result.draft||'';S.focusRequestId=id;render();toast(t('aiDraftReady'))}catch(err){button.disabled=false;button.textContent=original;toast(t('aiDraftUnavailable'))}});
   document.querySelectorAll('[data-ai-followup-draft]').forEach(button=>button.onclick=async()=>{const id=button.dataset.aiFollowupDraft;if(!id)return;button.disabled=true;const original=button.textContent;button.textContent=t('aiDraftLoading');try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/ai/followup-compose`,{method:'POST',body:JSON.stringify({requestId:id,locale:S.lang})});const textarea=document.querySelector('#action-assist-message');if(textarea&&result.draft)textarea.value=result.draft;button.disabled=false;button.textContent=original;toast(t('aiDraftReady'))}catch(err){button.disabled=false;button.textContent=original;toast(t('aiDraftUnavailable'))}});
