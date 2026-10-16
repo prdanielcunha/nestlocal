@@ -17,6 +17,8 @@ Exige projeto Firebase `millionsnest`, Cloud Messaging API e credenciais ADC apr
 
 - `NESTLOCAL_PUSH_ENABLED=true`
 - `NESTLOCAL_WEB_PUSH_VAPID_PUBLIC_KEY=<chave publica VAPID>`
+- `NESTLOCAL_FIREBASE_MESSAGING_APP_ID=<firebase web app id>`
+- `NESTLOCAL_FIREBASE_MESSAGING_SENDER_ID=<firebase cloud messaging sender id>`
 
 Sem essas configurações, o endpoint de configuração responde `enabled=false`, os controles não aparecem e o cadastro/envio falham fechado. A implantação não altera Stripe nem a identidade Google existente.
 
@@ -62,3 +64,7 @@ O scan de tarefas e aparelhos é limitado: alto volume interrompe a execução p
 - Documentar entrega observada no aparelho, sem fotografar nem publicar dados de clientes.
 
 **Não declarar C13 concluído ou push real ativo antes dessas provas.**
+
+### Isolamento da autenticação
+
+O cliente instancia o Messaging com o nome `nestlocal-messaging` e as credenciais públicas autorizadas, mesmo que o `init.json` do Hosting secundário não contenha `appId`. A instância Google Auth permanece intacta. Sem os dois IDs públicos configurados no backend, o recurso não é oferecido ao usuário.
