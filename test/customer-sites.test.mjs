@@ -44,3 +44,9 @@ test('C19: existing locations prefill new requests without modifying historical 
  assert.match(ui,/addressLine:site\.line,city:site\.city/);
  assert.match(ui,/S\.customerSites\?\.\[id\]\?\.items/);
 });
+
+test('C21: a late location refresh cannot leak across organizations',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(ui,/const updated=await api\(base\);if\(org!==S\.orgId\)return;/);
+ assert.match(ui,/S\.orgId=e\.target\.value;S\.unsavedFormDrafts\.clear\(\);S\.customerSites=\{\}/);
+});
