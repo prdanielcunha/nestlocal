@@ -22,7 +22,7 @@ test('C13: push enrollment and revocation are tenant- and user-scoped',()=>{
  assert.ok(a>0&&b>a);
  assert.match(route,/authenticate,authorize/);
  assert.match(route,/req\.access\.orgId/);
- assert.match(route,/hash\(tokenValue\)/);
+ assert.match(server,/const pushDeviceRef=\(orgId,tokenValue\)=>[\s\S]*?hash\(tokenValue\)/);
  assert.match(route,/existing\.data\(\)\?\.uid!==uid/);
  assert.match(route,/PUSH_DEVICE_ALREADY_BOUND/);
  assert.match(route,/snap\.data\(\)\?\.uid!==uid/);
