@@ -5,6 +5,7 @@ on:
       - "web/experience.*"
       - "web/entry.css"
       - "web/live.js"
+      - "web/transient-form-drafts.js"
       - "web/calendar.js"
       - "web/operations.css"
       - "web/premium-system.css"
