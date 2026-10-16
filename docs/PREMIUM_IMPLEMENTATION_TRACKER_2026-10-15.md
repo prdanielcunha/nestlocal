@@ -28,7 +28,7 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | C16 | P2 | **Parcial:** formulário público e rascunhos transitórios de atendimento, orçamento, agendamento, execução, manutenção, catálogo e configurações são restaurados após redesenhos sem persistir PII no navegador; limpeza ocorre após salvamento bem-sucedido | Homologar interrupções e foco/teclado em aparelhos físicos; não preservar dados após fechar a aba |
 | C17 | P2 | **Parcial**: opções avançadas recolhíveis, estilos operacionais responsivos e painel de notificação progressivo sob feature flag | Reorganizar módulos restantes por tarefas, inspecionar screenshots e testar em celular com dados reais |
 | C18 | P2 | Pedido interno usa perguntas/quantidade/qualificadores do catálogo compartilhado com público | Testar playbooks e validade de schema histórico |
-| C19 | P2 | **Parcial**: prévia por linha, comparação de criação/atualização, versão `updatedAt` e gravação transacional com auditoria sem contatos | Falta mesclagem auditada de identidades multicanal, importação de equipamentos/locais e homologação concorrente em Firestore |
+| C19 | P2 | **Parcial**: importação de clientes com prévia, versão, transação e auditoria; **novo cadastro de vários locais e listas de equipamentos por cliente**, limitado e versionado, com edição segura e papel `sitesWrite` | Ainda faltam mesclagem auditada de identidades multicanal, importação massiva de locais/equipamentos e homologação concorrente em Firestore |
 | C20 | P2 | **Parcial**: manifesto read-only de contagens e assinaturas HMAC, comparação obrigatoriamente entre projetos distintos, testes sintéticos e runbook | Backup real, retenção, IAM e restauração isolada ensaiada ainda não executados |
 | C21 | P2 | **Parcial**: catálogo restrito a admin/owner; nova capacidade financeWrite limita alterações monetárias; profissionais podem concluir trabalho sem editar valores; histórico financeiro protegido | Perfis granulares completos de atendimento/campo/financeiro/consulta, papéis no Hub e matriz negativa multiempresa |
 
@@ -119,3 +119,12 @@ Não declarar push real em segundo plano, envio oficial pelo Connect, sincroniza
 - **Testes:** `test/field-checklist.test.mjs`, `test/quote-items.test.mjs`; checagem de sintaxe integrada ao comando `npm run check`. CI sintético não substitui E2E autenticado nem testes de campo.
 
 **Permanecem abertos:** recuperação real (C20); push com aplicativo fechado (C13); envio e recibos oficiais do Connect (C14); conciliação e volumetria em Firestore real (C02/C08); permissões multiempresa (C21), equipamentos/locais, telas restantes e o piloto final. O PR segue em homologação, sem publicar dados ou alterar Stripe.
+
+## Continuação — clientes com múltiplos locais e equipamentos
+
+- **C19/Etapa 3:** em cada cliente, a equipe pode consultar sob demanda até 20 locais, cada um com endereço, observações e até 20 equipamentos nomeados. Os dados são uma subcoleção do cliente, separados da identidade principal e do histórico de pedidos. Nenhum endereço antigo é sobrescrito.
+- **Segurança C21:** inclusão/edição exige proprietário/administrador ou permissão explícita `appAccess.nestlocal.permissions.sitesWrite`; leitura mantém a autorização organizacional atual. Criação usa transação com limite; edição usa revisão esperada e retorna 409 se outro operador alterou o registro. Operações têm auditoria sem endereço, telefone ou equipamento nos eventos.
+- **UX C16:** locais são carregados somente ao abrir o cliente, evitando custo por lista completa; formulários são acessíveis em telas pequenas e preservam alterações não salvas na memória da sessão, sem localStorage. Caches de locais e rascunhos são apagados ao sair ou trocar de organização.
+- **QA:** `test/customer-sites.test.mjs` testa formato, limites, isolamento, permissões e controle de concorrência de forma sintética. Ainda não é validação com Firestore real nem implica que equipamentos já estejam ligados automaticamente à agenda, orçamento e execução.
+
+**Não confundir a existência da ferramenta com cobertura completa da gestão de ativos:** múltiplos locais/equipamentos estão disponíveis como registros independentes na branch, mas seleção direta no novo pedido, histórico individual por equipamento, importação em massa e testes de dispositivo real permanecem por desenvolver/homologar.
