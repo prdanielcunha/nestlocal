@@ -1966,7 +1966,7 @@ app.patch('/api/organizations/:orgId/nestlocal/customers/:customerId/sites/:site
    const current=await tx.get(ref);
    if(!current.exists)throw new TypeError('CUSTOMER_SITE_NOT_FOUND');
    if(Number(current.data().revision||1)!==expected)throw new TypeError('CUSTOMER_SITE_REVISION_CHANGED');
-   tx.update(ref,{...site,revision:expected+1,updatedBy:req.identity.uid,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+   tx.update(ref,{...site,intentHash:hash(JSON.stringify(site)),revision:expected+1,updatedBy:req.identity.uid,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
    tx.create(audit,{action:'customers.site_updated',customerId,siteId,revision:expected+1,
     actorUid:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp()});
   });
