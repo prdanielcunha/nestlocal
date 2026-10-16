@@ -43,6 +43,7 @@ test('C19: existing locations prefill new requests without modifying historical 
  assert.match(ui,/data-new-request-for-site/);
  assert.match(ui,/form\.elements\.coverageCode\.value=found\.value/);
  assert.match(ui,/addressLine:site\.line,city:site\.city/);
+ assert.match(ui,/name:customer\.name,phone:customer\.phone,email:customer\.email/);
  assert.match(ui,/S\.customerSites\?\.\[id\]\?\.items/);
 });
 
