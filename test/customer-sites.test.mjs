@@ -92,3 +92,21 @@ test('C19/C09: request creation validates owner-bound location in the same trans
  assert.match(ui,/S\.pendingRequestSite=\{siteId,customerId:id,revision:/);
  assert.match(ui,/customerSiteId:f\.get\('customerSiteId'\)/);
 });
+
+test('C19: equipment selection is optional, revision-locked and cannot forge other customer equipment',()=>{
+ const site={revision:2,label:'Home',line:'Rua A 10',city:'Londrina',equipment:['Ar-condicionado','Purificador']};
+ const inputs={customerId:'c42',siteId:'s42',revision:2,addressLine:'Rua A 10',city:'Londrina'};
+ const selected=customerSiteRequestSnapshot(site,{...inputs,selectedEquipment:'purificador'});
+ assert.equal(selected.selectedEquipment,'Purificador');
+ assert.deepEqual(selected.equipment,['Ar-condicionado','Purificador']);
+ const defaultSelection=customerSiteRequestSnapshot(site,inputs);
+ assert.equal(Object.hasOwn(defaultSelection,'selectedEquipment'),false);
+ assert.throws(()=>customerSiteRequestSnapshot(site,{...inputs,selectedEquipment:'Geladeira'}),{message:'CUSTOMER_SITE_EQUIPMENT_CHANGED'});
+ assert.throws(()=>customerSiteRequestSnapshot({...site,revision:3},{...inputs,selectedEquipment:'Purificador'}),{message:'CUSTOMER_SITE_REVISION_CHANGED'});
+ const api=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const live=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(api,/selectedEquipment:customerSiteEquipment/);
+ assert.match(api,/CUSTOMER_SITE_EQUIPMENT_CHANGED/);
+ assert.match(live,/data-site-equipment-wrap/);
+ assert.match(live,/customerSiteEquipment:f\.get\('customerSiteEquipment'\)/);
+});
