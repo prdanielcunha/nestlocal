@@ -28,7 +28,7 @@ test('C01 C04 C09 C11: critical client and deployment regressions stay guarded',
  assert.match(live,/id="capacity-settings"[\s\S]*?<button type="submit" class="button primary wide">/);
  assert.match(live,/capturePublicFormDraft\(e\.target\.form\)/);
  assert.doesNotMatch(live,/inclusions:'Incluído conforme descrição',exclusions:'Peças e serviços adicionais'/);
- assert.match(server,/if\(existing\.exists\)\{if\(intentHash/);
+ assert.match(server,/if\(existing\.exists\)\{\s*const saved=existing\.data\(\)\|\|\{\};\s*if\(intentHash/);
  assert.match(server,/draftSettings:admin\.firestore\.FieldValue\.delete\(\)/);
  assert.match(deploy,/"src\/nestai\.mjs"/);
  assert.match(deploy,/server\.mjs src\/domain src\/nestai\.mjs/);
