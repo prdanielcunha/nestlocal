@@ -22,6 +22,9 @@ test('C13: scheduler is dry-run by default with explicit tenant and secret-manag
  const worker=readFileSync(new URL('../scripts/nestlocal-push-reminders.mjs',import.meta.url),'utf8');
  assert.match(worker,/send=process\.argv\.includes\('--send'\)/);
  assert.match(worker,/NESTLOCAL_PUSH_SCHEDULER_ENABLED/);
+ const docker=readFileSync(new URL('../Dockerfile',import.meta.url),'utf8');
+ assert.match(docker,/COPY scripts\/nestlocal-push-reminders\.mjs/);
+ assert.match(docker,/CMD \["npm", "start"\]/);
  assert.match(worker,/EXPLICIT_ORG_SCOPE_REQUIRED/);
  assert.match(worker,/PUSH_TASK_SCAN_LIMIT_REACHED/);
  assert.match(worker,/nestlocal_push_dispatch/);
