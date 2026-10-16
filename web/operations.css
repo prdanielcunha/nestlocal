@@ -671,3 +671,19 @@
 .public-quote-items{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}.public-quote-items li{display:flex;justify-content:space-between;align-items:start;gap:14px;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:12px}.public-quote-items li span{overflow-wrap:anywhere;min-width:0}.public-quote-items li strong{white-space:nowrap;font-variant-numeric:tabular-nums}.public-quote-items+h2{margin-top:16px}@media(max-width:480px){.public-quote-items li{flex-direction:column;gap:6px}}
 
 .quote-breakdown{grid-column:1/-1;margin:8px 0;padding:11px;border-radius:12px;border:1px solid rgba(128,213,178,.2)}.quote-breakdown summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700}.quote-breakdown .public-quote-items{margin-top:8px}
+
+/* Multi-site customer records load on demand to keep the customer list light. */
+.customer-sites-panel{margin-top:14px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
+.customer-sites-panel>.section-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.customer-sites-panel h3{margin:0;font-size:14px}
+.customer-sites-list{margin-top:12px;display:grid;gap:10px}
+.customer-site-row,.customer-site-add{border:1px solid rgba(127,210,174,.23);border-radius:14px;padding:10px 13px;background:rgba(0,0,0,.08)}
+.customer-site-row summary,.customer-site-add summary{cursor:pointer;min-height:44px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:#e2fff2}
+.customer-site-row summary>span{color:#acc9bb;font-size:12px}
+.customer-site-row>.help{line-height:1.5;margin:8px 0}
+.customer-site-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}
+.customer-site-form label{display:grid;gap:6px;color:#a2baae;font-size:12px}
+.customer-site-form input,.customer-site-form textarea{background:#11211d;color:#f2fff8;border:1px solid rgba(255,255,255,.17);border-radius:10px;padding:11px 12px;min-width:0;min-height:44px;width:100%}
+.customer-site-form .wide{grid-column:1/-1}
+.customer-site-form button[type=submit]{min-height:44px;justify-self:start}
+@media(max-width:680px){.customer-site-form{grid-template-columns:1fr}.customer-site-form .wide{grid-column:auto}.customer-site-row summary{align-items:start;flex-direction:column;gap:3px}}
