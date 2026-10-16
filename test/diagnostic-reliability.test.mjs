@@ -168,3 +168,15 @@ test('C02: first page of stale reservation slots never hides pagination',()=>{
  assert.match(agenda,/if\(!a\.length\)return/);
  assert.match(agenda,/S\.data\.agendaHasMore\|\|legacyMore\?\x60<button type="button" class="button wide" data-load-agenda>/);
 });
+
+test('C02: dashboard does not mislabel sampled historical amounts as full totals',()=>{
+ const live=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ const start=live.indexOf('function todayLegacy('),end=live.indexOf('\nfunction ',start+12);
+ const block=live.slice(start,end);
+ assert.match(block,/sampled=S\.data\.requestsHasMore===true/);
+ assert.match(block,/sampled\?'≥ ':''/);
+ assert.match(block,/sampled\?'—':priced/);
+ assert.match(block,/donePriced=a\.filter\(x=>x\.status==='completed'&&x\.quote\?\.outcome==='priced'\)/);
+ assert.match(block,/mergeOperationalRows\(S\.data\.customers,S\.data\.dueCustomers\)/);
+ assert.match(block,/dueCustomersHasMore\?'\+':''/);
+});
