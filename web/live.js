@@ -6,6 +6,7 @@ import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
 import {chooseOperationalFocus} from './operational-focus.js';
+import {enrollNestLocalPush,disableNestLocalPush,testNestLocalPush} from './push-notifications.js';
 import {mergeOperationalRows} from './operational-data.js';
 import {makeTaskReminderIcs} from './task-calendar.js';
 import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
@@ -33,7 +34,7 @@ function redirectToMillionsNest(){
 }
 const anotherAccountLabel=()=>S.lang==='en'?'Use another Google account':S.lang==='es'?'Usar otra cuenta de Google':'Usar outra conta Google';
 const growthAdminRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
-const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,paymentHistory:{},requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,dataLoadSequence:0,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
+const S={page:'today',lang:storageGet(localStorage,'nl_lang','pt')||'pt',user:null,session:null,sessionToken:storageGet(sessionStorage,'nl_session_token','')||'',directGoogleToken:'',directGoogleSession:false,orgId:storageGet(localStorage,'nl_org')||'',data:null,loading:true,error:'',store:null,result:null,tracking:null,reviewPublic:null,growth:null,radarSyncing:false,radarPublishing:false,radarSyncAttempted:false,xray:null,privacyPermissions:null,pulseFeedback:[],calendarFeedActive:false,calendarFeedUrl:'',publicServiceId:null,publicFormDraft:null,publicFormFiles:[],focusRequestId:'',autopilotRequestId:'',actionAssist:null,pendingDraftId:'',pendingManualRequestKey:'',customerBatchPreview:null,paymentHistory:{},pushRegistered:false,requestListFilter:'all',requestList:null,operationalLoadedAt:0,operationalRefreshing:false,dataLoadSequence:0,internalIntakeCache:{},copilotPreview:null,aiDrafts:{}};
 const D={
 pt:{today:'Hoje',requests:'Pedidos',agenda:'Agenda',services:'Serviços',automation:'Automações',page:'Minha página',login:'Entrar com Google',welcome:'Sua operação local, organizada.',loginHelp:'Use a mesma conta do MillionsNest para administrar sua empresa.',logout:'Sair',action:'Pedidos que pedem ação',open:'Receita em aberto',customers:'Clientes',conversion:'Conversão',inbox:'Caixa de entrada',empty:'Nada por aqui ainda.',setup:'Preparar NestLocal',setupHelp:'Cria um catálogo inicial em rascunho. Revise os preços antes de publicar.',create:'Criar configuração',catalog:'Catálogo',settings:'Dados da página',save:'Salvar',publish:'Publicar catálogo',draft:'Rascunho',published:'Publicado',business:'Nome da empresa',slug:'Endereço da página',coverage:'Cidades atendidas',whatsapp:'WhatsApp',price:'Preço em reais',duration:'Duração em minutos',quantity:'Quantidade máxima',new:'Novo',reviewing:'Em análise',quoted:'Orçado',scheduled:'Agendado',completed:'Concluído',cancelled:'Cancelado',publicTitle:'Solicite seu serviço',publicHelp:'Responda os dados para receber preço ou avaliação.',name:'Nome',phone:'WhatsApp',city:'Cidade',equipment:'Tipo do equipamento',access:'O acesso ao aparelho é seguro e interno?',yes:'Sim',unsure:'Não tenho certeza',note:'Observações',photos:'Fotos do equipamento ou ambiente',consent:'Autorizo o uso destes dados e fotos para analisar e atender esta solicitação.',send:'Enviar solicitação',ready:'Preço calculado',review:'Precisamos avaliar',unavailable:'Fora da área atendida',track:'Acompanhar solicitação',tracking:'Status da solicitação',copy:'Copiar link',copied:'Link copiado',loading:'Carregando…',noOrg:'Nenhuma organização disponível nesta conta.',hub:'Abrir MillionsNest',requestSent:'Solicitação enviada',selectService:'Escolha o serviço',realData:'Dados reais do Firebase'},
 en:{today:'Today',requests:'Requests',agenda:'Schedule',services:'Services',automation:'Automations',page:'My page',login:'Continue with Google',welcome:'Your local operation, organized.',loginHelp:'Use your MillionsNest account to manage your business.',logout:'Sign out',action:'Requests needing action',open:'Open revenue',customers:'Customers',conversion:'Conversion',inbox:'Inbox',empty:'Nothing here yet.',setup:'Set up NestLocal',setupHelp:'Creates a starter draft catalog. Review prices before publishing.',create:'Create setup',catalog:'Catalog',settings:'Page details',save:'Save',publish:'Publish catalog',draft:'Draft',published:'Published',business:'Business name',slug:'Page address',coverage:'Covered cities',whatsapp:'WhatsApp',price:'Price in BRL',duration:'Duration in minutes',quantity:'Maximum quantity',new:'New',reviewing:'Reviewing',quoted:'Quoted',scheduled:'Scheduled',completed:'Completed',cancelled:'Cancelled',publicTitle:'Request a service',publicHelp:'Share the details to receive a price or review.',name:'Name',phone:'WhatsApp',city:'City',equipment:'Equipment type',access:'Is the equipment safely accessible indoors?',yes:'Yes',unsure:'Not sure',note:'Notes',send:'Send request',ready:'Calculated price',review:'We need to review',unavailable:'Outside coverage',track:'Track request',copy:'Copy link',copied:'Link copied',loading:'Loading…',noOrg:'No organization is available for this account.',hub:'Open MillionsNest',requestSent:'Request sent',selectService:'Choose a service',realData:'Live Firebase data'},
@@ -325,6 +326,9 @@ Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendi
 Object.assign(D.pt,{aiPreview:'Analisar com NestAI',aiConsent:'Autorizo a análise desta anotação no NestAI. Confira o texto: o sistema tenta ocultar identificadores comuns, mas remova dados sensíveis antes de autorizar.',aiPrivacy:'Sugestão de IA: confirme as informações. Nenhuma mensagem será enviada, nenhuma venda é garantida e nenhum horário será reservado.',aiManualFallback:'NestAI indisponível ou limite atingido: continue com a revisão manual.',aiEvidence:'Serviço mencionado na conversa',aiConsentRequired:'Confirme a autorização antes de usar o NestAI.',aiNoCredits:'Limite diário de consultas de IA atingido. Use a revisão sem IA.'});
 Object.assign(D.en,{aiPreview:'Analyze with NestAI',aiConsent:'I authorize NestAI to analyze this note. Review the text first: common identifiers are filtered, but please remove sensitive details before authorizing.',aiPrivacy:'AI suggestion: verify the facts. No message is sent, sale guaranteed or appointment booked.',aiManualFallback:'NestAI unavailable or quota reached. Continue with manual review.',aiEvidence:'Service mentioned in the source',aiConsentRequired:'Please authorize NestAI processing first.',aiNoCredits:'Daily AI request limit reached. Use manual review.'});
 Object.assign(D.es,{aiPreview:'Analizar con NestAI',aiConsent:'Autorizo el análisis de esta nota con NestAI. Revisa el texto: se intenta ocultar identificadores comunes, pero elimina datos sensibles antes de autorizar.',aiPrivacy:'Sugerencia de IA: verifica los datos. No se envían mensajes, ni se garantizan ventas o reservas.',aiManualFallback:'NestAI no disponible o límite alcanzado. Continúa con la revisión manual.',aiEvidence:'Servicio mencionado en el mensaje',aiConsentRequired:'Autoriza el análisis con NestAI antes de continuar.',aiNoCredits:'Límite diario de consultas de IA alcanzado. Usa la revisión manual.'});
+Object.assign(D.pt,{pushTitle:'Notificações no celular',pushIntro:'Receba avisos gerais do NestLocal neste aparelho. Ativação opcional; sem dados de clientes nas notificações.',pushEnable:'Ativar notificações',pushDisable:'Desativar neste aparelho',pushTest:'Enviar teste',pushEnabled:'Aparelho cadastrado. O teste verifica o canal, mas não confirma entrega.',pushSent:'Teste aceito pelo Firebase; verifique o aparelho.',pushNotScheduled:'Lembretes automáticos com o app fechado ainda dependem da configuração do agendador.',pushNotConfigured:'O envio em segundo plano ainda não foi habilitado pelo administrador.'});
+Object.assign(D.en,{pushTitle:'Device notifications',pushIntro:'Receive generic NestLocal alerts on this device. Optional opt-in; no customer data is included.',pushEnable:'Enable notifications',pushDisable:'Disable on this device',pushTest:'Send a test',pushEnabled:'Device registered. A test checks the channel but does not guarantee delivery.',pushSent:'Test accepted by Firebase; check your device.',pushNotScheduled:'Automatic reminders with the app closed still require a configured scheduler.',pushNotConfigured:'Background delivery has not been enabled by an administrator.'});
+Object.assign(D.es,{pushTitle:'Notificaciones del dispositivo',pushIntro:'Recibe avisos generales de NestLocal en este dispositivo. Activación opcional, sin datos de clientes.',pushEnable:'Activar notificaciones',pushDisable:'Desactivar en este dispositivo',pushTest:'Enviar prueba',pushEnabled:'Dispositivo registrado. La prueba comprueba el canal, no garantiza la entrega.',pushSent:'Prueba aceptada por Firebase; comprueba el dispositivo.',pushNotScheduled:'Los recordatorios con la app cerrada aún requieren un programador configurado.',pushNotConfigured:'El envío en segundo plano aún no fue habilitado por un administrador.'});
 Object.assign(D.pt,{enableTaskAlerts:'Ativar avisos neste aparelho',alertsUnavailable:'Este navegador não oferece notificações para esta página. Use a opção Calendário.',alertsEnabled:'Avisos permitidos enquanto o NestLocal estiver aberto.',alertsDenied:'O aparelho não autorizou notificações. Você pode usar o calendário.',alertsExplanation:'Opcional: avisos para retornos de hoje e amanhã quando o app estiver aberto. Sem envio de WhatsApp ou notificação garantida em segundo plano.'});
 Object.assign(D.en,{enableTaskAlerts:'Enable alerts on this device',alertsUnavailable:'Notifications are unavailable here. Use the calendar option.',alertsEnabled:'Alerts enabled while NestLocal is open.',alertsDenied:'Device notifications were not permitted. You can use the calendar.',alertsExplanation:'Optional reminders for today and tomorrow while the app is open; no WhatsApp send or background push guarantee.'});
 Object.assign(D.es,{enableTaskAlerts:'Activar avisos en este dispositivo',alertsUnavailable:'Este navegador no admite notificaciones aquí. Usa el calendario.',alertsEnabled:'Avisos activados mientras NestLocal está abierto.',alertsDenied:'El dispositivo no autorizó notificaciones. Puedes usar el calendario.',alertsExplanation:'Avisos opcionales de hoy y mañana mientras la app está abierta; sin WhatsApp ni push garantizado en segundo plano.'});
@@ -761,11 +765,19 @@ function operationalFreshness(){
   const ago=Math.floor((Date.now()-S.operationalLoadedAt)/60000);
   return `<div class="operational-freshness" role="status"><span>${ago<1?t('dataUpdatedNow'):`${t('dataUpdatedAgo')} ${ago} min`}</span><button class="button small" type="button" data-refresh-operations>${t('refresh')}</button></div>`;
 }
+function pushControls(){
+  if(S.data?.pushConfig?.enabled!==true)return '';
+  return `<section class="card push-controls"><div class="section-title"><h2>${t('pushTitle')}</h2><span class="tag">Beta</span></div><p class="help">${t('pushIntro')}</p>
+    <div class="push-actions"><button type="button" class="button primary small" data-push-enable>${t('pushEnable')}</button>
+      <button type="button" class="button small" data-push-test>${t('pushTest')}</button>
+      <button type="button" class="button small" data-push-disable>${t('pushDisable')}</button></div>
+    <p class="help" role="status">${S.pushRegistered?t('pushEnabled'):t('pushNotScheduled')}</p></section>`;
+}
 function today(){
-  if(S.data?.features?.opportunityDrafts!==true)return operationalFreshness()+todayLegacy();
+  if(S.data?.features?.opportunityDrafts!==true)return operationalFreshness()+pushControls()+todayLegacy();
   const prioritized=buildFocusQueue(nextBestActions(),organizationDateIso()),actions=[prioritized.focus,...prioritized.next].filter(Boolean).slice(0,3),digest=calendarDigest(S.data?.requests||[],organizationDateIso());
   const visits=[...(digest.today||[]),...(digest.tomorrow||[])],followups=tasksPanel(true);
-  return `<div class="page-stack nestlocal-today-v2">${operationalFreshness()}${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
+  return `<div class="page-stack nestlocal-today-v2">${operationalFreshness()}${pushControls()}${nativeAiNotice()}${operationalFocus(actions)}${firstRunJourney()}${captureQuickCard()}
     <article class="card"><div class="section-title"><h2>${t('salesQuestion')}</h2></div>
       ${actions.length?actions.map(actionRow).join(''):`<p class="help">${t('salesEmpty')}</p>`}
       ${draftsPanel(3)}${S.data.priorityHasMore?`<p class="help" role="status">${t('priorityPartial')}</p><button class="button small" type="button" data-action-page="requests">${t('allRequests')}</button>`:''}${S.data.priorityLoadError?`<p class="help" role="status">${t('priorityUnavailable')}</p>`:''}</article>
@@ -1210,14 +1222,15 @@ async function loadData(){
   // Secondary areas never block the principal operational response, and old
   // requests can never commit data into a subsequently selected organization.
   const priorityLoad=loadOperationalPriorities({targetData:data,orgId});
-  const [filtered,drafts,tasks,agenda,permissions,feedback,feed]=await Promise.all([
+  const [filtered,drafts,tasks,agenda,permissions,feedback,feed,pushConfig]=await Promise.all([
     filter!=='all'?api(`${path}/lists/requests/page?status=${encodeURIComponent(filter)}&limit=50`,opt).catch(()=>null):Promise.resolve(null),
     data.features?.opportunityDrafts===true?api(`${path}/opportunity-drafts`,{timeoutMs:6000}).catch(error=>({loadError:String(error?.message||'ERROR')})):Promise.resolve(null),
     data.features?.opportunityDrafts===true?api(`${path}/action-tasks`,{timeoutMs:6000}).catch(error=>({loadError:String(error?.message||'ERROR')})):Promise.resolve(null),
     api(`${path}/agenda/page?limit=50`,{timeoutMs:7500}).catch(error=>({loadError:String(error?.message||'AGENDA_UNAVAILABLE')})),
     api(`${path}/privacy/permissions`,{timeoutMs:4000}).catch(()=>null),
     api(`${path}/pulse/feedback`,{timeoutMs:4000}).catch(()=>({items:[]})),
-    api(`${path}/calendar/feed/status`,{timeoutMs:4000}).catch(()=>null)
+    api(`${path}/calendar/feed/status`,{timeoutMs:4000}).catch(()=>null),
+    api(`${path}/push/config`,{timeoutMs:4000}).catch(()=>({enabled:false}))
   ]);
   await priorityLoad;
   // Priorities are started independently and joined before committing state.
@@ -1237,7 +1250,7 @@ async function loadData(){
     if(filtered)S.requestList=filtered;
     else{S.requestList=null;S.requestListFilter='all'}
   }
-  S.data=data;S.privacyPermissions=permissions;
+  data.pushConfig=pushConfig||{enabled:false};S.data=data;S.privacyPermissions=permissions;
   S.pulseFeedback=Array.isArray(feedback?.items)?feedback.items:[];
   S.calendarFeedActive=feed?.active===true;S.calendarFeedUrl='';
   S.operationalLoadedAt=Date.now();checkTaskNotifications();
@@ -1595,7 +1608,7 @@ function bind(){
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.paymentHistory={};S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
       try{await ensureNativeNestAiSession()}
@@ -1614,6 +1627,27 @@ function bind(){
   document.querySelectorAll('[data-refresh-operations]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
     try{await loadData();render()}catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-push-enable]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{
+      const orgId=S.orgId,config=S.data?.pushConfig;
+      if(!config?.enabled)throw new Error('PUSH_NOT_CONFIGURED');
+      await enrollNestLocalPush({orgId,locale:S.lang,vapidPublicKey:config.vapidPublicKey,api});
+      if(orgId===S.orgId){S.pushRegistered=true;render();toast(t('pushEnabled'))}
+    }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-push-test]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{const result=await testNestLocalPush({orgId:S.orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
+      toast(result.providerAccepted?t('pushSent'):String(result.error||'PUSH_TEST_UNAVAILABLE'))
+    }catch(error){toast(error.message)}finally{button.disabled=false}
+  });
+  document.querySelectorAll('[data-push-disable]').forEach(button=>button.onclick=async()=>{
+    button.disabled=true;
+    try{const orgId=S.orgId;await disableNestLocalPush({orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
+      if(orgId===S.orgId){S.pushRegistered=false;render()}
+    }catch(error){button.disabled=false;toast(error.message)}
   });
   document.querySelectorAll('[data-load-agenda]').forEach(button=>button.onclick=async()=>{
     const data=S.data;if(!data)return;
