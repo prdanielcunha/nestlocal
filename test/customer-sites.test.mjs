@@ -86,7 +86,7 @@ test('C19/C09: request creation validates owner-bound location in the same trans
  assert.match(block,/customerSiteRef=customerSiteId\?customerRef\.collection\('sites'\)/);
  assert.match(block,/customerSiteRequestSnapshot\(doc\.data\(\),/);
  assert.match(block,/customerSiteRef\?tx\.get\(customerRef\)/);
- assert.match(block,/creationContentHash=hash\(JSON\.stringify\(\{[\s\S]*?customerSiteId,siteRevision,sourceDraftId/);
+ assert.match(block,/creationContentHash=hash\(JSON\.stringify\(\{[\s\S]*?customerSiteId,siteRevision,customerSiteEquipment,sourceDraftId/);
  assert.match(block,/tx\.create\(requestRef,\{\.\.\.record,\.\.\.siteSnapshot\(site,siteOwner\)\}\)/);
  assert.match(ui,/name="customerSiteId"/);
  assert.match(ui,/name="customerSiteRevision"/);
