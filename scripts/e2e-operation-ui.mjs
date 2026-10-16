@@ -27,6 +27,12 @@ try{
       const path=new URL(route.request().url()).pathname,method=route.request().method();
       if(path==='/api/session')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({user:{uid:'synthetic_user',systemRole:'owner'},organizations:[{id:'demo_org',name:'Prestador de exemplo',nestlocal:{access:true,status:'active',plan:'essential'}}]})});
       if(path==='/api/organizations/demo_org/nestlocal'&&method==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(sample)});
+      if(path.endsWith('/push/config')&&method==='GET')
+        return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({
+          enabled:true,transport:'firebase_cloud_messaging',
+          vapidPublicKey:'A'.repeat(87),messagingAppId:'1:123456789012:web:0123456789abcdef',
+          messagingSenderId:'123456789012',scheduledRemindersEnabled:false
+        })});
       if(path.endsWith('/privacy/permissions')&&method==='GET')return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({communicationMode:'none',manualLink:{active:false},official:{connected:false},responseChannels:{email:true,phone:false},published:false})});
       if(path.endsWith('/pulse/feedback')&&method==='GET')return route.fulfill({status:200,contentType:'application/json',body:'{"items":[]}'});
       if(path.endsWith('/pulse/feedback')&&method==='POST'){
@@ -42,6 +48,10 @@ try{
     try{await pulse.waitFor({timeout:10000})}catch(error){const debug=await page.locator('body').innerText().catch(()=>'?');throw Error('AUTHED_PANEL_NOT_SHOWN '+width+' '+JSON.stringify({url:page.url(),body:debug.slice(0,1600),errors,consoleErrors})+' '+error.message)}
     assert.ok((await pulse.textContent()).includes('Cliente fictício'));
     await page.locator('.operation-focus').waitFor();
+    await page.locator('[data-push-enable]').waitFor();
+    assert.equal(await page.locator('[data-push-test]').count(),1);
+    assert.equal(await page.locator('[data-push-disable]').count(),1);
+    assert.ok((await page.locator('.push-controls').innerText()).includes('Notificações'));
     assert.ok((await page.locator('.operation-focus').textContent()).includes('Cliente fictício'));
     const size=await page.evaluate(()=>({document:document.documentElement.scrollWidth,window:innerWidth}));
     assert.ok(size.document<=size.window+1,'Dashboard overflow at '+width+': '+JSON.stringify(size));
