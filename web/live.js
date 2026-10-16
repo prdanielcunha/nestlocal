@@ -2030,7 +2030,8 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
     try{
       await api(siteId?`${base}/${encodeURIComponent(siteId)}`:base,{method:siteId?'PATCH':'POST',body:JSON.stringify(payload)});
       if(org!==S.orgId)return;
-      S.customerSites[id]=await api(base);clearTransientForm(form);render();toast(t('siteSaved'));
+      const updated=await api(base);if(org!==S.orgId)return;
+      S.customerSites[id]=updated;clearTransientForm(form);render();toast(t('siteSaved'));
     }catch(error){button.disabled=false;toast(error.message==='CUSTOMER_SITE_REVISION_CHANGED'?t('siteConflict'):error.message)}
   });
   document.querySelector('#growthRadarSync')?.addEventListener('click',async()=>{try{await syncGrowthRadar();toast(t('radarSync'))}catch(e){toast(e.message)}});
