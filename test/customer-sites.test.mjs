@@ -50,3 +50,16 @@ test('C21: a late location refresh cannot leak across organizations',()=>{
  assert.match(ui,/const updated=await api\(base\);if\(org!==S\.orgId\)return;/);
  assert.match(ui,/S\.orgId=e\.target\.value;S\.unsavedFormDrafts\.clear\(\);S\.customerSites=\{\}/);
 });
+
+test('C09 C19: repeated creation of the same customer site does not inflate limits',()=>{
+ const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
+ const start=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/sites'");
+ const end=server.indexOf("app.patch('/api/organizations/:orgId/nestlocal/customers/:customerId/sites",start);
+ const route=server.slice(start,end);
+ assert.match(route,/siteId=hash\(customerId\+'\|'\+site\.label\.toLowerCase\(\)/);
+ assert.match(route,/const \[owner,existing\]=await Promise\.all\(\[tx\.get\(base\),tx\.get\(ref\)\]\)/);
+ assert.match(route,/if\(existing\.exists\)/);
+ assert.match(route,/idempotent=true;return;/);
+ assert.match(route,/res\.status\(idempotent\?200:201\)/);
+ assert.match(route,/CUSTOMER_SITE_ALREADY_EXISTS/);
+});
