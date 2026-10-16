@@ -11,6 +11,9 @@ const worker=readFileSync(new URL('../web/nestlocal-push-sw.js',import.meta.url)
 test('C13: push defaults off without explicit administrator enablement and VAPID config',()=>{
  assert.match(server,/NESTLOCAL_PUSH_ENABLED==='true'/);
  assert.match(server,/NESTLOCAL_WEB_PUSH_VAPID_PUBLIC_KEY/);
+ assert.match(server,/NESTLOCAL_FIREBASE_MESSAGING_APP_ID/);
+ assert.match(server,/NESTLOCAL_FIREBASE_MESSAGING_SENDER_ID/);
+ assert.match(client,/candidate\.name==='nestlocal-messaging'/);
  assert.match(server,/if\(!nestLocalPushEnabled\)return sendError\(res,503,'PUSH_NOT_CONFIGURED'\)/);
  assert.match(server,/requiresExplicitConsent:true/);
  assert.match(server,/scheduledRemindersEnabled:false/);
