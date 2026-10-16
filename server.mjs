@@ -2457,20 +2457,20 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
     let intake={};try{intake=normalizeIntakeValues(serviceData.intakeFields,b.intake)}catch{return sendError(res,400,'INVALID_INTAKE')}
     const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
     if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
-    const customerSiteId=clean(b.customerSiteId),siteRevision=Number(b.customerSiteRevision||0);
+    const customerSiteId=clean(b.customerSiteId),siteRevision=Number(b.customerSiteRevision||0),customerSiteEquipment=clean(b.customerSiteEquipment);
     if(customerSiteId&&(!safeId(customerSiteId)||!Number.isSafeInteger(siteRevision)||siteRevision<1))
       return sendError(res,400,'INVALID_CUSTOMER_SITE');
-    if(!customerSiteId&&b.customerSiteRevision!==undefined&&siteRevision!==0)
+    if(!customerSiteId&&(customerSiteEquipment||b.customerSiteRevision!==undefined&&siteRevision!==0))
       return sendError(res,400,'INVALID_CUSTOMER_SITE');
     const legacyContentHash=hash(JSON.stringify({name,customerPhone,customerEmail,serviceId,addressLine,city,coverageCode,preferredDate,preferredWindow,note}));
-    const creationContentHash=hash(JSON.stringify({name,customerPhone,customerEmail,serviceId,addressLine,city,coverageCode,preferredDate,preferredWindow,note,quantity,equipmentType,safeAccess,intake,customerSiteId,siteRevision,sourceDraftId}));
+    const creationContentHash=hash(JSON.stringify({name,customerPhone,customerEmail,serviceId,addressLine,city,coverageCode,preferredDate,preferredWindow,note,quantity,equipmentType,safeAccess,intake,customerSiteId,siteRevision,customerSiteEquipment,sourceDraftId}));
     const intentHash=key?hash(`${req.access.orgId}:${req.identity.uid}:${key}`):'',requestsRef=db.collection(`${root}/nestlocal_requests`),requestRef=intentHash?requestsRef.doc('manual_'+intentHash.slice(0,36)):requestsRef.doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType,safeAccess,intake,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',creationContentHash:intentHash?creationContentHash:null,createdAt,creationSchemaVersion:2,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
     const customerSiteRef=customerSiteId?customerRef.collection('sites').doc(customerSiteId):null;
     const siteSnapshot=(doc,owner)=>{
       if(!customerSiteRef)return {};
       if(!owner?.exists||!doc?.exists)throw new TypeError('CUSTOMER_SITE_NOT_FOUND');
       return {customerSite:customerSiteRequestSnapshot(doc.data(),{
-        customerId,siteId:customerSiteId,revision:siteRevision,addressLine,city
+        customerId,siteId:customerSiteId,revision:siteRevision,addressLine,city,selectedEquipment:customerSiteEquipment
       })};
     };
     // Explicit promotion happens only after the operator completes the existing
@@ -2525,7 +2525,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
       }throw new TypeError('REQUEST_IDEMPOTENCY_CONFLICT')
     }const count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,{...record,...siteSnapshot(site,siteOwner)});tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
     res.status(idempotent?200:201).json({requestId:requestRef.id,status:'new',idempotent});
-  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');if(['DRAFT_NOT_FOUND','DRAFT_ALREADY_CONVERTED','REQUEST_IDEMPOTENCY_CONFLICT','CUSTOMER_SITE_NOT_FOUND','CUSTOMER_SITE_REVISION_CHANGED','CUSTOMER_SITE_ADDRESS_CHANGED'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');if(['DRAFT_NOT_FOUND','DRAFT_ALREADY_CONVERTED','REQUEST_IDEMPOTENCY_CONFLICT','CUSTOMER_SITE_NOT_FOUND','CUSTOMER_SITE_REVISION_CHANGED','CUSTOMER_SITE_ADDRESS_CHANGED','CUSTOMER_SITE_EQUIPMENT_CHANGED'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
