@@ -126,3 +126,15 @@
 .customer-import-preview p{font-size:13px;line-height:1.5}
 .customer-import-preview ul{margin:10px 0 0;padding-left:18px;max-height:240px;overflow:auto;font-size:12px;line-height:1.7}
 @media(max-width:640px){.settings-advanced{padding:10px 12px}.operational-freshness .button{min-width:92px}.customer-import-preview{padding:12px}}
+
+/* Opt-in device notifications: progressive enhancement, no blocked workflows. */
+.push-controls{display:grid;gap:12px;min-width:0}
+.push-controls .section-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.push-controls .section-title h2{margin:0;font-size:clamp(1rem,2vw,1.2rem)}
+.push-controls .help{margin:0;max-width:74ch}
+.push-actions{display:flex;align-items:stretch;gap:9px;flex-wrap:wrap}
+.push-actions .button{min-height:44px;white-space:normal;overflow-wrap:anywhere}
+.push-actions .button:focus-visible{outline:3px solid var(--mint,#6ef2c5);outline-offset:3px}
+@media(max-width:560px){.push-actions{display:grid;grid-template-columns:1fr 1fr}
+.push-actions [data-push-enable]{grid-column:1/-1;width:100%}}
+@media(max-width:360px){.push-actions{grid-template-columns:1fr}.push-actions [data-push-enable]{grid-column:auto}}
