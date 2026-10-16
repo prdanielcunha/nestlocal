@@ -2013,7 +2013,7 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
     const form=document.querySelector('#internal-request');
     if(!form)return toast(t('goToServices'));
     const details=form.closest('details');if(details)details.open=true;
-    for(const [name,value] of Object.entries({name:customer.name,phone:customer.phone,
+    for(const [name,value] of Object.entries({name:customer.name,phone:customer.phone,email:customer.email,
       addressLine:site.line,city:site.city})){
       if(form.elements[name])form.elements[name].value=value||'';
     }
