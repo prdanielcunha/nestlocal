@@ -669,3 +669,5 @@
 @media(max-width:680px){.quote-lineitem{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.quote-lineitem [data-quote-desc]{grid-column:1/-1}.quote-lineitem [data-quote-price]{grid-column:2}.quote-lineitem button{grid-column:1/-1}}
 
 .public-quote-items{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}.public-quote-items li{display:flex;justify-content:space-between;align-items:start;gap:14px;padding:12px;border:1px solid rgba(255,255,255,.1);border-radius:12px}.public-quote-items li span{overflow-wrap:anywhere;min-width:0}.public-quote-items li strong{white-space:nowrap;font-variant-numeric:tabular-nums}.public-quote-items+h2{margin-top:16px}@media(max-width:480px){.public-quote-items li{flex-direction:column;gap:6px}}
+
+.quote-breakdown{grid-column:1/-1;margin:8px 0;padding:11px;border-radius:12px;border:1px solid rgba(128,213,178,.2)}.quote-breakdown summary{min-height:44px;display:flex;align-items:center;cursor:pointer;font-weight:700}.quote-breakdown .public-quote-items{margin-top:8px}
