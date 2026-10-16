@@ -31,6 +31,9 @@ test('quote revisions persist the line breakdown and preserve manual total',()=>
  assert.match(route,/validateQuoteItems\(req\.body\?\.items,amountCents\)/);
  assert.match(route,/manualNote:note,items:lineItems,version:/);
  assert.match(route,/tx\.create\(revisionRef/);
+ assert.match(route,/expectedQuoteVersion/);
+ assert.match(route,/QUOTE_REVISION_CHANGED/);
+ assert.match(ui,/expectedQuoteVersion:Number\(form\.dataset\.quoteVersion\|\|0\)/);
  assert.match(ui,/function quoteItemsField\(quote\)/);
  assert.match(ui,/const itemized=Array\.isArray\(q\.items\)/);
  assert.match(ui,/function readOnlyQuoteBreakdown\(quote\)/);
