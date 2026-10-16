@@ -67,8 +67,8 @@ try{
     // without storing the customer's text in browser storage or on the server.
     await page.evaluate(()=>document.querySelector('.sidebar button[data-nav="requests"]')?.click());
     const intakeName=page.locator('#internal-request [name="name"]');
-    await intakeName.waitFor();
     await page.evaluate(()=>{const details=document.querySelector('#internal-request')?.closest('details');if(details)details.open=true});
+    await intakeName.waitFor();
     const unfinished='Rascunho transitório C16 — não enviar';
     await intakeName.fill(unfinished);
     await page.evaluate(()=>document.querySelector('.sidebar button[data-nav="agenda"]')?.click());
