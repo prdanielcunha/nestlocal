@@ -8,6 +8,7 @@ import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment, manualPaymentAdjustment } from './src/domain/operational-integrity.mjs';
 import { validateExecutionChecklist } from './src/domain/field-checklist.mjs';
+import { validateQuoteItems } from './src/domain/quote-items.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -2426,13 +2427,14 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),amountCents=Number(req.body?.amountCents),note=clean(req.body?.note).slice(0,500);if(!requestId||!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100000000)return sendError(res,400,'INVALID_QUOTE');
+    const lineItems=validateQuoteItems(req.body?.items,amountCents);
     const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);let response=null;
-    await db.runTransaction(async tx=>{const [snap,settings]=await Promise.all([tx.get(ref),tx.get(settingsRef)]);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},status=clean(current.status);if(!['new','reviewing','quoted'].includes(status)||current.decision?.status)throw new TypeError('QUOTE_LOCKED');const validForMinutes=Math.min(1440,Math.max(5,Number(settings.data()?.validForMinutes||30))),now=new Date(),expiresAt=new Date(now.getTime()+validForMinutes*60000).toISOString(),quoteData={...(current.quote||{}),organizationId:req.access.orgId,serviceId:current.serviceId,quantity:Number(current.quantity||1),currency:'BRL',outcome:'priced',reasons:[],totalCents:amountCents,source:'manual',manualNote:note,version:(Number(current.quote?.version)||(current.quote?.totalCents!=null?1:0))+1,createdAt:current.quote?.createdAt||now.toISOString(),expiresAt};
+    await db.runTransaction(async tx=>{const [snap,settings]=await Promise.all([tx.get(ref),tx.get(settingsRef)]);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},status=clean(current.status);if(!['new','reviewing','quoted'].includes(status)||current.decision?.status)throw new TypeError('QUOTE_LOCKED');const validForMinutes=Math.min(1440,Math.max(5,Number(settings.data()?.validForMinutes||30))),now=new Date(),expiresAt=new Date(now.getTime()+validForMinutes*60000).toISOString(),quoteData={...(current.quote||{}),organizationId:req.access.orgId,serviceId:current.serviceId,quantity:Number(current.quantity||1),currency:'BRL',outcome:'priced',reasons:[],totalCents:amountCents,source:'manual',manualNote:note,items:lineItems,version:(Number(current.quote?.version)||(current.quote?.totalCents!=null?1:0))+1,createdAt:current.quote?.createdAt||now.toISOString(),expiresAt};
       const update={quote:quoteData,'commercial.quotedAmountCents':amountCents,quotedAt:admin.firestore.Timestamp.now(),quotedBy:req.identity.uid,status:'quoted',updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(status!=='quoted')update.statusHistory=admin.firestore.FieldValue.arrayUnion({status:'quoted',at:admin.firestore.Timestamp.now(),by:req.identity.uid});const revisionRef=db.doc(`${root}/nestlocal_requests/${requestId}/quote_versions/v${quoteData.version}`);
       tx.create(revisionRef,{...quoteData,requestId,actorUid:req.identity.uid,issuedAt:admin.firestore.Timestamp.now()});
       tx.update(ref,update);response={ok:true,status:'quoted',amountCents,expiresAt,quoteVersion:quoteData.version}});
     res.json(response);
-  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);if(['INVALID_QUOTE_ITEMS','QUOTE_ITEMS_TOTAL_MISMATCH'].includes(code))return sendError(res,400,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/review-link',authenticate,authorize,async(req,res)=>{
