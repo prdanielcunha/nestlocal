@@ -9,6 +9,7 @@ import { quote } from './src/domain/quote.mjs';
 import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment, manualPaymentAdjustment } from './src/domain/operational-integrity.mjs';
 import { validateExecutionChecklist } from './src/domain/field-checklist.mjs';
 import { validateQuoteItems } from './src/domain/quote-items.mjs';
+import { validateCustomerSite } from './src/domain/customer-sites.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -99,6 +100,7 @@ const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','remove
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const canManageNestLocalFinance=access=>canManageNestLocal(access)||
   access?.member?.appAccess?.nestlocal?.permissions?.financeWrite===true;
+const canManageNestLocalSites=access=>canManageNestLocal(access)||access?.member?.appAccess?.nestlocal?.permissions?.sitesWrite===true;
 const sendError=(res,status,code)=>res.status(status).json({error:code});
 const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
 const validContactEmail=value=>/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(clean(value).toLowerCase());
@@ -1326,7 +1328,7 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
     const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=settingsData?.draftSettings?{...settingsData,...settingsData.draftSettings}:settingsData,setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -1902,6 +1904,71 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
     });
     res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
   }catch(e){if(e?.message==='CUSTOMER_IMPORT_PREVIEW_STALE')return sendError(res,409,e.message);console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+
+// Locations and equipment are bounded subresources of one customer.
+app.get('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
+ const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+ const base=db.doc('organizations/'+req.access.orgId+'/nestlocal_customers/'+customerId);
+ try{
+  const owner=await base.get();if(!owner.exists)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+  const docs=await base.collection('sites').orderBy('createdAt','asc').limit(21).get();
+  res.set('Cache-Control','private,no-store');
+  return res.json({items:docs.docs.slice(0,20).map(doc=>({id:doc.id,...doc.data()})),maxSites:20,truncated:docs.size>20});
+ }catch(error){console.error('NESTLOCAL_SITES_READ_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')}
+});
+app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
+ if(!canManageNestLocalSites(req.access))return sendError(res,403,'ACCESS_DENIED');
+ const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+ try{
+  const site=validateCustomerSite(req.body),root='organizations/'+req.access.orgId,
+    base=db.doc(root+'/nestlocal_customers/'+customerId),
+    ref=base.collection('sites').doc(),audit=db.collection(root+'/nestlocal_audit').doc();
+  await db.runTransaction(async tx=>{
+    const owner=await tx.get(base);if(!owner.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+    const currentCount=Number(owner.data()?.siteCount||0);
+    if(!Number.isSafeInteger(currentCount)||currentCount<0||currentCount>=20)throw new TypeError('CUSTOMER_SITE_LIMIT');
+    tx.create(ref,{...site,revision:1,createdBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.update(base,{siteCount:currentCount+1,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.create(audit,{action:'customers.site_created',customerId,siteId:ref.id,actorUid:req.identity.uid,
+      createdAt:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  res.status(201).json({id:ref.id,revision:1});
+ }catch(error){
+  const code=error?.message;
+  if(code==='CUSTOMER_NOT_FOUND')return sendError(res,404,code);
+  if(code==='INVALID_CUSTOMER_SITE')return sendError(res,400,code);
+  if(code==='CUSTOMER_SITE_LIMIT')return sendError(res,409,code);
+  console.error('NESTLOCAL_SITES_WRITE_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')
+ }
+});
+app.patch('/api/organizations/:orgId/nestlocal/customers/:customerId/sites/:siteId',authenticate,authorize,async(req,res)=>{
+ if(!canManageNestLocalSites(req.access))return sendError(res,403,'ACCESS_DENIED');
+ const customerId=safeId(req.params.customerId),siteId=safeId(req.params.siteId);
+ if(!customerId||!siteId)return sendError(res,404,'CUSTOMER_SITE_NOT_FOUND');
+ try{
+  const site=validateCustomerSite(req.body),expected=Number(req.body?.expectedRevision);
+  if(!Number.isSafeInteger(expected)||expected<1)return sendError(res,400,'INVALID_SITE_REVISION');
+  const root='organizations/'+req.access.orgId,ref=db.doc(root+'/nestlocal_customers/'+customerId+'/sites/'+siteId),
+    audit=db.collection(root+'/nestlocal_audit').doc();
+  await db.runTransaction(async tx=>{
+   const current=await tx.get(ref);
+   if(!current.exists)throw new TypeError('CUSTOMER_SITE_NOT_FOUND');
+   if(Number(current.data().revision||1)!==expected)throw new TypeError('CUSTOMER_SITE_REVISION_CHANGED');
+   tx.update(ref,{...site,revision:expected+1,updatedBy:req.identity.uid,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+   tx.create(audit,{action:'customers.site_updated',customerId,siteId,revision:expected+1,
+    actorUid:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  res.json({id:siteId,revision:expected+1});
+ }catch(error){
+  const code=error?.message;
+  if(code==='CUSTOMER_SITE_NOT_FOUND')return sendError(res,404,code);
+  if(code==='CUSTOMER_SITE_REVISION_CHANGED')return sendError(res,409,code);
+  if(code==='INVALID_CUSTOMER_SITE')return sendError(res,400,code);
+  console.error('NESTLOCAL_SITE_EDIT_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')
+ }
 });
 
 app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-plan',authenticate,authorize,async(req,res)=>{
