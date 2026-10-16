@@ -2012,8 +2012,9 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
       addressLine:site.line,city:site.city})){
       if(form.elements[name])form.elements[name].value=value||'';
     }
-    const available=Array.from(form.elements.coverageCode?.options||[]),
-      found=available.find(option=>option.value===slug(site.city));
+    const normalized=value=>String(value||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]/g,''),
+      available=Array.from(form.elements.coverageCode?.options||[]),
+      found=available.find(option=>normalized(option.value)===normalized(site.city));
     if(found)form.elements.coverageCode.value=found.value;
     form.elements.name?.dispatchEvent(new Event('input',{bubbles:true}));
     form.scrollIntoView({behavior:'smooth',block:'start'});
