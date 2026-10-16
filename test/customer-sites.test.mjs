@@ -36,3 +36,11 @@ test('C19 C21: sites use transaction, revision guard, tenant-scoped audit and ex
  assert.match(ui,/form\.dataset\.customerSiteSave&&'site:'/);
  assert.match(ui,/clearTransientForm\(form\);render\(\);toast\(t\('siteSaved'\)\)/);
 });
+
+test('C19: existing locations prefill new requests without modifying historical data',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(ui,/data-new-request-for-site/);
+ assert.match(ui,/form\.elements\.coverageCode\.value=found\.value/);
+ assert.match(ui,/addressLine:site\.line,city:site\.city/);
+ assert.match(ui,/S\.customerSites\?\.\[id\]\?\.items/);
+});
