@@ -7,6 +7,7 @@ import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} 
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
 import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment, manualPaymentAdjustment } from './src/domain/operational-integrity.mjs';
+import { validateExecutionChecklist } from './src/domain/field-checklist.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
@@ -2550,6 +2551,14 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         update['schedule.customerConfirmation']=null;
       }
       if(b.executionNotes!==undefined)update['execution.notes']=clean(b.executionNotes).slice(0,1500);
+      if(b.executionChecklist!==undefined){
+        const workStatus=clean(b.status||current.status);
+        if(!['in_progress','completed'].includes(workStatus))throw new TypeError('EXECUTION_CHECKLIST_LOCKED');
+        const rows=validateExecutionChecklist(b.executionChecklist);
+        update['execution.checklist']=rows;
+        update['execution.checklistUpdatedBy']=req.identity.uid;
+        update['execution.checklistUpdatedAt']=admin.firestore.FieldValue.serverTimestamp();
+      }
       if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
       if(b.warrantyNotes!==undefined)update['warranty.notes']=clean(b.warrantyNotes).slice(0,500);
       if(b.finalAmountCents!==undefined){
@@ -2680,7 +2689,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
   }catch(e){
     console.error(e);const code=e?.message;
     if(code==='FINANCE_ACCESS_DENIED')return sendError(res,403,code);
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','PAYMENT_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_EXECUTION_CHECKLIST','EXECUTION_CHECKLIST_LOCKED','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','PAYMENT_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
