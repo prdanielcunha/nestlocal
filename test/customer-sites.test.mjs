@@ -49,7 +49,7 @@ test('C19: existing locations prefill new requests without modifying historical 
 test('C21: a late location refresh cannot leak across organizations',()=>{
  const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
  assert.match(ui,/const updated=await api\(base\);if\(org!==S\.orgId\)return;/);
- assert.match(ui,/S\.orgId=e\.target\.value;S\.unsavedFormDrafts\.clear\(\);S\.customerSites=\{\}/);
+ assert.match(ui,/S\.orgId=e\.target\.value;S\.pendingRequestSite=null;S\.pendingManualRequestKey='';S\.unsavedFormDrafts\.clear\(\);S\.customerSites=\{\}/);
 });
 
 test('C09 C19: repeated creation of the same customer site does not inflate limits',()=>{
