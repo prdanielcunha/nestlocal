@@ -110,3 +110,11 @@ test('C19: equipment selection is optional, revision-locked and cannot forge oth
  assert.match(live,/data-site-equipment-wrap/);
  assert.match(live,/customerSiteEquipment:f\.get\('customerSiteEquipment'\)/);
 });
+
+test('C16/C19: choosing a site discards old request drafts and manual address edits clear the optional equipment',()=>{
+ const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
+ assert.match(ui,/key\.endsWith\('\|'\+S\.orgId\+'\|internal-request'\)/);
+ assert.match(ui,/S\.unsavedFormDrafts\.delete\(key\)/);
+ assert.match(ui,/form\.elements\.customerSiteEquipment\.value=''/);
+ assert.match(ui,/S\.pendingRequestSite=null;S\.pendingManualRequestKey=''/);
+});
