@@ -1606,6 +1606,89 @@ function taskWriteError(res,error){
     return sendError(res,400,code);
   console.error('[NESTLOCAL_TASK_WRITE]',error?.code||'ERROR');return sendError(res,500,'TASK_WRITE_FAILED');
 }
+// Web Push is disabled unless an administrator explicitly configures both gates.
+// This is a user-initiated device channel, not WhatsApp delivery or a scheduler.
+const nestLocalPushKey=clean(process.env.NESTLOCAL_WEB_PUSH_VAPID_PUBLIC_KEY);
+const nestLocalPushEnabled=process.env.NESTLOCAL_PUSH_ENABLED==='true'&&
+  /^[A-Za-z0-9_-]{50,200}$/.test(nestLocalPushKey);
+const validPushToken=value=>typeof value==='string'&&value.length>=50&&value.length<=4096&&
+  /^[A-Za-z0-9_:\-\.]+$/.test(value);
+const pushDeviceRef=(orgId,tokenValue)=>
+  db.doc(`organizations/${orgId}/nestlocal_push_devices/${hash(tokenValue)}`);
+app.get('/api/organizations/:orgId/nestlocal/push/config',authenticate,authorize,(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  return res.json({enabled:nestLocalPushEnabled,transport:nestLocalPushEnabled?'firebase_cloud_messaging':'not_configured',
+    vapidPublicKey:nestLocalPushEnabled?nestLocalPushKey:null,
+    deliveryGuarantee:false,requiresExplicitConsent:true,
+    scheduledRemindersEnabled:false});
+});
+app.post('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authorize,async(req,res)=>{
+  if(!nestLocalPushEnabled)return sendError(res,503,'PUSH_NOT_CONFIGURED');
+  const tokenValue=req.body?.token,locale=clean(req.body?.locale||'pt');
+  const uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue)||!['pt','en','es'].includes(locale))
+    return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    if(!(await rateLimit(req,'push_enroll',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=pushDeviceRef(req.access.orgId,tokenValue);
+    await db.runTransaction(async tx=>{
+      const existing=await tx.get(ref);
+      if(existing.exists&&existing.data()?.uid!==uid&&existing.data()?.revoked!==true)
+        throw new TypeError('PUSH_DEVICE_ALREADY_BOUND');
+      tx.set(ref,{uid,token:tokenValue,locale,enabled:true,revoked:false,
+        channel:'firebase_cloud_messaging',updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+        createdAt:existing.data()?.createdAt||admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    });
+    res.set('Cache-Control','private, no-store');
+    return res.status(201).json({enabled:true,deviceId:ref.id,transport:'firebase_cloud_messaging'});
+  }catch(error){
+    if(error?.message==='PUSH_DEVICE_ALREADY_BOUND')return sendError(res,409,error.message);
+    console.error('NESTLOCAL_PUSH_DEVICE_ENROLL_FAILED',error?.code||error?.name);
+    return sendError(res,503,'PUSH_DEVICE_UNAVAILABLE');
+  }
+});
+app.delete('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authorize,async(req,res)=>{
+  const tokenValue=req.body?.token,uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue))return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    const ref=pushDeviceRef(req.access.orgId,tokenValue);
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists)return;
+      if(snap.data()?.uid!==uid)throw new TypeError('PUSH_DEVICE_ACCESS_DENIED');
+      tx.delete(ref);
+    });
+    res.set('Cache-Control','private, no-store');
+    return res.json({enabled:false});
+  }catch(error){
+    if(error?.message==='PUSH_DEVICE_ACCESS_DENIED')return sendError(res,403,error.message);
+    console.error('NESTLOCAL_PUSH_DEVICE_REMOVE_FAILED',error?.code||error?.name);
+    return sendError(res,503,'PUSH_DEVICE_UNAVAILABLE');
+  }
+});
+app.post('/api/organizations/:orgId/nestlocal/push/test',authenticate,authorize,async(req,res)=>{
+  if(!nestLocalPushEnabled)return sendError(res,503,'PUSH_NOT_CONFIGURED');
+  const tokenValue=req.body?.token,uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue))return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    if(!(await rateLimit(req,'push_test',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=pushDeviceRef(req.access.orgId,tokenValue),snap=await ref.get();
+    if(!snap.exists||snap.data()?.uid!==uid||snap.data()?.enabled!==true||
+      snap.data()?.revoked===true)return sendError(res,403,'PUSH_DEVICE_ACCESS_DENIED');
+    await admin.messaging().send({token:tokenValue,data:{kind:'test',locale:snap.data()?.locale||'pt',
+      destination:'/?view=today'},webpush:{headers:{TTL:'300',Urgency:'normal'}}});
+    // FCM acceptance is NOT confirmation that the device displayed a notification.
+    return res.json({providerAccepted:true,delivered:false,deliveryStatus:'unconfirmed'});
+  }catch(error){
+    const code=String(error?.code||'');
+    if(['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(code)){
+      await pushDeviceRef(req.access.orgId,tokenValue).delete().catch(()=>{});
+      return sendError(res,410,'PUSH_DEVICE_EXPIRED');
+    }
+    console.error('NESTLOCAL_PUSH_TEST_FAILED',code||error?.name);
+    return sendError(res,503,'PUSH_TEST_UNAVAILABLE');
+  }
+});
 app.get('/api/organizations/:orgId/nestlocal/action-tasks',authenticate,authorize,async(req,res)=>{
   if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
   try{
