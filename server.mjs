@@ -1609,8 +1609,12 @@ function taskWriteError(res,error){
 // Web Push is disabled unless an administrator explicitly configures both gates.
 // This is a user-initiated device channel, not WhatsApp delivery or a scheduler.
 const nestLocalPushKey=clean(process.env.NESTLOCAL_WEB_PUSH_VAPID_PUBLIC_KEY);
+const nestLocalMessagingAppId=clean(process.env.NESTLOCAL_FIREBASE_MESSAGING_APP_ID);
+const nestLocalMessagingSenderId=clean(process.env.NESTLOCAL_FIREBASE_MESSAGING_SENDER_ID);
 const nestLocalPushEnabled=process.env.NESTLOCAL_PUSH_ENABLED==='true'&&
-  /^[A-Za-z0-9_-]{50,200}$/.test(nestLocalPushKey);
+  /^[A-Za-z0-9_-]{50,200}$/.test(nestLocalPushKey)&&
+  /^[A-Za-z0-9:]{10,150}$/.test(nestLocalMessagingAppId)&&
+  /^\d{5,25}$/.test(nestLocalMessagingSenderId);
 const validPushToken=value=>typeof value==='string'&&value.length>=50&&value.length<=4096&&
   /^[A-Za-z0-9_:\-\.]+$/.test(value);
 const pushDeviceRef=(orgId,tokenValue)=>
@@ -1619,6 +1623,8 @@ app.get('/api/organizations/:orgId/nestlocal/push/config',authenticate,authorize
   res.set('Cache-Control','private, no-store');
   return res.json({enabled:nestLocalPushEnabled,transport:nestLocalPushEnabled?'firebase_cloud_messaging':'not_configured',
     vapidPublicKey:nestLocalPushEnabled?nestLocalPushKey:null,
+    messagingAppId:nestLocalPushEnabled?nestLocalMessagingAppId:null,
+    messagingSenderId:nestLocalPushEnabled?nestLocalMessagingSenderId:null,
     deliveryGuarantee:false,requiresExplicitConsent:true,
     scheduledRemindersEnabled:false});
 });
