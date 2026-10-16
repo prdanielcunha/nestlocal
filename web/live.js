@@ -1737,7 +1737,7 @@ function bind(){
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
   document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.unsavedFormDrafts.clear();S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.unsavedFormDrafts.clear();S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
       try{await ensureNativeNestAiSession()}
@@ -1837,6 +1837,14 @@ function bind(){
   document.querySelector('#internal-request')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={sourceDraftId:S.pendingDraftId||'',name:f.get('name'),phone:f.get('phone'),email:f.get('email'),serviceId:f.get('serviceId'),coverageCode:f.get('coverageCode'),addressLine:f.get('addressLine'),city:f.get('city'),preferredDate:f.get('preferredDate')||'',preferredWindow:f.get('preferredWindow')||'flexible',note:f.get('note')||'',quantity:Number(f.get('quantity')||1),equipmentType:f.get('equipmentType')||'',safeAccess:f.get('safeAccess')==='true',intake:Object.fromEntries([...f.entries()].filter(([key])=>key.startsWith('intake_')).map(([key,value])=>[key.slice(7),String(value||'').trim()]))};if(!String(payload.phone||'').trim()&&!String(payload.email||'').trim()){toast((trustStartCopy[S.lang]||trustStartCopy.pt).emailOrPhone);return}button.disabled=true;S.pendingManualRequestKey ||= (globalThis.crypto?.randomUUID?.()||`request-${Date.now()}-${Math.random().toString(36).slice(2)}`);try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/requests`,{method:'POST',headers:{'Idempotency-Key':S.pendingManualRequestKey},body:JSON.stringify(payload)});clearTransientForm(form);S.pendingManualRequestKey='';S.pendingDraftId='';S.internalIntakeCache={};await loadData();S.focusRequestId=result.requestId;render();const target=document.querySelector(`[data-request-card="${CSS.escape(result.requestId)}"]`);if(target){target.open=true;target.scrollIntoView({behavior:'smooth',block:'center'})}toast(t('requestCreated'))}catch(err){button.disabled=false;toast(err.message)}});
 
   document.querySelectorAll('[data-quote-items]').forEach(group=>{
+    const quoteId=group.closest('[data-request-quote]')?.dataset.requestQuote;
+    const saveDraft=()=>{if(!quoteId)return;
+      S.quoteItemDrafts[quoteId]=Array.from(group.querySelectorAll('[data-quote-item]')).map(row=>({
+        description:row.querySelector('[data-quote-desc]')?.value||'',
+        quantityText:row.querySelector('[data-quote-qty]')?.value||'',
+        unitPriceText:row.querySelector('[data-quote-price]')?.value||''
+      }));
+    };
     const totalLabel=group.querySelector('[data-quote-items-total]'),
       form=group.closest('[data-request-quote]'),totalInput=form?.querySelector('[name="quoteAmount"]');
     const refresh=()=>{
@@ -1851,10 +1859,10 @@ function bind(){
       if(totalLabel)totalLabel.textContent=ready?`${t('quoteItemTotal')}: ${money(sum)}`:'';
       if(ready&&totalInput&&sum>0&&sum<=100000000)totalInput.value=(sum/100).toFixed(2);
     };
-    group.addEventListener('input',refresh);
+    group.addEventListener('input',()=>{saveDraft();refresh()});
     group.addEventListener('click',event=>{
       const removed=event.target.closest('[data-remove-quote-item]');
-      if(removed){removed.closest('[data-quote-item]')?.remove();refresh();return}
+      if(removed){removed.closest('[data-quote-item]')?.remove();saveDraft();refresh();return}
       if(!event.target.closest('[data-add-quote-item]'))return;
       const list=group.querySelector('[data-quote-items-list]');
       if(list.querySelectorAll('[data-quote-item]').length>=20){toast(t('quoteItemMax'));return}
@@ -1863,7 +1871,7 @@ function bind(){
         <input type="number" data-quote-qty min="1" max="1000" step="1" required value="1" aria-label="${esc(t('quoteItemQty'))}">
         <input type="number" data-quote-price min=".01" max="1000000" step=".01" required placeholder="0.00" aria-label="${esc(t('quoteItemUnit'))}">
         <button type="button" class="button small" data-remove-quote-item aria-label="${esc(t('removeQuoteItem'))}">${esc(t('removeQuoteItem'))}</button>`;
-      list.append(item);item.querySelector('[data-quote-desc]')?.focus();refresh();
+      list.append(item);item.querySelector('[data-quote-desc]')?.focus();saveDraft();refresh();
     });
     refresh();
   });
@@ -1876,7 +1884,7 @@ items=Array.from(form.querySelectorAll('[data-quote-item]')).map(row=>({
 if(items.length>20)return toast(t('quoteItemMax'));
 if(items.some(item=>item.description.length<2||!Number.isSafeInteger(item.quantity)||item.quantity<1||!Number.isSafeInteger(item.unitPriceCents)||item.unitPriceCents<=0))return toast(t('quoteItemInvalid'));
 if(items.length&&items.reduce((sum,item)=>sum+item.quantity*item.unitPriceCents,0)!==amountCents)return toast(t('quoteItemInvalid'));
-button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||'',items,expectedQuoteVersion:Number(form.dataset.quoteVersion||0)})});clearTransientForm(form);await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message==='QUOTE_REVISION_CHANGED'?t('quoteRevisionChanged'):err.message)}});
+button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requests/${form.dataset.requestQuote}/quote`,{method:'POST',body:JSON.stringify({amountCents,note:f.get('quoteNote')||'',items,expectedQuoteVersion:Number(form.dataset.quoteVersion||0)})});clearTransientForm(form);delete S.quoteItemDrafts[form.dataset.requestQuote];await loadData();if(goNext)returnToAutopilotQueue();S.focusRequestId=form.dataset.requestQuote;render();toast(t('quoteSaved'))}catch(err){button.disabled=false;toast(err.message==='QUOTE_REVISION_CHANGED'?t('quoteRevisionChanged'):err.message)}});
 
   document.querySelectorAll('[data-ai-quote-draft]').forEach(button=>button.onclick=async()=>{const id=button.dataset.aiQuoteDraft;if(!id)return;button.disabled=true;const original=button.textContent;button.textContent=t('aiDraftLoading');try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/ai/quote-compose`,{method:'POST',body:JSON.stringify({requestId:id,locale:S.lang})});S.aiDrafts[`quote:${id}`]=result.draft||'';S.focusRequestId=id;render();toast(t('aiDraftReady'))}catch(err){button.disabled=false;button.textContent=original;toast(t('aiDraftUnavailable'))}});
   document.querySelectorAll('[data-ai-followup-draft]').forEach(button=>button.onclick=async()=>{const id=button.dataset.aiFollowupDraft;if(!id)return;button.disabled=true;const original=button.textContent;button.textContent=t('aiDraftLoading');try{const result=await api(`/api/organizations/${S.orgId}/nestlocal/ai/followup-compose`,{method:'POST',body:JSON.stringify({requestId:id,locale:S.lang})});const textarea=document.querySelector('#action-assist-message');if(textarea&&result.draft)textarea.value=result.draft;button.disabled=false;button.textContent=original;toast(t('aiDraftReady'))}catch(err){button.disabled=false;button.textContent=original;toast(t('aiDraftUnavailable'))}});
@@ -1895,9 +1903,17 @@ button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requ
     }catch(error){button.disabled=false;toast(error.message)}
   });
   document.querySelectorAll('[data-checklist]').forEach(group=>{
+    const requestId=group.closest('[data-request-operation]')?.dataset.requestOperation;
+    const saveDraft=()=>{if(!requestId)return;
+      S.checklistDrafts[requestId]=Array.from(group.querySelectorAll('[data-checklist-row]')).map(row=>({
+        id:row.dataset.checklistId,label:row.querySelector('[data-checklist-label]')?.value||'',
+        done:row.querySelector('[data-checklist-done]')?.checked===true
+      }));
+    };
+    group.addEventListener('input',saveDraft);group.addEventListener('change',saveDraft);
     group.addEventListener('click',event=>{
       const remove=event.target.closest('[data-remove-checklist]');
-      if(remove){remove.closest('[data-checklist-row]')?.remove();return}
+      if(remove){remove.closest('[data-checklist-row]')?.remove();saveDraft();return}
       const add=event.target.closest('[data-add-checklist]');
       if(!add)return;
       const list=group.querySelector('[data-checklist-items]');
@@ -1909,7 +1925,7 @@ button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requ
       item.innerHTML=`<label class="execution-checklist-done"><input type="checkbox" data-checklist-done aria-label="${esc(t('workStepDone'))}"><span>${esc(t('workStepDone'))}</span></label>
       <input type="text" data-checklist-label maxlength="120" required placeholder="${esc(t('workStepPlaceholder'))}" aria-label="${esc(t('workStepPlaceholder'))}">
       <button type="button" class="button small" data-remove-checklist aria-label="${esc(t('removeWorkStep'))}">${esc(t('removeWorkStep'))}</button>`;
-      list.append(item);item.querySelector('[data-checklist-label]')?.focus();
+      list.append(item);item.querySelector('[data-checklist-label]')?.focus();saveDraft();
     })
   });
   document.querySelectorAll('[data-request-operation]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const goNext=e.submitter?.dataset.saveNext==='true',button=e.submitter||form.querySelector('button[type="submit"]'),f=new FormData(form),id=form.dataset.requestOperation,finalAmount=Number(f.get('finalAmount')||0),paymentStatus=f.get('paymentStatus')||'pending',amountPaid=paymentStatus==='paid'?finalAmount:['pending','cancelled'].includes(paymentStatus)?0:Number(f.get('amountPaid')||0),payload={executionNotes:f.get('executionNotes')||'',nextServiceDate:f.get('nextServiceDate')||'',returnReason:f.get('returnReason')||'',warrantyUntil:f.get('warrantyUntil')||'',warrantyNotes:f.get('warrantyNotes')||''};if(S.data?.canManageFinance!==false)Object.assign(payload,{finalAmountCents:Math.round(finalAmount*100),amountPaidCents:Math.round(amountPaid*100),paymentStatus});const checklist=Array.from(form.querySelectorAll('[data-checklist-row]')).map(node=>({
@@ -1918,7 +1934,7 @@ button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/requ
 }));if(checklist.length>20)return toast(t('workStepsLimit'));
 if(checklist.some(row=>row.label.length<2))return toast(t('workStepRequired'));
 payload.executionChecklist=checklist;
-if(form.dataset.complete==='true')payload.status='completed';button.disabled=true;try{const fromAutopilot=S.autopilotRequestId===id;await api(`/api/organizations/${S.orgId}/nestlocal/requests/${id}`,{method:'PATCH',body:JSON.stringify(payload)});clearTransientForm(form);delete S.paymentHistory[id];await loadData();if(fromAutopilot&&(goNext||payload.status==='completed'))returnToAutopilotQueue();else{S.focusRequestId=id;render();toast(payload.status==='completed'?t('completeService'):t('saveOperation'))}}catch(err){button.disabled=false;toast(['PAYMENT_RECONCILIATION_REQUIRED','FINANCIAL_RECONCILIATION_REQUIRED'].includes(err.message)?t('financialReviewRequired'):err.message==='INVALID_PAYMENT_STATE'?t('invalidPaymentValues'):err.message==='FINANCE_ACCESS_DENIED'?t('financeRestricted'):err.message)}});
+if(form.dataset.complete==='true')payload.status='completed';button.disabled=true;try{const fromAutopilot=S.autopilotRequestId===id;await api(`/api/organizations/${S.orgId}/nestlocal/requests/${id}`,{method:'PATCH',body:JSON.stringify(payload)});clearTransientForm(form);delete S.paymentHistory[id];delete S.checklistDrafts[id];clearTransientForm(form);await loadData();if(fromAutopilot&&(goNext||payload.status==='completed'))returnToAutopilotQueue();else{S.focusRequestId=id;render();toast(payload.status==='completed'?t('completeService'):t('saveOperation'))}}catch(err){button.disabled=false;toast(['PAYMENT_RECONCILIATION_REQUIRED','FINANCIAL_RECONCILIATION_REQUIRED'].includes(err.message)?t('financialReviewRequired'):err.message==='INVALID_PAYMENT_STATE'?t('invalidPaymentValues'):err.message==='FINANCE_ACCESS_DENIED'?t('financeRestricted'):err.message)}});
 
   document.querySelectorAll('[data-maintenance-plan]').forEach(form=>form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button[type="submit"]'),f=new FormData(form),payload={active:f.get('active')==='on',name:f.get('name')||'',intervalDays:Number(f.get('intervalDays')||0),nextVisitDate:f.get('nextVisitDate')||'',contractStart:f.get('contractStart')||'',contractEnd:f.get('contractEnd')||'',notes:f.get('notes')||''};button.disabled=true;try{await api(`/api/organizations/${S.orgId}/nestlocal/customers/${encodeURIComponent(form.dataset.maintenancePlan)}/maintenance-plan`,{method:'PUT',body:JSON.stringify(payload)});clearTransientForm(form);await loadData();render();toast(t('planSaved'))}catch(err){button.disabled=false;toast(err.message)}});
   document.querySelectorAll('[data-service-report]').forEach(button=>button.onclick=()=>{const r=(S.data.requests||[]).find(x=>x.id===button.dataset.serviceReport);if(r)printServiceReport(r)});
@@ -1989,7 +2005,7 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
     try{
       await api(siteId?`${base}/${encodeURIComponent(siteId)}`:base,{method:siteId?'PATCH':'POST',body:JSON.stringify(payload)});
       if(org!==S.orgId)return;
-      S.customerSites[id]=await api(base);render();toast(t('siteSaved'));
+      S.customerSites[id]=await api(base);clearTransientForm(form);render();toast(t('siteSaved'));
     }catch(error){button.disabled=false;toast(error.message==='CUSTOMER_SITE_REVISION_CHANGED'?t('siteConflict'):error.message)}
   });
   document.querySelector('#growthRadarSync')?.addEventListener('click',async()=>{try{await syncGrowthRadar();toast(t('radarSync'))}catch(e){toast(e.message)}});
