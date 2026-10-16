@@ -326,9 +326,9 @@ Object.assign(D.es,{copilotPreview:'Revisar conversación',previewTitle:'Entendi
 Object.assign(D.pt,{aiPreview:'Analisar com NestAI',aiConsent:'Autorizo a análise desta anotação no NestAI. Confira o texto: o sistema tenta ocultar identificadores comuns, mas remova dados sensíveis antes de autorizar.',aiPrivacy:'Sugestão de IA: confirme as informações. Nenhuma mensagem será enviada, nenhuma venda é garantida e nenhum horário será reservado.',aiManualFallback:'NestAI indisponível ou limite atingido: continue com a revisão manual.',aiEvidence:'Serviço mencionado na conversa',aiConsentRequired:'Confirme a autorização antes de usar o NestAI.',aiNoCredits:'Limite diário de consultas de IA atingido. Use a revisão sem IA.'});
 Object.assign(D.en,{aiPreview:'Analyze with NestAI',aiConsent:'I authorize NestAI to analyze this note. Review the text first: common identifiers are filtered, but please remove sensitive details before authorizing.',aiPrivacy:'AI suggestion: verify the facts. No message is sent, sale guaranteed or appointment booked.',aiManualFallback:'NestAI unavailable or quota reached. Continue with manual review.',aiEvidence:'Service mentioned in the source',aiConsentRequired:'Please authorize NestAI processing first.',aiNoCredits:'Daily AI request limit reached. Use manual review.'});
 Object.assign(D.es,{aiPreview:'Analizar con NestAI',aiConsent:'Autorizo el análisis de esta nota con NestAI. Revisa el texto: se intenta ocultar identificadores comunes, pero elimina datos sensibles antes de autorizar.',aiPrivacy:'Sugerencia de IA: verifica los datos. No se envían mensajes, ni se garantizan ventas o reservas.',aiManualFallback:'NestAI no disponible o límite alcanzado. Continúa con la revisión manual.',aiEvidence:'Servicio mencionado en el mensaje',aiConsentRequired:'Autoriza el análisis con NestAI antes de continuar.',aiNoCredits:'Límite diario de consultas de IA alcanzado. Usa la revisión manual.'});
-Object.assign(D.pt,{pushTitle:'Notificações no celular',pushIntro:'Receba avisos gerais do NestLocal neste aparelho. Ativação opcional; sem dados de clientes nas notificações.',pushEnable:'Ativar notificações',pushDisable:'Desativar neste aparelho',pushTest:'Enviar teste',pushEnabled:'Aparelho cadastrado. O teste verifica o canal, mas não confirma entrega.',pushSent:'Teste aceito pelo Firebase; verifique o aparelho.',pushNotScheduled:'Lembretes automáticos com o app fechado ainda dependem da configuração do agendador.',pushNotConfigured:'O envio em segundo plano ainda não foi habilitado pelo administrador.'});
-Object.assign(D.en,{pushTitle:'Device notifications',pushIntro:'Receive generic NestLocal alerts on this device. Optional opt-in; no customer data is included.',pushEnable:'Enable notifications',pushDisable:'Disable on this device',pushTest:'Send a test',pushEnabled:'Device registered. A test checks the channel but does not guarantee delivery.',pushSent:'Test accepted by Firebase; check your device.',pushNotScheduled:'Automatic reminders with the app closed still require a configured scheduler.',pushNotConfigured:'Background delivery has not been enabled by an administrator.'});
-Object.assign(D.es,{pushTitle:'Notificaciones del dispositivo',pushIntro:'Recibe avisos generales de NestLocal en este dispositivo. Activación opcional, sin datos de clientes.',pushEnable:'Activar notificaciones',pushDisable:'Desactivar en este dispositivo',pushTest:'Enviar prueba',pushEnabled:'Dispositivo registrado. La prueba comprueba el canal, no garantiza la entrega.',pushSent:'Prueba aceptada por Firebase; comprueba el dispositivo.',pushNotScheduled:'Los recordatorios con la app cerrada aún requieren un programador configurado.',pushNotConfigured:'El envío en segundo plano aún no fue habilitado por un administrador.'});
+Object.assign(D.pt,{pushTitle:'Notificações no celular',pushIntro:'Receba avisos gerais do NestLocal neste aparelho. Ativação opcional; sem dados de clientes nas notificações.',pushEnable:'Ativar notificações',pushDisable:'Desativar neste aparelho',pushTest:'Enviar teste',pushEnabled:'Aparelho cadastrado. O teste verifica o canal, mas não confirma entrega.',pushSent:'Teste aceito pelo Firebase; verifique o aparelho.',pushNotScheduled:'Lembretes automáticos com o app fechado ainda dependem da configuração do agendador.',pushNotConfigured:'O envio em segundo plano ainda não foi habilitado pelo administrador.',pushUnavailable:'Este dispositivo não pode usar push nesta configuração. Utilize a agenda do NestLocal.',pushPermissionDenied:'Permissão recusada. Ative notificações nas configurações do aparelho.',pushLimit:'Este usuário já atingiu o limite de aparelhos registrados.'});
+Object.assign(D.en,{pushTitle:'Device notifications',pushIntro:'Receive generic NestLocal alerts on this device. Optional opt-in; no customer data is included.',pushEnable:'Enable notifications',pushDisable:'Disable on this device',pushTest:'Send a test',pushEnabled:'Device registered. A test checks the channel but does not guarantee delivery.',pushSent:'Test accepted by Firebase; check your device.',pushNotScheduled:'Automatic reminders with the app closed still require a configured scheduler.',pushNotConfigured:'Background delivery has not been enabled by an administrator.',pushUnavailable:'This device cannot use push in the current configuration. Use the NestLocal calendar.',pushPermissionDenied:'Permission denied. Enable notifications in your device settings.',pushLimit:'This user has reached the registered device limit.'});
+Object.assign(D.es,{pushTitle:'Notificaciones del dispositivo',pushIntro:'Recibe avisos generales de NestLocal en este dispositivo. Activación opcional, sin datos de clientes.',pushEnable:'Activar notificaciones',pushDisable:'Desactivar en este dispositivo',pushTest:'Enviar prueba',pushEnabled:'Dispositivo registrado. La prueba comprueba el canal, no garantiza la entrega.',pushSent:'Prueba aceptada por Firebase; comprueba el dispositivo.',pushNotScheduled:'Los recordatorios con la app cerrada aún requieren un programador configurado.',pushNotConfigured:'El envío en segundo plano aún no fue habilitado por un administrador.',pushUnavailable:'Este dispositivo no permite push con la configuración actual. Usa el calendario.',pushPermissionDenied:'Permiso denegado. Activa las notificaciones en la configuración del dispositivo.',pushLimit:'Este usuario llegó al límite de dispositivos registrados.'});
 Object.assign(D.pt,{enableTaskAlerts:'Ativar avisos neste aparelho',alertsUnavailable:'Este navegador não oferece notificações para esta página. Use a opção Calendário.',alertsEnabled:'Avisos permitidos enquanto o NestLocal estiver aberto.',alertsDenied:'O aparelho não autorizou notificações. Você pode usar o calendário.',alertsExplanation:'Opcional: avisos para retornos de hoje e amanhã quando o app estiver aberto. Sem envio de WhatsApp ou notificação garantida em segundo plano.'});
 Object.assign(D.en,{enableTaskAlerts:'Enable alerts on this device',alertsUnavailable:'Notifications are unavailable here. Use the calendar option.',alertsEnabled:'Alerts enabled while NestLocal is open.',alertsDenied:'Device notifications were not permitted. You can use the calendar.',alertsExplanation:'Optional reminders for today and tomorrow while the app is open; no WhatsApp send or background push guarantee.'});
 Object.assign(D.es,{enableTaskAlerts:'Activar avisos en este dispositivo',alertsUnavailable:'Este navegador no admite notificaciones aquí. Usa el calendario.',alertsEnabled:'Avisos activados mientras NestLocal está abierto.',alertsDenied:'El dispositivo no autorizó notificaciones. Puedes usar el calendario.',alertsExplanation:'Avisos opcionales de hoy y mañana mientras la app está abierta; sin WhatsApp ni push garantizado en segundo plano.'});
@@ -764,6 +764,15 @@ function operationalFreshness(){
   if(!S.operationalLoadedAt)return '';
   const ago=Math.floor((Date.now()-S.operationalLoadedAt)/60000);
   return `<div class="operational-freshness" role="status"><span>${ago<1?t('dataUpdatedNow'):`${t('dataUpdatedAgo')} ${ago} min`}</span><button class="button small" type="button" data-refresh-operations>${t('refresh')}</button></div>`;
+}
+function pushErrorMessage(error){
+  const code=String(error?.message||'');
+  if(code==='PUSH_PERMISSION_DENIED')return t('pushPermissionDenied');
+  if(code==='PUSH_DEVICE_LIMIT')return t('pushLimit');
+  if(['PUSH_UNSUPPORTED','PUSH_TOKEN_UNAVAILABLE','PUSH_FIREBASE_CONFIGURATION_UNAVAILABLE',
+      'PUSH_NOT_CONFIGURED','PUSH_DEVICE_UNAVAILABLE','PUSH_TEST_UNAVAILABLE'].includes(code))
+    return t('pushUnavailable');
+  return code||t('pushUnavailable');
 }
 function pushControls(){
   if(S.data?.pushConfig?.enabled!==true)return '';
@@ -1635,19 +1644,19 @@ function bind(){
       if(!config?.enabled)throw new Error('PUSH_NOT_CONFIGURED');
       await enrollNestLocalPush({orgId,locale:S.lang,vapidPublicKey:config.vapidPublicKey,api});
       if(orgId===S.orgId){S.pushRegistered=true;render();toast(t('pushEnabled'))}
-    }catch(error){button.disabled=false;toast(error.message)}
+    }catch(error){button.disabled=false;toast(pushErrorMessage(error))}
   });
   document.querySelectorAll('[data-push-test]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
     try{const result=await testNestLocalPush({orgId:S.orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
       toast(result.providerAccepted?t('pushSent'):String(result.error||'PUSH_TEST_UNAVAILABLE'))
-    }catch(error){toast(error.message)}finally{button.disabled=false}
+    }catch(error){toast(pushErrorMessage(error))}finally{button.disabled=false}
   });
   document.querySelectorAll('[data-push-disable]').forEach(button=>button.onclick=async()=>{
     button.disabled=true;
     try{const orgId=S.orgId;await disableNestLocalPush({orgId,vapidPublicKey:S.data?.pushConfig?.vapidPublicKey,api});
       if(orgId===S.orgId){S.pushRegistered=false;render()}
-    }catch(error){button.disabled=false;toast(error.message)}
+    }catch(error){button.disabled=false;toast(pushErrorMessage(error))}
   });
   document.querySelectorAll('[data-load-agenda]').forEach(button=>button.onclick=async()=>{
     const data=S.data;if(!data)return;
