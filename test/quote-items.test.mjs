@@ -40,5 +40,5 @@ test('quote revisions persist the line breakdown and preserve manual total',()=>
  assert.match(ui,/\$\{readOnlyQuoteBreakdown\(q\)\}/);
  assert.match(ui,/\$\{decision\}\$\{itemized\}\$\{quoteDecision\}/);
  assert.match(ui,/data-add-quote-item/);
- assert.match(ui,/JSON\.stringify\(\{amountCents,note:f\.get\('quoteNote'\)\|\|'',items\}\)/);
+ assert.match(ui,/JSON\.stringify\(\{amountCents,note:f\.get\('quoteNote'\)\|\|'',items,expectedQuoteVersion:/);
 });
