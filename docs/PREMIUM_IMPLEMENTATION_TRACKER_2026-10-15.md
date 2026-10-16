@@ -28,7 +28,7 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | C16 | P2 | **Parcial:** formulário público e rascunhos transitórios de atendimento, orçamento, agendamento, execução, manutenção, catálogo e configurações são restaurados após redesenhos sem persistir PII no navegador; limpeza ocorre após salvamento bem-sucedido | Homologar interrupções e foco/teclado em aparelhos físicos; não preservar dados após fechar a aba |
 | C17 | P2 | **Parcial**: opções avançadas recolhíveis, estilos operacionais responsivos e painel de notificação progressivo sob feature flag | Reorganizar módulos restantes por tarefas, inspecionar screenshots e testar em celular com dados reais |
 | C18 | P2 | Pedido interno usa perguntas/quantidade/qualificadores do catálogo compartilhado com público | Testar playbooks e validade de schema histórico |
-| C19 | P2 | **Parcial**: importação com prévia, transação e auditoria; múltiplos locais/equipamentos por cliente; pedido interno agora registra vínculo de local **com revisão e snapshot imutável**, validado na mesma transação e exibido no detalhe | Faltam mesclagem auditada de identidades multicanal, seleção granular de equipamento por serviço, importação massiva de locais/equipamentos e homologação Firestore |
+| C19 | P2 | **Parcial**: importação com prévia, transação e auditoria; múltiplos locais/equipamentos por cliente; pedido interno agora registra vínculo de local **com revisão e snapshot imutável**, validado na mesma transação e exibido no detalhe | Faltam mesclagem auditada de identidades multicanal, importação massiva de locais/equipamentos e homologação Firestore |
 | C20 | P2 | **Parcial**: manifesto read-only de contagens e assinaturas HMAC, comparação obrigatoriamente entre projetos distintos, testes sintéticos e runbook | Backup real, retenção, IAM e restauração isolada ensaiada ainda não executados |
 | C21 | P2 | **Parcial**: catálogo restrito a admin/owner; nova capacidade financeWrite limita alterações monetárias; profissionais podem concluir trabalho sem editar valores; histórico financeiro protegido | Perfis granulares completos de atendimento/campo/financeiro/consulta, papéis no Hub e matriz negativa multiempresa |
 
@@ -144,3 +144,9 @@ A criação de um local usa identificador determinístico derivado da identidade
 - **C09:** a chave de intenção continua idempotente, mas o fingerprint de conteúdo da nova versão inclui quantidade, qualificadores, respostas da ficha e o local selecionado; um retry antigo continua compatível por fallback de esquema.
 - **UX:** se o operador alterar manualmente os dados da localização, o formulário remove o vínculo obsoleto. Edição concorrente dispara erro explicativo PT/EN/ES.
 - **Ainda pendente:** testes reais de concorrência usando duas sessões autenticadas, idempotência sob perda de conexão em produção e escolha granular do equipamento a ser atendido. `main`/`production` continuam isoladas.
+
+### Incremento C19: equipamento específico no pedido
+- O formulário de novo pedido apresenta uma seleção opcional dos equipamentos cadastrados para o local escolhido, com uma opção clara de “Não especificado”, nos três idiomas.
+- O domínio `customerSiteRequestSnapshot` inclui `selectedEquipment` apenas quando a escolha faz parte da lista revisada de equipamentos e a revisão do local coincide; não assume que todos os equipamentos cadastrados serão atendidos.
+- O detalhe do pedido exibe o equipamento escolhido e a lista do local como contexto separado. A rejeição `CUSTOMER_SITE_EQUIPMENT_CHANGED` orienta recarregar o local.
+- **Ainda não homologado:** múltiplos equipamentos no mesmo pedido, catálogo de equipamentos com número de série/foto/histórico, e integração real com Firestore sob concorrência.
