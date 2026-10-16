@@ -67,6 +67,9 @@ Object.assign(D.es,{messageReady:'Preparada · no enviada',connectValidationOnly
 Object.assign(D.pt,{financialReviewRequired:'Este registro financeiro antigo precisa de conferência do responsável antes de ser corrigido.',invalidPaymentValues:'Verifique o valor total, o valor recebido e a situação do pagamento.'});
 Object.assign(D.en,{financialReviewRequired:'This historic financial record needs manager reconciliation before it can be changed.',invalidPaymentValues:'Check the total, received amount and payment status.'});
 Object.assign(D.es,{financialReviewRequired:'Este registro financiero antiguo requiere conciliación del responsable antes de modificarse.',invalidPaymentValues:'Revise el total, lo recibido y el estado del pago.'});
+Object.assign(D.pt,{createRequestAtSite:'Criar pedido neste local',customerSiteApplied:'Cliente e endereço preenchidos. Confira a área atendida e selecione o serviço.'});
+Object.assign(D.en,{createRequestAtSite:'Create a job here',customerSiteApplied:'Customer and address filled in. Review coverage and select a service.'});
+Object.assign(D.es,{createRequestAtSite:'Crear pedido aquí',customerSiteApplied:'Cliente y dirección preparados. Verifique la zona y seleccione el servicio.'});
 Object.assign(D.pt,{customerSites:'Locais e equipamentos',customerSitesHelp:'Guarde vários endereços e equipamentos deste cliente, sem alterar os pedidos anteriores.',loadCustomerSites:'Ver locais',addCustomerSite:'Adicionar local',editCustomerSite:'Editar local',siteLabel:'Identificação do local',siteAddress:'Endereço',siteCity:'Cidade',siteEquipment:'Equipamentos (um por linha)',siteNotes:'Observações do local',siteSaved:'Local salvo',siteLimit:'Limite de 20 locais por cliente.',siteEmpty:'Nenhum local adicional cadastrado.',siteConflict:'Este local foi editado em outra tela. Atualize antes de salvar.'});
 Object.assign(D.en,{customerSites:'Locations and equipment',customerSitesHelp:'Save multiple locations and equipment for this customer without changing past requests.',loadCustomerSites:'View locations',addCustomerSite:'Add location',editCustomerSite:'Edit location',siteLabel:'Location name',siteAddress:'Address',siteCity:'City',siteEquipment:'Equipment (one per line)',siteNotes:'Location notes',siteSaved:'Location saved',siteLimit:'Maximum 20 locations per customer.',siteEmpty:'No additional locations yet.',siteConflict:'This location was edited elsewhere. Refresh before saving.'});
 Object.assign(D.es,{customerSites:'Ubicaciones y equipos',customerSitesHelp:'Guarde varias ubicaciones y equipos para este cliente sin cambiar pedidos anteriores.',loadCustomerSites:'Ver ubicaciones',addCustomerSite:'Añadir ubicación',editCustomerSite:'Editar ubicación',siteLabel:'Nombre del lugar',siteAddress:'Dirección',siteCity:'Ciudad',siteEquipment:'Equipos (uno por línea)',siteNotes:'Notas del lugar',siteSaved:'Ubicación guardada',siteLimit:'Máximo de 20 ubicaciones por cliente.',siteEmpty:'Esta persona no tiene ubicaciones adicionales.',siteConflict:'La ubicación fue editada en otra sesión. Actualice antes de guardar.'});
@@ -895,6 +898,7 @@ function customerSitesPanel(customer){
     ${state?`<div class="customer-sites-list"><p class="help">${t('customerSitesHelp')}</p>
       ${state.items?.length?state.items.map(site=>`<details class="customer-site-row"><summary><strong>${esc(site.label)}</strong><span>${esc(site.line)} · ${esc(site.city)}</span></summary>
         <p class="help">${site.equipment?.length?site.equipment.map(x=>esc(x)).join(' · '):'—'}</p>
+        <button type="button" class="button small" data-new-request-for-site="${esc(customer.id)}" data-site-id="${esc(site.id)}">${t('createRequestAtSite')}</button>
         ${canEdit?siteForm(site):''}</details>`).join(''):`<p class="help">${t('siteEmpty')}</p>`}
       ${canEdit&&state.items?.length<20?`<details class="customer-site-add"><summary>${t('addCustomerSite')}</summary>${siteForm()}</details>`:''}
       ${state.items?.length>=20?`<p class="help">${t('siteLimit')}</p>`:''}
@@ -1994,6 +1998,26 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
       if(org!==S.orgId)return;
       S.customerSites[customerId]=result;render();
     }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelectorAll('[data-new-request-for-site]').forEach(button=>button.onclick=()=>{
+    const id=button.dataset.newRequestForSite,siteId=button.dataset.siteId,
+      customer=(S.data?.customers||[]).find(item=>item.id===id),
+      site=S.customerSites?.[id]?.items?.find(item=>item.id===siteId);
+    if(!customer||!site)return toast('CUSTOMER_SITE_NOT_FOUND');
+    S.page='requests';S.focusRequestId='';render();
+    const form=document.querySelector('#internal-request');
+    if(!form)return toast(t('goToServices'));
+    const details=form.closest('details');if(details)details.open=true;
+    for(const [name,value] of Object.entries({name:customer.name,phone:customer.phone,
+      addressLine:site.line,city:site.city})){
+      if(form.elements[name])form.elements[name].value=value||'';
+    }
+    const available=Array.from(form.elements.coverageCode?.options||[]),
+      found=available.find(option=>option.value===slug(site.city));
+    if(found)form.elements.coverageCode.value=found.value;
+    form.elements.name?.dispatchEvent(new Event('input',{bubbles:true}));
+    form.scrollIntoView({behavior:'smooth',block:'start'});
+    toast(t('customerSiteApplied'));
   });
   document.querySelectorAll('[data-customer-site-save]').forEach(form=>form.onsubmit=async event=>{
     event.preventDefault();const id=form.dataset.customerSiteSave,siteId=form.dataset.siteId,
