@@ -32,4 +32,7 @@ test('C19 C21: sites use transaction, revision guard, tenant-scoped audit and ex
  assert.match(ui,/function customerSitesPanel\(customer\)/);
  assert.match(ui,/data-customer-site-save/);
  assert.match(ui,/S\.customerSites=\{\}/);
+ assert.match(ui,/data-customer-site-save/);
+ assert.match(ui,/form\.dataset\.customerSiteSave&&'site:'/);
+ assert.match(ui,/clearTransientForm\(form\);render\(\);toast\(t\('siteSaved'\)\)/);
 });
