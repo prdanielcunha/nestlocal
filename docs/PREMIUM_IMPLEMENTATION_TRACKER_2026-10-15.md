@@ -132,3 +132,7 @@ Não declarar push real em segundo plano, envio oficial pelo Connect, sincroniza
 ### Integração incremental locais → pedido
 
 O botão **Criar pedido neste local** na ficha do cliente reaproveita nome/telefone e endereço/cidade registrados, abre a criação de pedido e mantém a escolha do serviço e da área atendida para confirmação humana. Não modifica pedidos anteriores, não força correspondência de cidade com cobertura e preserva o rascunho na memória. Continua faltando associar um equipamento individual a cada execução/contrato e testar end-to-end autenticado com sites antigos.
+
+### Resiliência de locais contra dupla submissão (C09/C19)
+
+A criação de um local usa identificador determinístico derivado da identidade do cliente e dos dados de identificação/endereço normalizados. Uma retentativa com o mesmo conteúdo retorna o registro existente sem incrementar `siteCount` nem duplicar o evento de auditoria; um mesmo identificador com conteúdo divergente retorna 409 e pede edição explícita. A edição preserva o controle de revisão. Validação concorrente Firestore real segue pendente.
