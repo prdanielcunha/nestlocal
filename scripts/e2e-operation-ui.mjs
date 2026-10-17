@@ -48,6 +48,8 @@ try{
     try{await pulse.waitFor({timeout:10000})}catch(error){const debug=await page.locator('body').innerText().catch(()=>'?');throw Error('AUTHED_PANEL_NOT_SHOWN '+width+' '+JSON.stringify({url:page.url(),body:debug.slice(0,1600),errors,consoleErrors})+' '+error.message)}
     assert.ok((await pulse.textContent()).includes('Cliente fictício'));
     await page.locator('.operation-focus').waitFor();
+    assert.equal(await page.locator('.operational-insights').getAttribute('open'),null,
+      'Advanced tools should stay available without overwhelming the first screen');
     await page.locator('[data-push-enable]').waitFor();
     assert.equal(await page.locator('[data-push-test]').count(),1);
     assert.equal(await page.locator('[data-push-disable]').count(),1);

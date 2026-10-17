@@ -1,7 +1,7 @@
 name: NestLocal cloud readiness read only
 on:
   push:
-    branches: [main, production]
+    branches: [production]
     paths:
       - scripts/nestlocal-cloud-readiness.mjs
       - .github/workflows/cloud-readiness.yml

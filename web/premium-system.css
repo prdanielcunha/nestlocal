@@ -1,4 +1,7 @@
 /* NestLocal design system: clarity before decoration. Scope authenticated app only. */
+.operational-insights>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;cursor:pointer}
+.operational-insights>summary span{color:var(--muted);font-size:12px}
+.operational-insights[open]>summary{margin-bottom:18px}
 .shell{
   --nl-surface:#10221d;
   --nl-surface-raised:#142b24;

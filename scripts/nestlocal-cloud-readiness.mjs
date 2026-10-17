@@ -8,6 +8,14 @@ const app=admin.initializeApp({projectId}),db=admin.firestore();
 const report={schemaVersion:1,readOnly:true,organizationsScanned:0,nestlocalOrganizations:0,requestsScanned:0,customersScanned:0,issues:{},truncated:false};
 const issue=key=>report.issues[key]=(report.issues[key]||0)+1;
 try{
+ const [allRequests,allSettings,allCustomers]=await Promise.all([
+  db.collectionGroup('nestlocal_requests').count().get(),
+  db.collectionGroup('nestlocal_settings').count().get(),
+  db.collectionGroup('nestlocal_customers').count().get()
+ ]);
+ report.totalRequestRecords=allRequests.data().count;
+ report.totalSettingsRecords=allSettings.data().count;
+ report.totalCustomerRecords=allCustomers.data().count;
  const orgs=await db.collection('organizations').orderBy(admin.firestore.FieldPath.documentId()).limit(201).get();
  report.truncated=orgs.size>200;
  for(const org of orgs.docs.slice(0,200)){
@@ -40,6 +48,15 @@ try{
   await db.collection(`${root}/nestlocal_customers`).where('nextServiceDate','<=',new Date().toISOString().slice(0,10)).orderBy('nextServiceDate').limit(1).get();
   await db.collection(`${root}/nestlocal_schedule_slots`).orderBy('date').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
  }
+ if(report.requestsScanned!==report.totalRequestRecords){issue('REQUESTS_OUTSIDE_SCANNED_SCOPE');report.truncated=true}
+ if(report.customersScanned!==report.totalCustomerRecords){issue('CUSTOMERS_OUTSIDE_SCANNED_SCOPE');report.truncated=true}
+ if(report.nestlocalOrganizations===0&&report.totalSettingsRecords>0){issue('SETTINGS_OUTSIDE_SCANNED_SCOPE');report.truncated=true}
+ // Validate indexes even before the first company is configured. These queries
+ // never create the probe parent or any document beneath it.
+ const probe='organizations/__nestlocal_readiness_probe__';
+ await db.collection(`${probe}/nestlocal_requests`).where('status','==','quoted').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
+ await db.collection(`${probe}/nestlocal_customers`).where('nextServiceDate','<=','2099-01-01').orderBy('nextServiceDate').limit(1).get();
+ await db.collection(`${probe}/nestlocal_schedule_slots`).orderBy('date').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
  console.log(JSON.stringify(report,null,2));
  if(report.truncated||Object.keys(report.issues).length)process.exitCode=2;
 }catch(error){console.error('NESTLOCAL_CLOUD_AUDIT_FAILED',error?.code||error?.name||'ERROR');process.exitCode=1}
