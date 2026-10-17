@@ -1,0 +1,118 @@
+/* NestLocal design system: clarity before decoration. Scope authenticated app only. */
+.operational-insights>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;cursor:pointer}
+.operational-insights>summary span{color:var(--muted);font-size:12px}
+.operational-insights[open]>summary{margin-bottom:18px}
+.shell{
+  --nl-surface:#10221d;
+  --nl-surface-raised:#142b24;
+  --nl-edge:rgba(159,214,190,.17);
+  --nl-text:#edf9f3;
+  --nl-subtle:#a9beb4;
+  --nl-ring:#7cf0bf;
+  --nl-radius:18px;
+  --nl-motion:180ms;
+  min-width:0;
+}
+.shell .main,.shell .page-stack,.shell .grid,.shell .card{min-width:0}
+.shell .card{
+  border-color:var(--nl-edge);
+  border-radius:var(--nl-radius);
+  box-shadow:0 12px 34px rgba(0,0,0,.13);
+}
+.shell .section-title h2{letter-spacing:-.025em;line-height:1.25}
+.shell .help,.shell small{color:var(--nl-subtle)}
+.shell :where(button,a,input,textarea,select,summary):focus-visible{
+  outline:3px solid var(--nl-ring);
+  outline-offset:3px;
+}
+.shell :where(button,a,[role="button"]){touch-action:manipulation}
+.shell :where(.button,.nav button,.top-actions button){min-height:44px}
+.shell .button{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  border-radius:12px;
+  max-width:100%;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  transition:transform var(--nl-motion) ease,border-color var(--nl-motion) ease,background var(--nl-motion) ease;
+}
+.shell .button:disabled{opacity:.58;cursor:not-allowed;transform:none}
+.shell :where(input:not([type="checkbox"]):not([type="radio"]),textarea,select){
+  min-height:44px;
+  border-radius:12px;
+  color:var(--nl-text);
+  background:var(--nl-surface);
+  border:1px solid var(--nl-edge);
+  padding:11px 12px;
+  max-width:100%;
+}
+.shell .capacity-options input:focus-visible+span{outline:3px solid var(--nl-ring);outline-offset:3px}
+.shell textarea{min-height:96px;resize:vertical}
+.shell .request,.shell .customer-card,.shell .agenda-item{
+  border-color:var(--nl-edge);
+  border-radius:14px;
+  scroll-margin-top:24px;
+}
+.shell details>summary{cursor:pointer;min-height:44px;scroll-margin-top:72px}
+.shell .request>summary{
+  align-items:center;
+  gap:12px;
+  min-width:0;
+}
+.shell .request>summary>div:not(.avatar){min-width:0}
+.shell .request>summary p{
+  overflow-wrap:anywhere;
+  line-height:1.5;
+}
+.shell .request-detail,.shell .request-stage{min-width:0}
+.shell .request-stage form:focus-within{border-color:rgba(124,240,191,.28)}
+.shell .request-stage :where(input,select,textarea){min-width:0}
+.shell .operational-freshness{
+  padding:10px 14px;
+  border:1px solid var(--nl-edge);
+  border-radius:12px;
+  background:rgba(124,240,191,.035);
+}
+.shell .payment-audit{
+  margin-top:14px;
+  padding:14px;
+  border:1px solid var(--nl-edge);
+  border-radius:14px;
+  background:rgba(124,240,191,.035);
+}
+.shell .payment-audit li{
+  margin-block:7px;
+  overflow-wrap:anywhere;
+  font-variant-numeric:tabular-nums;
+}
+.shell .tag{letter-spacing:.005em}
+@media(hover:hover) and (prefers-reduced-motion:no-preference){
+  .shell .button:not(:disabled):hover{transform:translateY(-1px)}
+  .shell .card{transition:border-color var(--nl-motion) ease}
+  .shell .card:hover{border-color:rgba(159,214,190,.26)}
+}
+@media(max-width:740px){
+  .shell .main{padding-bottom:calc(96px + env(safe-area-inset-bottom,0px))}
+  .shell .page-stack{gap:14px}
+  .shell .request-detail{padding-inline:12px}
+  .shell .request-stage form{min-width:0}
+  .shell .section-title{gap:12px;flex-wrap:wrap}
+  .shell .agenda-item .agenda-actions{display:flex;flex-wrap:wrap;gap:8px}
+}
+@media(max-width:410px){
+  .shell .card{border-radius:15px}
+  .shell .request>summary{gap:8px}
+  .shell .request>summary .avatar{flex:0 0 auto}
+  .shell .payment-audit{padding:12px}
+  .shell .push-actions{grid-template-columns:1fr}
+  .shell .push-actions [data-push-enable]{grid-column:auto}
+}
+@media(prefers-reduced-motion:reduce){
+  .shell *,.shell *::before,.shell *::after{
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    transition-duration:.01ms!important;
+  }
+}

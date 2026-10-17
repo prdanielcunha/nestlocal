@@ -55,6 +55,15 @@ try{
   await page.waitForFunction(()=>document.querySelector('#capacity-settings [name="timezone"]')?.value==='UTC'&&!document.querySelector('#capacity-settings button[type="submit"]').disabled);
   const saved=writes.find(x=>x.kind==='capacity');assert.equal(saved.body.timezone,'UTC');
   assert.deepEqual(saved.body.workingDays,[1,2]);assert.deepEqual(saved.body.windows,['morning','afternoon']);
+  for(const selector of ['#capacity-settings [name="timezone"]','#payment-settings [name="key"]']){
+   const contrast=await page.locator(selector).evaluate(el=>{
+    const style=getComputedStyle(el),rgb=value=>(value.match(/[\d.]+/g)||[]).slice(0,3).map(Number);
+    const luminance=channels=>channels.map(x=>x/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((sum,x,i)=>sum+x*[.2126,.7152,.0722][i],0);
+    const a=luminance(rgb(style.color)),b=luminance(rgb(style.backgroundColor));
+    return (Math.max(a,b)+.05)/(Math.min(a,b)+.05);
+   });
+   assert.ok(contrast>=4.5,`Unreadable input at ${width}px: ${selector}, contrast ${contrast}`);
+  }
   await page.screenshot({path:`artifacts/experience/settings-save-${width}.png`,fullPage:true});
   const size=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,width:innerWidth,
    overflowing:Array.from(document.querySelectorAll('.main *')).filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(el=>({tag:el.tagName,class:el.className,right:Math.round(el.getBoundingClientRect().right)}))}));

@@ -6,11 +6,16 @@ import {GoogleAuth} from 'google-auth-library';
 import {resolveHubNestLocalTrial,canNestLocalMutate,isUnlimitedRequestsEnabled} from './src/domain/hub-entitlement.mjs';
 import multer from 'multer';
 import { quote } from './src/domain/quote.mjs';
+import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, completedAmountAdjustment, manualPaymentAdjustment } from './src/domain/operational-integrity.mjs';
+import { validateExecutionChecklist } from './src/domain/field-checklist.mjs';
+import { validateQuoteItems } from './src/domain/quote-items.mjs';
+import { validateCustomerSite } from './src/domain/customer-sites.mjs';
+import {customerSiteRequestSnapshot} from './src/domain/customer-site-request.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
 import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunityIdempotencyKey,draftPublicView} from './src/domain/opportunity-drafts.mjs';
-import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
+import { buildNestLocalIcs, safeCalendarEvents, validDate } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
@@ -94,9 +99,20 @@ function normalizeIntakeValues(fields=[],raw={}){
 const validImage=file=>(file.mimetype==='image/jpeg'&&file.buffer[0]===0xff&&file.buffer[1]===0xd8&&file.buffer[2]===0xff)||(file.mimetype==='image/png'&&file.buffer.subarray(0,4).equals(Buffer.from([0x89,0x50,0x4e,0x47])))||(file.mimetype==='image/webp'&&file.buffer.subarray(0,4).toString()==='RIFF'&&file.buffer.subarray(8,12).toString()==='WEBP');
 const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','removed','revoked','archived'].includes(d?.status);
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
+const canManageNestLocalFinance=access=>canManageNestLocal(access)||
+  access?.member?.appAccess?.nestlocal?.permissions?.financeWrite===true;
+const canManageNestLocalSites=access=>canManageNestLocal(access)||access?.member?.appAccess?.nestlocal?.permissions?.sitesWrite===true;
 const sendError=(res,status,code)=>res.status(status).json({error:code});
 const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
 const validContactEmail=value=>/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(clean(value).toLowerCase());
+function effectiveNestLocalSettings(settings){
+  if(!settings?.draftSettings)return settings;
+  const draft=settings.draftSettings,messaging={...(settings.messaging||{}),...(draft.messaging||{})};
+  messaging.templates={...(settings.messaging?.templates||{}),...(draft.messaging?.templates||{})};
+  for(const [key,field] of [['messaging.templates.serviceUpdate','serviceUpdate'],['messaging.templates.maintenanceReminder','maintenanceReminder']])
+    if(Object.hasOwn(draft,key))messaging.templates[field]=draft[key];
+  return {...settings,...draft,messaging};
+}
 function catalogReadiness(settings,services=[]){
   const issues=[];
   if(!settings){issues.push('SETUP_REQUIRED');return{ready:false,issues}}
@@ -1143,7 +1159,7 @@ app.patch('/api/admin/nestlocal/growth/leads/:leadId',async(req,res)=>{
 });
 
 app.get('/api/public/stores/:storeSlug',async(req,res)=>{
-  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:Number(settings.data().trustSetupVersion||0)<2||settings.data().communicationMode==='manual'||settings.data().communicationMode==='official'&&settings.data()?.messaging?.connected===true?settings.data().whatsapp||'':'',contactEmail:settings.data().contactEmail||'',contactPhone:settings.data().contactPhone||'',communicationMode:settings.data().communicationMode||'none',currency:'BRL',timezone:settings.data().timezone||'America/Sao_Paulo',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>({id:x.id,...x.data()}))})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+  try{const org=await resolveOrganization(req.params.storeSlug);if(!org)return sendError(res,404,'STORE_NOT_FOUND');const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,404,'STORE_NOT_FOUND');const settings=await db.doc(`organizations/${org.id}/nestlocal_settings/public`).get();if(!settings.exists||settings.data()?.published!==true)return sendError(res,404,'STORE_NOT_FOUND');const services=await db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get();res.set('Cache-Control','public,max-age=60');res.json({store:{slug:settings.data().slug,businessName:settings.data().businessName||org.name,coverageCodes:settings.data().coverageCodes||[],whatsapp:Number(settings.data().trustSetupVersion||0)<2||settings.data().communicationMode==='manual'||settings.data().communicationMode==='official'&&settings.data()?.messaging?.connected===true?settings.data().whatsapp||'':'',contactEmail:settings.data().contactEmail||'',contactPhone:settings.data().contactPhone||'',communicationMode:settings.data().communicationMode||'none',currency:'BRL',timezone:settings.data().timezone||'America/Sao_Paulo',messagingEnabled:settings.data()?.messaging?.connected===true},services:services.docs.map(x=>{const {draft,...published}=x.data();return{id:x.id,...published}})})}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
   try{
@@ -1151,7 +1167,7 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
     if(!(await rateLimit(req,'request',org.id)))return sendError(res,429,'RATE_LIMITED');
     const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,402,'STORE_SUBSCRIPTION_INACTIVE');
     const body=req.body||{};const name=clean(body.name).slice(0,100),customerPhone=phone(body.phone),customerEmail=clean(body.email).toLowerCase().slice(0,254),serviceId=clean(body.serviceId),coverageCode=slug(body.coverageCode),quantity=Number(body.quantity),addressLine=clean(body.addressLine).slice(0,180),preferredDate=clean(body.preferredDate).slice(0,10),preferredWindow=clean(body.preferredWindow).slice(0,30),serviceUpdatesOptIn=body.whatsappServiceOptIn===true,maintenanceOptIn=body.whatsappMaintenanceOptIn===true;
-    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!validDate(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
     const [settingsSnap,servicesSnap]=await Promise.all([db.doc(`organizations/${org.id}/nestlocal_settings/public`).get(),db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get()]);
     if(!settingsSnap.exists||settingsSnap.data()?.published!==true)return sendError(res,409,'STORE_NOT_READY');
     const settings=settingsSnap.data(),orgTimeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC';if(preferredDate<localIsoDate(orgTimeZone))return sendError(res,400,'INVALID_REQUEST');const services=servicesSnap.docs.map(x=>({id:x.id,...x.data()})),selectedService=services.find(x=>x.id===serviceId);if(!selectedService)return sendError(res,400,'INVALID_REQUEST');let intake={};try{intake=normalizeIntakeValues(selectedService.intakeFields,body.intake)}catch{return sendError(res,400,'INVALID_INTAKE')}
@@ -1172,11 +1188,11 @@ app.get('/api/public/requests/:requestId',async(req,res)=>{
     // A customer may still track an old request after a trial expires, but
     // actions must not be advertised when writes are blocked.
     const storeEntitlement=await getPublicEntitlement(orgId);
-    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0,scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
+    const canDecide=storeEntitlement.active&&!['accepted','scheduled','in_progress','completed','declined','cancelled','no_show'].includes(d.status)&&displayTotalCents!==null&&displayTotalCents>0&&!(quoteHasExpired(d.quote?.expiresAt)),scheduleVisible=['scheduled','in_progress','completed','no_show'].includes(d.status),completed=d.status==='completed',pix=settings.payments?.pix||{},paymentVisible=['in_progress','completed'].includes(d.status)&&displayTotalCents!==null,pixVisible=paymentVisible&&balanceCents>0&&pix.enabled===true&&Boolean(clean(pix.key));
     res.set('Cache-Control','private,no-store');
     res.json({
-      id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
-      schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
+      id:doc.id,status:d.status,serviceId:d.serviceId,quantity:d.quantity,quote:d.quote,quoteVersion:Number(d.quote?.version||1),displayTotalCents,canDecide,decision:d.decision?{status:d.decision.status}:null,createdAt:d.createdAt,
+      schedule:scheduleVisible?{date:clean(d.schedule?.date),window:clean(d.schedule?.window),revision:currentScheduleRevision(d.schedule)||1,customerConfirmation:d.schedule?.customerConfirmation?{status:clean(d.schedule.customerConfirmation.status),at:d.schedule.customerConfirmation.at}:null}:null,
       payment:paymentVisible?{status:clean(d.commercial?.paymentStatus||'pending'),totalCents:displayTotalCents,paidCents,balanceCents,pix:pixVisible?{key:clean(pix.key),label:clean(pix.label),instructions:clean(pix.instructions)}:null}:null,
       warranty:completed&&clean(d.warranty?.until)?{until:clean(d.warranty.until),notes:clean(d.warranty?.notes)}:null,
       nextReturn:completed&&clean(d.return?.nextServiceDate)?{date:clean(d.return.nextServiceDate),reason:clean(d.return?.reason)}:null
@@ -1192,15 +1208,16 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
     let result=null;
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
-      const current=snap.data(),existing=clean(current.decision?.status);
+      const current=snap.data(),existing=clean(current.decision?.status),expectedQuoteVersion=Number(req.body?.quoteVersion||1),currentQuoteVersion=Number(current.quote?.version||1);
       if(existing){
         if(existing===decision){result={ok:true,status:current.status,decision:existing,idempotent:true};return}
         throw new TypeError('DECISION_LOCKED');
       }
       if(['scheduled','in_progress','completed','cancelled','no_show'].includes(current.status))throw new TypeError('DECISION_LOCKED');
+      if(!Number.isSafeInteger(expectedQuoteVersion)||expectedQuoteVersion!==currentQuoteVersion)throw new TypeError('QUOTE_REVISION_CHANGED');
       const displayTotalCents=Number.isSafeInteger(Number(current.commercial?.finalAmountCents))?Number(current.commercial.finalAmountCents):Number.isSafeInteger(Number(current.quote?.totalCents))?Number(current.quote.totalCents):null;
-      if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');
-      const nextStatus=decision,at=admin.firestore.Timestamp.now(),decisionUpdate={status:nextStatus,decision:{status:decision,at,source:'public_tracking'},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      if(decision==='accepted'&&(!displayTotalCents||displayTotalCents<=0))throw new TypeError('QUOTE_NOT_READY');if(decision==='accepted'&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
+      const nextStatus=decision,at=admin.firestore.Timestamp.now(),decisionUpdate={status:nextStatus,decision:{status:decision,at,source:'public_tracking',quoteVersion:Number(current.quote?.version||1),quoteTotalCents:displayTotalCents},statusHistory:admin.firestore.FieldValue.arrayUnion({status:nextStatus,at,by:'customer'}),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       if(decision==='accepted'&&current.lastAssistance?.actionType==='quote_followup'&&freshAssistance(current.lastAssistance,30))decisionUpdate.assistedConversion={actionEventId:clean(current.lastAssistance.id),actionType:current.lastAssistance.actionType,channel:current.lastAssistance.channel,at:current.lastAssistance.at};
       tx.update(ref,decisionUpdate);
       result={ok:true,status:nextStatus,decision,displayTotalCents};
@@ -1209,7 +1226,7 @@ app.post('/api/public/requests/:requestId/decision',async(req,res)=>{
   }catch(e){
     console.error(e);const code=e?.message;
     if(code==='NOT_FOUND')return sendError(res,404,'NOT_FOUND');
-    if(['INVALID_DECISION','DECISION_LOCKED','QUOTE_NOT_READY'].includes(code))return sendError(res,409,code);
+    if(['INVALID_DECISION','DECISION_LOCKED','QUOTE_NOT_READY','QUOTE_EXPIRED','QUOTE_REVISION_CHANGED'].includes(code))return sendError(res,409,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });
@@ -1223,11 +1240,12 @@ app.post('/api/public/requests/:requestId/schedule-confirmation',async(req,res)=
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists||!trackingTokenValid(snap.data(),t))throw new TypeError('NOT_FOUND');
       const current=snap.data()||{};if(current.status!=='scheduled'||!clean(current.schedule?.date))throw new TypeError('SCHEDULE_CONFIRMATION_NOT_READY');
+      const revision=currentScheduleRevision(current.schedule)||1,requestedRevision=Number(req.body?.revision||1);if(!Number.isSafeInteger(requestedRevision)||requestedRevision!==revision)throw new TypeError('SCHEDULE_REVISION_CHANGED');
       const existing=clean(current.schedule?.customerConfirmation?.status);if(existing===decision){result={ok:true,status:decision,idempotent:true};return}
-      const at=admin.firestore.Timestamp.now();tx.update(ref,{'schedule.customerConfirmation':{status:decision,at,source:'public_tracking'},updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={ok:true,status:decision,idempotent:false};
+      const at=admin.firestore.Timestamp.now();tx.update(ref,{'schedule.customerConfirmation':{status:decision,at,source:'public_tracking',revision},updatedAt:admin.firestore.FieldValue.serverTimestamp()});result={ok:true,status:decision,idempotent:false};
     });
     res.status(result.idempotent?200:201).json(result);
-  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(code==='SCHEDULE_CONFIRMATION_NOT_READY')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);const code=e?.message;if(code==='NOT_FOUND')return sendError(res,404,code);if(['SCHEDULE_CONFIRMATION_NOT_READY','SCHEDULE_REVISION_CHANGED'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.get('/api/public/reviews/:requestId',async(req,res)=>{
@@ -1302,7 +1320,7 @@ app.get('/api/session',authenticate,async(req,res)=>{
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
     const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
-    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,reviewMetrics,actionMetrics,experiments,decisionMemory]=await Promise.all([
+    const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,reviewMetrics,actionMetrics,experiments,decisionMemory,requestCountResult,customerCountResult]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
       db.collection(`${root}/nestlocal_requests`).orderBy('createdAt','desc').limit(100).get(),
       db.collection(`${root}/nestlocal_customers`).limit(100).get(),
@@ -1314,11 +1332,77 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.doc(`${root}/nestlocal_metrics/reviews`).get(),
       db.collection(`${root}/nestlocal_action_metrics`).where('date','>=',actionMetricStart).orderBy('date').limit(31).get(),
       db.collection(`${root}/nestlocal_experiments`).orderBy('createdAt','desc').limit(5).get(),
-      db.collection(`${root}/nestlocal_decision_memory`).limit(10).get()
+      db.collection(`${root}/nestlocal_decision_memory`).limit(10).get(),
+      db.collection(`${root}/nestlocal_requests`).count().get(),
+      db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>({id:x.id,...x.data()})),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),setupReadiness=catalogReadiness(settingsData,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:settingsData,setupReadiness,services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),customers:customerRows,customerCount:customers.size,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+// Bounded operational pagination: uses a stable document cursor and never returns the
+// tenant's entire history in one request. Caller authorization remains enforced server-side.
+app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,authorize,async(req,res)=>{
+  const kind=clean(req.params.kind),collection=kind==='requests'?'nestlocal_requests':kind==='customers'?'nestlocal_customers':null;
+  if(!collection)return sendError(res,404,'UNKNOWN_LIST');
+  const cursor=clean(req.query.cursor),status=clean(req.query.status),n=Number(req.query.limit||50),limit=Number.isSafeInteger(n)?Math.min(100,Math.max(1,n)):50;
+  if(status&&(kind!=='requests'||!requestStatuses.has(status)))return sendError(res,400,'INVALID_STATUS_FILTER');
+  if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_CURSOR');
+  try{
+    const root=`organizations/${req.access.orgId}/${collection}`,col=db.collection(root);
+    let query=kind==='requests'&&!status?col.orderBy('createdAt','desc'):status?col.where('status','==',status).orderBy(admin.firestore.FieldPath.documentId()):col.orderBy(admin.firestore.FieldPath.documentId());
+    if(cursor){
+      if(kind==='requests'&&!status){
+        const last=await col.doc(cursor).get();
+        if(!last.exists)return sendError(res,400,'INVALID_CURSOR');
+        query=query.startAfter(last);
+      }else query=query.startAfter(cursor);
+    }
+    const [result,countResult]=await Promise.all([query.limit(limit+1).get(),status?col.where('status','==',status).count().get():Promise.resolve(null)]),docs=result.docs.slice(0,limit);
+    const items=docs.map(doc=>{
+      const row={id:doc.id,...doc.data()};
+      if(kind==='requests'){
+        delete row.trackingTokenHash;delete row.trackingTokenHashes;delete row.reviewTokenHash;delete row.reviewTokenHashes;
+      }
+      return row;
+    });
+    res.set('Cache-Control','private, no-store');
+    return res.json({items,hasMore:result.size>limit,nextCursor:result.size>limit?docs.at(-1)?.id||null:null,limit,totalCount:countResult?.data()?.count??null,status:status||null});
+  }catch(error){console.error('NESTLOCAL_PAGE_QUERY_FAILED',error?.code||error?.name);return sendError(res,500,'LIST_UNAVAILABLE')}
+});
+
+// Appointment query is independent of the most recent 100 requests.
+// Schedule slot records are written atomically when appointments are reserved.
+app.get('/api/organizations/:orgId/nestlocal/agenda/page',authenticate,authorize,async(req,res)=>{
+  const cursor=clean(req.query.cursor),requested=Number(req.query.limit||50),
+    limit=Number.isSafeInteger(requested)?Math.min(100,Math.max(1,requested)):50;
+  if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_CURSOR');
+  try{
+    const root=`organizations/${req.access.orgId}`,slots=db.collection(`${root}/nestlocal_schedule_slots`);
+    let query=slots.orderBy('date').orderBy(admin.firestore.FieldPath.documentId());
+    if(cursor){
+      const previous=await slots.doc(cursor).get();
+      if(!previous.exists)return sendError(res,400,'INVALID_CURSOR');
+      query=query.startAfter(previous);
+    }
+    const [result,countResult]=await Promise.all([query.limit(limit+1).get(),slots.count().get()]);
+    const chosen=result.docs.slice(0,limit),documents=await Promise.all(chosen.map(doc=>db.doc(`${root}/nestlocal_requests/${safeId(doc.data()?.requestId)||'__invalid__'}`).get()));
+    const items=[];
+    for(let i=0;i<chosen.length;i++){
+      const request=documents[i],slot=chosen[i].data()||{};
+      if(!request.exists||request.id!==slot.requestId)continue;
+      const value=request.data()||{};
+      if(!['scheduled','in_progress'].includes(value.status))continue;
+      const row={id:request.id,...value};
+      delete row.trackingTokenHash;delete row.trackingTokenHashes;
+      delete row.reviewTokenHash;delete row.reviewTokenHashes;
+      items.push(row);
+    }
+    res.set('Cache-Control','private, no-store');
+    return res.json({items,totalSlots:countResult.data().count,
+      hasMore:result.size>limit,nextCursor:result.size>limit?chosen.at(-1)?.id||null:null});
+  }catch(error){console.error('NESTLOCAL_AGENDA_PAGE_FAILED',error?.code||error?.name);return sendError(res,500,'AGENDA_UNAVAILABLE')}
 });
 
 // F1: read-only data portability, bounded and tenant-scoped. No billing mutation.
@@ -1535,6 +1619,98 @@ function taskWriteError(res,error){
     return sendError(res,400,code);
   console.error('[NESTLOCAL_TASK_WRITE]',error?.code||'ERROR');return sendError(res,500,'TASK_WRITE_FAILED');
 }
+// Web Push is disabled unless an administrator explicitly configures both gates.
+// This is a user-initiated device channel, not WhatsApp delivery or a scheduler.
+const nestLocalPushKey=clean(process.env.NESTLOCAL_WEB_PUSH_VAPID_PUBLIC_KEY);
+const nestLocalMessagingAppId=clean(process.env.NESTLOCAL_FIREBASE_MESSAGING_APP_ID);
+const nestLocalMessagingSenderId=clean(process.env.NESTLOCAL_FIREBASE_MESSAGING_SENDER_ID);
+const nestLocalPushEnabled=process.env.NESTLOCAL_PUSH_ENABLED==='true'&&
+  /^[A-Za-z0-9_-]{50,200}$/.test(nestLocalPushKey)&&
+  /^[A-Za-z0-9:]{10,150}$/.test(nestLocalMessagingAppId)&&
+  /^\d{5,25}$/.test(nestLocalMessagingSenderId);
+const validPushToken=value=>typeof value==='string'&&value.length>=50&&value.length<=4096&&
+  /^[A-Za-z0-9_:\-\.]+$/.test(value);
+const pushDeviceRef=(orgId,tokenValue)=>
+  db.doc(`organizations/${orgId}/nestlocal_push_devices/${hash(tokenValue)}`);
+app.get('/api/organizations/:orgId/nestlocal/push/config',authenticate,authorize,(req,res)=>{
+  res.set('Cache-Control','private, no-store');
+  return res.json({enabled:nestLocalPushEnabled,transport:nestLocalPushEnabled?'firebase_cloud_messaging':'not_configured',
+    vapidPublicKey:nestLocalPushEnabled?nestLocalPushKey:null,
+    messagingAppId:nestLocalPushEnabled?nestLocalMessagingAppId:null,
+    messagingSenderId:nestLocalPushEnabled?nestLocalMessagingSenderId:null,
+    deliveryGuarantee:false,requiresExplicitConsent:true,
+    scheduledRemindersEnabled:false});
+});
+app.post('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authorize,async(req,res)=>{
+  if(!nestLocalPushEnabled)return sendError(res,503,'PUSH_NOT_CONFIGURED');
+  const tokenValue=req.body?.token,locale=clean(req.body?.locale||'pt');
+  const uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue)||!['pt','en','es'].includes(locale))
+    return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    if(!(await rateLimit(req,'push_enroll',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=pushDeviceRef(req.access.orgId,tokenValue);
+    await db.runTransaction(async tx=>{
+      const [existing,owned]=await Promise.all([tx.get(ref),
+        tx.get(db.collection(`organizations/${req.access.orgId}/nestlocal_push_devices`)
+          .where('uid','==',uid).limit(6))]);
+      if(!existing.exists&&owned.size>=5)throw new TypeError('PUSH_DEVICE_LIMIT');
+      if(existing.exists&&existing.data()?.uid!==uid&&existing.data()?.revoked!==true)
+        throw new TypeError('PUSH_DEVICE_ALREADY_BOUND');
+      tx.set(ref,{uid,token:tokenValue,locale,enabled:true,revoked:false,
+        channel:'firebase_cloud_messaging',updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+        createdAt:existing.data()?.createdAt||admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    });
+    res.set('Cache-Control','private, no-store');
+    return res.status(201).json({enabled:true,deviceId:ref.id,transport:'firebase_cloud_messaging'});
+  }catch(error){
+    if(error?.message==='PUSH_DEVICE_ALREADY_BOUND'||error?.message==='PUSH_DEVICE_LIMIT')return sendError(res,409,error.message);
+    console.error('NESTLOCAL_PUSH_DEVICE_ENROLL_FAILED',error?.code||error?.name);
+    return sendError(res,503,'PUSH_DEVICE_UNAVAILABLE');
+  }
+});
+app.delete('/api/organizations/:orgId/nestlocal/push/devices',authenticate,authorize,async(req,res)=>{
+  const tokenValue=req.body?.token,uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue))return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    const ref=pushDeviceRef(req.access.orgId,tokenValue);
+    await db.runTransaction(async tx=>{
+      const snap=await tx.get(ref);
+      if(!snap.exists)return;
+      if(snap.data()?.uid!==uid)throw new TypeError('PUSH_DEVICE_ACCESS_DENIED');
+      tx.delete(ref);
+    });
+    res.set('Cache-Control','private, no-store');
+    return res.json({enabled:false});
+  }catch(error){
+    if(error?.message==='PUSH_DEVICE_ACCESS_DENIED')return sendError(res,403,error.message);
+    console.error('NESTLOCAL_PUSH_DEVICE_REMOVE_FAILED',error?.code||error?.name);
+    return sendError(res,503,'PUSH_DEVICE_UNAVAILABLE');
+  }
+});
+app.post('/api/organizations/:orgId/nestlocal/push/test',authenticate,authorize,async(req,res)=>{
+  if(!nestLocalPushEnabled)return sendError(res,503,'PUSH_NOT_CONFIGURED');
+  const tokenValue=req.body?.token,uid=safeId(req.identity.uid);
+  if(!uid||!validPushToken(tokenValue))return sendError(res,400,'INVALID_PUSH_DEVICE');
+  try{
+    if(!(await rateLimit(req,'push_test',req.access.orgId)))return sendError(res,429,'RATE_LIMITED');
+    const ref=pushDeviceRef(req.access.orgId,tokenValue),snap=await ref.get();
+    if(!snap.exists||snap.data()?.uid!==uid||snap.data()?.enabled!==true||
+      snap.data()?.revoked===true)return sendError(res,403,'PUSH_DEVICE_ACCESS_DENIED');
+    await admin.messaging().send({token:tokenValue,data:{kind:'test',locale:snap.data()?.locale||'pt',
+      destination:'/?view=today'},webpush:{headers:{TTL:'300',Urgency:'normal'}}});
+    // FCM acceptance is NOT confirmation that the device displayed a notification.
+    return res.json({providerAccepted:true,delivered:false,deliveryStatus:'unconfirmed'});
+  }catch(error){
+    const code=String(error?.code||'');
+    if(['messaging/registration-token-not-registered','messaging/invalid-registration-token'].includes(code)){
+      await pushDeviceRef(req.access.orgId,tokenValue).delete().catch(()=>{});
+      return sendError(res,410,'PUSH_DEVICE_EXPIRED');
+    }
+    console.error('NESTLOCAL_PUSH_TEST_FAILED',code||error?.name);
+    return sendError(res,503,'PUSH_TEST_UNAVAILABLE');
+  }
+});
 app.get('/api/organizations/:orgId/nestlocal/action-tasks',authenticate,authorize,async(req,res)=>{
   if(!opportunityDraftsEnabled(req.access.orgId))return sendError(res,404,'FEATURE_DISABLED');
   try{
@@ -1655,6 +1831,35 @@ app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,autho
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
   try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{appAccess:{nestlocal:appAccess}}, {merge:true});tx.set(legacyRef,{appAccess:{nestlocal:appAccess}}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
 
+// Preview never modifies customer records. Existing phone matches are marked as updates,
+// not treated as brand new people. A preview is advisory: the write path revalidates.
+app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authenticate,authorize,async(req,res)=>{
+  try{
+    const rows=Array.isArray(req.body?.customers)?req.body.customers:[];
+    if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
+    const seen=new Set(),valid=[],results=[];
+    for(const [index,row] of rows.entries()){
+      const name=clean(row?.name).slice(0,100),normalized=phone(row?.phone),
+        lastDate=clean(row?.lastServiceDate).slice(0,10),nextDate=clean(row?.nextServiceDate).slice(0,10),
+        invalid=name.length<2||normalized.length<10||(lastDate&&!validDate(lastDate))||(nextDate&&!validDate(nextDate));
+      if(invalid){results.push({index,name,status:'invalid',reason:'INVALID_CUSTOMER'});continue}
+      const id=hash(normalized).slice(0,28);
+      if(seen.has(id)){results.push({index,name,status:'duplicate',reason:'DUPLICATE_IN_BATCH'});continue}
+      seen.add(id);valid.push({index,id,name,phoneEnding:normalized.slice(-4)});
+    }
+    const root=`organizations/${req.access.orgId}`,docs=valid.length?await db.getAll(...valid.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`))):[];
+    for(let i=0;i<valid.length;i++){
+      const row=valid[i],state=docs[i]?.exists?'update':'create';
+      results.push({index:row.index,name:row.name,phoneEnding:row.phoneEnding,customerKey:row.id,status:state,recordVersion:docs[i]?.data()?.updatedAt?.toMillis?.()||0});
+    }
+    results.sort((a,b)=>a.index-b.index);
+    const counts={create:0,update:0,invalid:0,duplicate:0};
+    for(const row of results)counts[row.status]++;
+    res.set('Cache-Control','private, no-store');
+    return res.json({rows:results,counts,canImport:counts.create+counts.update>0,requiresConfirmation:true});
+  }catch(error){console.error('NESTLOCAL_IMPORT_PREVIEW_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_PREVIEW_UNAVAILABLE')}
+});
+
 app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,authorize,async(req,res)=>{
   try{
     const rows=Array.isArray(req.body?.customers)?req.body.customers:[];if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
@@ -1666,26 +1871,129 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
       prepared.push({index,id,name,phone:customerPhone,city,addressLine,lastServiceLabel,lastServiceDate,nextServiceDate,nextServiceReason});
     }
     if(!prepared.length)return res.status(400).json({error:'INVALID_CUSTOMER_BATCH',importedCount:0,skippedCount:skipped.length,skipped});
-    const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),existing=await db.getAll(...refs),batch=db.batch();let createdCount=0,updatedCount=0;
-    for(const [i,item] of prepared.entries()){
-      if(existing[i]?.exists)updatedCount++;else createdCount++;
-      const data={name:item.name,phone:item.phone,source:'customer_import',updatedAt:admin.firestore.FieldValue.serverTimestamp(),importedAt:admin.firestore.FieldValue.serverTimestamp()};
-      if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
-      if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
-      if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
-      if(item.nextServiceDate){data.nextServiceDate=item.nextServiceDate;data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';data.nextServiceSource='customer_import'}
-      batch.set(refs[i],data,{merge:true});
-    }
-    await batch.commit();
+
+    const root=`organizations/${req.access.orgId}`,refs=prepared.map(x=>db.doc(`${root}/nestlocal_customers/${x.id}`)),
+      expected=Array.isArray(req.body?.preflightRows)?req.body.preflightRows:null;
+    const expectedByIndex=expected?new Map(expected.filter(row=>row&&['create','update'].includes(row.status))
+      .map(row=>[Number(row.index),row])):null;
+    const auditRef=db.collection(`${root}/nestlocal_audit`).doc();
+    let createdCount=0,updatedCount=0;
+    await db.runTransaction(async tx=>{
+      // Read every source document before any write; status changes between preview
+      // and commit trigger a conflict and Firestore retries the transaction.
+      const existing=await Promise.all(refs.map(ref=>tx.get(ref)));
+      if(expectedByIndex){
+        if(expectedByIndex.size!==prepared.length)throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
+        for(let i=0;i<prepared.length;i++){
+          const prediction=expectedByIndex.get(prepared[i].index),state=existing[i]?.exists?'update':'create';
+          if(!prediction||prediction.customerKey!==prepared[i].id||prediction.status!==state||Number(prediction.recordVersion||0)!==(existing[i]?.data()?.updatedAt?.toMillis?.()||0))
+            throw new TypeError('CUSTOMER_IMPORT_PREVIEW_STALE');
+        }
+      }
+      let creates=0,updates=0;
+      for(const [i,item] of prepared.entries()){
+        if(existing[i]?.exists)updates++;else creates++;
+        const data={name:item.name,phone:item.phone,source:'customer_import',
+          updatedAt:admin.firestore.FieldValue.serverTimestamp(),
+          importedAt:admin.firestore.FieldValue.serverTimestamp()};
+        if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
+        if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
+        if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
+        if(item.nextServiceDate){
+          data.nextServiceDate=item.nextServiceDate;
+          data.nextServiceReason=item.nextServiceReason||item.lastServiceLabel||'Retorno importado';
+          data.nextServiceSource='customer_import';
+        }
+        tx.set(refs[i],data,{merge:true});
+      }
+      tx.create(auditRef,{action:'customers.batch_import',createdCount:creates,updatedCount:updates,
+        skippedCount:skipped.length,actorUid:req.identity.uid,
+        at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:2});
+      createdCount=creates;updatedCount=updates;
+    });
     res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
-  }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){if(e?.message==='CUSTOMER_IMPORT_PREVIEW_STALE')return sendError(res,409,e.message);console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+});
+
+
+// Locations and equipment are bounded subresources of one customer.
+app.get('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
+ const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+ const base=db.doc('organizations/'+req.access.orgId+'/nestlocal_customers/'+customerId);
+ try{
+  const owner=await base.get();if(!owner.exists)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+  const docs=await base.collection('sites').orderBy('createdAt','asc').limit(21).get();
+  res.set('Cache-Control','private,no-store');
+  return res.json({items:docs.docs.slice(0,20).map(doc=>({id:doc.id,...doc.data()})),maxSites:20,truncated:docs.size>20});
+ }catch(error){console.error('NESTLOCAL_SITES_READ_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')}
+});
+app.post('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
+ if(!canManageNestLocalSites(req.access))return sendError(res,403,'ACCESS_DENIED');
+ const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
+ try{
+  const site=validateCustomerSite(req.body),root='organizations/'+req.access.orgId,
+    base=db.doc(root+'/nestlocal_customers/'+customerId),
+    siteId=hash(customerId+'|'+site.label.toLowerCase()+'|'+site.line.toLowerCase()+'|'+site.city.toLowerCase()).slice(0,28),
+    ref=base.collection('sites').doc(siteId),audit=db.collection(root+'/nestlocal_audit').doc();
+  let idempotent=false;
+  await db.runTransaction(async tx=>{
+    const [owner,existing]=await Promise.all([tx.get(base),tx.get(ref)]);
+    if(!owner.exists)throw new TypeError('CUSTOMER_NOT_FOUND');
+    if(existing.exists){
+      if(existing.data()?.intentHash!==hash(JSON.stringify(site)))throw new TypeError('CUSTOMER_SITE_ALREADY_EXISTS');
+      idempotent=true;return;
+    }
+    idempotent=false;
+    const currentCount=Number(owner.data()?.siteCount||0);
+    if(!Number.isSafeInteger(currentCount)||currentCount<0||currentCount>=20)throw new TypeError('CUSTOMER_SITE_LIMIT');
+    tx.create(ref,{...site,intentHash:hash(JSON.stringify(site)),revision:1,createdBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.update(base,{siteCount:currentCount+1,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.create(audit,{action:'customers.site_created',customerId,siteId:ref.id,actorUid:req.identity.uid,
+      createdAt:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  res.status(idempotent?200:201).json({id:ref.id,revision:1,idempotent});
+ }catch(error){
+  const code=error?.message;
+  if(code==='CUSTOMER_NOT_FOUND')return sendError(res,404,code);
+  if(code==='INVALID_CUSTOMER_SITE')return sendError(res,400,code);
+  if(code==='CUSTOMER_SITE_LIMIT')return sendError(res,409,code);
+  if(code==='CUSTOMER_SITE_ALREADY_EXISTS')return sendError(res,409,code);
+  console.error('NESTLOCAL_SITES_WRITE_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')
+ }
+});
+app.patch('/api/organizations/:orgId/nestlocal/customers/:customerId/sites/:siteId',authenticate,authorize,async(req,res)=>{
+ if(!canManageNestLocalSites(req.access))return sendError(res,403,'ACCESS_DENIED');
+ const customerId=safeId(req.params.customerId),siteId=safeId(req.params.siteId);
+ if(!customerId||!siteId)return sendError(res,404,'CUSTOMER_SITE_NOT_FOUND');
+ try{
+  const site=validateCustomerSite(req.body),expected=Number(req.body?.expectedRevision);
+  if(!Number.isSafeInteger(expected)||expected<1)return sendError(res,400,'INVALID_SITE_REVISION');
+  const root='organizations/'+req.access.orgId,ref=db.doc(root+'/nestlocal_customers/'+customerId+'/sites/'+siteId),
+    audit=db.collection(root+'/nestlocal_audit').doc();
+  await db.runTransaction(async tx=>{
+   const current=await tx.get(ref);
+   if(!current.exists)throw new TypeError('CUSTOMER_SITE_NOT_FOUND');
+   if(Number(current.data().revision||1)!==expected)throw new TypeError('CUSTOMER_SITE_REVISION_CHANGED');
+   tx.update(ref,{...site,intentHash:hash(JSON.stringify(site)),revision:expected+1,updatedBy:req.identity.uid,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+   tx.create(audit,{action:'customers.site_updated',customerId,siteId,revision:expected+1,
+    actorUid:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  res.json({id:siteId,revision:expected+1});
+ }catch(error){
+  const code=error?.message;
+  if(code==='CUSTOMER_SITE_NOT_FOUND')return sendError(res,404,code);
+  if(code==='CUSTOMER_SITE_REVISION_CHANGED')return sendError(res,409,code);
+  if(code==='INVALID_CUSTOMER_SITE')return sendError(res,400,code);
+  console.error('NESTLOCAL_SITE_EDIT_FAILED',error?.code||error?.name);return sendError(res,500,'CUSTOMER_SITES_UNAVAILABLE')
+ }
 });
 
 app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-plan',authenticate,authorize,async(req,res)=>{
   try{
     const customerId=safeId(req.params.customerId),b=req.body||{},active=b.active===true,name=clean(b.name).slice(0,120),intervalDays=Number(b.intervalDays||0),nextVisitDate=clean(b.nextVisitDate).slice(0,10),contractStart=clean(b.contractStart).slice(0,10),contractEnd=clean(b.contractEnd).slice(0,10),notes=clean(b.notes).slice(0,500);
     if(!customerId||!Number.isInteger(intervalDays)||intervalDays<0||intervalDays>730)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
-    for(const value of [nextVisitDate,contractStart,contractEnd])if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    for(const value of [nextVisitDate,contractStart,contractEnd])if(value&&!validDate(value))return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     if(contractStart&&contractEnd&&contractEnd<contractStart)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     if(active&&!name)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);let result=null;
@@ -1729,7 +2037,8 @@ app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,
 });
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
-  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,messaging:{templates:{serviceUpdate:clean(b.whatsappServiceTemplate).slice(0,120),maintenanceReminder:clean(b.whatsappMaintenanceTemplate).slice(0,120)}},updatedAt:admin.firestore.FieldValue.serverTimestamp()};
   const updatingChannels=b.communicationMode!==undefined||b.contactEmail!==undefined||b.contactPhone!==undefined;
   if(updatingChannels){
     const communicationMode=clean(b.communicationMode||'none'),contactEmail=clean(b.contactEmail).toLowerCase().slice(0,254),contactPhone=phone(b.contactPhone);
@@ -1740,7 +2049,7 @@ app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,as
     }
     Object.assign(data,{communicationMode,contactEmail,contactPhone,trustSetupVersion:2});
   }
-  if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set(data,{merge:true});res.json({ok:true})
+  if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);let draft=false;await db.runTransaction(async tx=>{const active=await tx.get(settingsRef);draft=active.data()?.published===true;if(draft){const {published,updatedAt,...draftSettings}=data;tx.set(settingsRef,{draftSettings,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})}else tx.set(settingsRef,data,{merge:true})});res.json({ok:true,draft})
 });
 
 // Privacy Center: no provider credentials, no raw contact details in audit records.
@@ -1804,6 +2113,7 @@ app.put('/api/organizations/:orgId/nestlocal/payment-settings',authenticate,auth
 });
 
 app.put('/api/organizations/:orgId/nestlocal/capacity',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   const b=req.body||{},timezone=clean(b.timezone||'America/Sao_Paulo'),workingDays=Array.isArray(b.workingDays)?[...new Set(b.workingDays.map(Number))].sort((a,b)=>a-b):[],windows=Array.isArray(b.windows)?[...new Set(b.windows.map(x=>clean(x)))]:[];
   if(!validTimeZone(timezone)||!workingDays.every(x=>Number.isInteger(x)&&x>=0&&x<=6)||!windows.every(x=>capacityWindows.has(x)))return sendError(res,400,'INVALID_CAPACITY');
   await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set({timezone,capacity:{workingDays,windows},capacityUpdatedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
@@ -1811,24 +2121,50 @@ app.put('/api/organizations/:orgId/nestlocal/capacity',authenticate,authorize,as
 });
 
 app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   const b=req.body||{},id=slug(req.params.serviceId),returnAfterDays=Number(b.returnAfterDays||0);
   if(!id||!clean(b.name)||!['fixed','review'].includes(b.mode)||!Number.isInteger(returnAfterDays)||returnAfterDays<0||returnAfterDays>730)return sendError(res,400,'INVALID_SERVICE');
-  const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays,published:false};
-  if(b.mode==='fixed')Object.assign(data,{unitPriceCents:Number(b.unitPriceCents),durationMinutes:Number(b.durationMinutes),maxQuantity:Number(b.maxQuantity),equipmentTypes:Array.isArray(b.equipmentTypes)?b.equipmentTypes.map(slug).filter(Boolean):[],requiresEquipmentType:b.requiresEquipmentType!==false,requiresSafeAccess:b.requiresSafeAccess!==false,inclusions:clean(b.inclusions).slice(0,500),exclusions:clean(b.exclusions).slice(0,500)});
+  const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays,inclusions:clean(b.inclusions).slice(0,500),exclusions:clean(b.exclusions).slice(0,500)};
+  if(b.mode==='fixed')Object.assign(data,{unitPriceCents:Number(b.unitPriceCents),durationMinutes:Number(b.durationMinutes),maxQuantity:Number(b.maxQuantity),equipmentTypes:Array.isArray(b.equipmentTypes)?b.equipmentTypes.map(slug).filter(Boolean):[],requiresEquipmentType:b.requiresEquipmentType!==false,requiresSafeAccess:b.requiresSafeAccess!==false});
   try{quote({catalog:{organizationId:req.access.orgId,version:'validation',status:'published',currency:'BRL',validForMinutes:30,coverageCodes:['validation'],services:[{id,...data}]},request:{serviceId:id,quantity:1,coverageCode:'validation',equipmentType:data.requiresEquipmentType===false?undefined:data.equipmentTypes?.[0],safeAccess:data.requiresSafeAccess===false?undefined:true},now:new Date()})}catch(e){if(data.mode==='fixed')return sendError(res,400,'INVALID_SERVICE')}
-  await db.doc(`organizations/${req.access.orgId}/nestlocal_services/${id}`).set(data,{merge:true});await db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`).set({published:false,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});res.json({ok:true})
+  const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${id}`);let draft=false;await db.runTransaction(async tx=>{const existing=await tx.get(ref);draft=existing.data()?.published===true;if(draft)tx.set(ref,{draft:data,draftUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});else tx.set(ref,{...data,published:false},{merge:true})});res.json({ok:true,draft})
 });
 
 app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   try{
-    const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`),[settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);
-    const data=settings.exists?settings.data():null,list=services.docs.map(x=>({id:x.id,...x.data()})),readiness=catalogReadiness(data,list);
-    if(!readiness.ready)return res.status(409).json({error:'PUBLISH_NOT_READY',issues:readiness.issues});
-    const version=`v${Date.now()}`,directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`);
-    await db.runTransaction(async tx=>{const directory=await tx.get(directoryRef);if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});tx.set(settingsRef,{published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
-    const batch=db.batch();for(const s of services.docs)batch.set(s.ref,{published:true,catalogVersion:version},{merge:true});await batch.commit();
-    res.json({ok:true,version,publicPath:`/s/${data.slug}`});
-  }catch(e){console.error(e);if(e?.message==='SLUG_TAKEN')return sendError(res,409,'SLUG_TAKEN');sendError(res,500,'INTERNAL_ERROR')}
+    const root=`organizations/${req.access.orgId}`,settingsRef=db.doc(`${root}/nestlocal_settings/public`),servicesRef=db.collection(`${root}/nestlocal_services`);
+    let result;
+    await db.runTransaction(async tx=>{
+      // Read the settings and service query inside the transaction. Concurrent
+      // edits must retry publication rather than disappear under draft deletion.
+      const [settings,services]=await Promise.all([tx.get(settingsRef),tx.get(servicesRef)]);
+      const active=settings.exists?settings.data():null,
+        data=effectiveNestLocalSettings(active),
+        list=services.docs.map(x=>({id:x.id,...x.data(),...(x.data().draft||{})})),
+        readiness=catalogReadiness(data,list);
+      if(!readiness.ready){result={error:'PUBLISH_NOT_READY',issues:readiness.issues};return}
+      if(services.size>350)throw new TypeError('CATALOG_TOO_LARGE_FOR_ATOMIC_PUBLISH');
+      const directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`),directory=await tx.get(directoryRef);
+      if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');
+      const version=`v${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));
+      tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      const changes={...(active?.draftSettings||{})};
+      // Normalize drafts saved by older code with literal dotted keys, without
+      // overwriting channel connection state or unrelated settings.
+      for(const [key,field] of [['messaging.templates.serviceUpdate','serviceUpdate'],['messaging.templates.maintenanceReminder','maintenanceReminder']]){
+        if(Object.hasOwn(changes,key)){
+          changes.messaging={...(changes.messaging||{}),templates:{...(changes.messaging?.templates||{}),[field]:changes[key]}};
+          delete changes[key];
+        }
+      }
+      tx.set(settingsRef,{...changes,draftSettings:admin.firestore.FieldValue.delete(),published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      for(const item of services.docs)tx.set(item.ref,{...(item.data()?.draft||{}),draft:admin.firestore.FieldValue.delete(),published:true,catalogVersion:version},{merge:true});
+      result={ok:true,version,publicPath:`/s/${data.slug}`};
+    });
+    res.status(result.error?409:200).json(result);
+  }catch(e){console.error(e);if(['SLUG_TAKEN','CATALOG_TOO_LARGE_FOR_ATOMIC_PUBLISH'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/experiments',authenticate,authorize,async(req,res)=>{
@@ -2119,10 +2455,10 @@ app.post('/api/organizations/:orgId/nestlocal/messages/prepare',authenticate,aut
     if(customerId&&!customer)return sendError(res,404,'CUSTOMER_NOT_FOUND');
     const eligibility=messagingEligibility({category,request,customer,settings}),targetId=requestId||customerId,timeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC',day=localIsoDate(timeZone),templateName=clean(eligibility.templateName);
     const id=hash(`${category}|${targetId}|${templateName}|${day}`).slice(0,32),ref=db.doc(`${root}/nestlocal_message_outbox/${id}`),existing=await ref.get();
-    if(existing.exists)return res.json({id,status:existing.data().status,eligibility,idempotent:true});
+    if(existing.exists)return res.json({id,status:existing.data().status,eligibility,idempotent:true,dispatch:'not_implemented',sent:false,providerPolicy:'PROVIDER_POLICY_BLOCKED'});
     const status=eligibility.eligible?'ready':'blocked';
-    const consentEvidenceRef=eligibility.reason==='WHATSAPP_OPT_IN_REQUIRED'?'':category==='service_update'?`nestlocal-consent:${requestId}:service_updates`:`nestlocal-consent:${customerId}:maintenance_reminders`;await ref.create({category,targetType:requestId?'request':'customer',targetId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status,blockReason:eligibility.eligible?'':eligibility.reason,templateName,consentEvidenceRef,sendMode:'approved_template_required',preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
-    res.status(201).json({id,status,eligibility});
+    const consentEvidenceRef=eligibility.reason==='WHATSAPP_OPT_IN_REQUIRED'?'':category==='service_update'?`nestlocal-consent:${requestId}:service_updates`:`nestlocal-consent:${customerId}:maintenance_reminders`;await ref.create({category,targetType:requestId?'request':'customer',targetId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status,blockReason:eligibility.eligible?'':eligibility.reason,templateName,consentEvidenceRef,sendMode:'approved_template_required',dispatch:'not_implemented',delivery:'manual_only',providerVerified:false,preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    res.status(201).json({id,status,eligibility,dispatch:'not_implemented',sent:false,providerPolicy:'PROVIDER_POLICY_BLOCKED'});
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -2132,7 +2468,7 @@ app.post('/api/organizations/:orgId/nestlocal/messages/prepare-due-reminders',au
     if(!eligible.length)return res.json({preparedCount:0,existingCount:0,dueCount:readiness.dueCount,dueCountTruncated:readiness.dueCountTruncated,readyCount:0,blockedCount:readiness.blockedCount,reasonCounts:readiness.reasonCounts,today});
     const refs=eligible.map(item=>{const id=hash(`maintenance_reminder|${item.customerId}|${item.templateName}|${today}`).slice(0,32);return{item,id,ref:db.doc(`${root}/nestlocal_message_outbox/${id}`)}});
     const existing=await Promise.all(refs.map(x=>x.ref.get())),batch=db.batch();let preparedCount=0,existingCount=0;
-    for(let i=0;i<refs.length;i++){const {item,ref}=refs[i];if(existing[i].exists){existingCount++;continue}preparedCount++;batch.create(ref,{category:'maintenance_reminder',targetType:'customer',targetId:item.customerId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status:'ready',blockReason:'',templateName:item.templateName,consentEvidenceRef:`nestlocal-consent:${item.customerId}:maintenance_reminders`,sendMode:'approved_template_required',preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()})}
+    for(let i=0;i<refs.length;i++){const {item,ref}=refs[i];if(existing[i].exists){existingCount++;continue}preparedCount++;batch.create(ref,{category:'maintenance_reminder',targetType:'customer',targetId:item.customerId,channel:'whatsapp',provider:'whatsapp_cloud_api',sourceApp:'nestlocal',deliveryContractVersion:1,status:'ready',blockReason:'',templateName:item.templateName,consentEvidenceRef:`nestlocal-consent:${item.customerId}:maintenance_reminders`,sendMode:'approved_template_required',dispatch:'not_implemented',delivery:'manual_only',providerVerified:false,preparedBy:req.identity.uid,createdAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()})}
     if(preparedCount)await batch.commit();
     res.json({preparedCount,existingCount,dueCount:readiness.dueCount,dueCountTruncated:readiness.dueCountTruncated,readyCount:readiness.readyCount,blockedCount:readiness.blockedCount,reasonCounts:readiness.reasonCounts,today})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
@@ -2143,12 +2479,32 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIn
 app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},sourceDraftId=clean(b.sourceDraftId),name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),customerEmail=clean(b.email).toLowerCase().slice(0,254),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
-    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!validDate(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
+    const key=clean(req.get('Idempotency-Key'));if(key&&!/^[A-Za-z0-9_.:-]{8,128}$/.test(key))return sendError(res,400,'INVALID_IDEMPOTENCY_KEY');
     const root=`organizations/${req.access.orgId}`,[settings,service]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${serviceId}`).get()]);
     if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');if(!service.exists)return sendError(res,400,'INVALID_SERVICE');
+    const serviceData=service.data()||{},quantity=Number(b.quantity??1),equipmentType=clean(b.equipmentType),safeAccess=b.safeAccess===true;
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>10||(serviceData.mode==='fixed'&&quantity>Number(serviceData.maxQuantity||1)))return sendError(res,400,'INVALID_QUANTITY');
+    if(serviceData.requiresEquipmentType!==false&&serviceData.equipmentTypes?.length&&!serviceData.equipmentTypes.includes(equipmentType))return sendError(res,400,'INVALID_EQUIPMENT');
+    let intake={};try{intake=normalizeIntakeValues(serviceData.intakeFields,b.intake)}catch{return sendError(res,400,'INVALID_INTAKE')}
     const settingsData=settings.data()||{},timeZone=validTimeZone(clean(settingsData.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone);
     if(preferredDate&&preferredDate<today)return sendError(res,400,'INVALID_REQUEST');
-    const requestRef=db.collection(`${root}/nestlocal_requests`).doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity:1,equipmentType:'',safeAccess:false,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity:1,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    const customerSiteId=clean(b.customerSiteId),siteRevision=Number(b.customerSiteRevision||0),customerSiteEquipment=clean(b.customerSiteEquipment);
+    if(customerSiteId&&(!safeId(customerSiteId)||!Number.isSafeInteger(siteRevision)||siteRevision<1))
+      return sendError(res,400,'INVALID_CUSTOMER_SITE');
+    if(!customerSiteId&&(customerSiteEquipment||b.customerSiteRevision!==undefined&&siteRevision!==0))
+      return sendError(res,400,'INVALID_CUSTOMER_SITE');
+    const legacyContentHash=hash(JSON.stringify({name,customerPhone,customerEmail,serviceId,addressLine,city,coverageCode,preferredDate,preferredWindow,note}));
+    const creationContentHash=hash(JSON.stringify({name,customerPhone,customerEmail,serviceId,addressLine,city,coverageCode,preferredDate,preferredWindow,note,quantity,equipmentType,safeAccess,intake,customerSiteId,siteRevision,customerSiteEquipment,sourceDraftId}));
+    const intentHash=key?hash(`${req.access.orgId}:${req.identity.uid}:${key}`):'',requestsRef=db.collection(`${root}/nestlocal_requests`),requestRef=intentHash?requestsRef.doc('manual_'+intentHash.slice(0,36)):requestsRef.doc(),customerId=hash(customerPhone||'email:'+customerEmail).slice(0,28),customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`),monthId=today.slice(0,7),usageRef=db.doc(`${root}/nestlocal_usage/${monthId}`),createdAt=admin.firestore.Timestamp.now(),record={organizationId:req.access.orgId,customerId,customer:{name,phone:customerPhone,email:customerEmail},address:{line:addressLine,city,coverageCode},preference:{date:preferredDate,window:preferredWindow},serviceId,quantity,equipmentType,safeAccess,intake,note,status:'new',quote:{organizationId:req.access.orgId,catalogVersion:clean(settingsData.catalogVersion||'draft'),serviceId,quantity,currency:'BRL',outcome:'review',reasons:[],unitPriceCents:null,totalCents:null,durationMinutes:null,inclusions:null,exclusions:null,createdAt:new Date().toISOString(),expiresAt:null,source:'internal'},trackingTokenHash:'',trackingTokenHashes:[],consent:{accepted:false,source:'internal'},messagingConsent:{serviceUpdates:{accepted:false,source:'internal'},maintenanceReminders:{accepted:false,source:'internal'}},source:'internal',creationContentHash:intentHash?creationContentHash:null,createdAt,creationSchemaVersion:2,updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    const customerSiteRef=customerSiteId?customerRef.collection('sites').doc(customerSiteId):null;
+    const siteSnapshot=(doc,owner)=>{
+      if(!customerSiteRef)return {};
+      if(!owner?.exists||!doc?.exists)throw new TypeError('CUSTOMER_SITE_NOT_FOUND');
+      return {customerSite:customerSiteRequestSnapshot(doc.data(),{
+        customerId,siteId:customerSiteId,revision:siteRevision,addressLine,city,selectedEquipment:customerSiteEquipment
+      })};
+    };
     // Explicit promotion happens only after the operator completes the existing
     // strict request form; retries link at most one request to each opportunity.
     if(sourceDraftId){
@@ -2158,8 +2514,10 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
         .doc('from_'+hash(`${req.access.orgId}:${sourceDraftId}`).slice(0,32));
       let created=false;
       await db.runTransaction(async tx=>{
-        const [draft,existing,usage]=await Promise.all([
-          tx.get(draftRef),tx.get(convertedRef),tx.get(usageRef)
+        const [draft,existing,usage,site,siteOwner]=await Promise.all([
+          tx.get(draftRef),tx.get(convertedRef),tx.get(usageRef),
+          customerSiteRef?tx.get(customerSiteRef):Promise.resolve(null),
+          customerSiteRef?tx.get(customerRef):Promise.resolve(null)
         ]);
         const previous=draft.data()||{};
         if(!draft.exists||previous.organizationId!==req.access.orgId)
@@ -2174,7 +2532,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
         if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)
           throw new TypeError('PLAN_REQUEST_LIMIT');
         const now=admin.firestore.FieldValue.serverTimestamp();
-        tx.create(convertedRef,{...record,sourceDraftId,source:'manual_opportunity_draft'});
+        tx.create(convertedRef,{...record,...siteSnapshot(site,siteOwner),sourceDraftId,source:'manual_opportunity_draft'});
         tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:now},{merge:true});
         tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:now},{merge:true});
         tx.update(draftRef,{state:'converted',linkedRequestId:convertedRef.id,version:(previous.version||1)+1,
@@ -2186,19 +2544,34 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
       });
       return res.status(created?201:200).json({requestId:convertedRef.id,status:'new',sourceDraftId});
     }
-    await db.runTransaction(async tx=>{const usage=await tx.get(usageRef),count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,record);tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
-    res.status(201).json({requestId:requestRef.id,status:'new'});
-  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');if(['DRAFT_NOT_FOUND','DRAFT_ALREADY_CONVERTED'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
+    let idempotent=false;
+    await db.runTransaction(async tx=>{const [existing,usage,site,siteOwner]=await Promise.all([
+      tx.get(requestRef),tx.get(usageRef),
+      customerSiteRef?tx.get(customerSiteRef):Promise.resolve(null),
+      customerSiteRef?tx.get(customerRef):Promise.resolve(null)
+    ]);if(existing.exists){
+      const saved=existing.data()||{};
+      if(intentHash&&(saved.creationContentHash===creationContentHash||
+        (!saved.creationSchemaVersion&&!customerSiteId&&saved.creationContentHash===legacyContentHash))){
+        idempotent=true;return
+      }throw new TypeError('REQUEST_IDEMPOTENCY_CONFLICT')
+    }const count=Number(usage.data()?.requestCount||0);if(!isUnlimitedRequestsEnabled()&&count>=req.access.entitlement.limits.requestsPerMonth)throw new TypeError('PLAN_REQUEST_LIMIT');tx.create(requestRef,{...record,...siteSnapshot(site,siteOwner)});tx.set(customerRef,{name,phone:customerPhone,email:customerEmail,lastRequestAt:createdAt,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});tx.set(usageRef,{monthId,requestCount:count+1,plan:req.access.entitlement.plan,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})});
+    res.status(idempotent?200:201).json({requestId:requestRef.id,status:'new',idempotent});
+  }catch(e){console.error(e);if(e?.message==='PLAN_REQUEST_LIMIT')return sendError(res,429,'PLAN_REQUEST_LIMIT');if(['DRAFT_NOT_FOUND','DRAFT_ALREADY_CONVERTED','REQUEST_IDEMPOTENCY_CONFLICT','CUSTOMER_SITE_NOT_FOUND','CUSTOMER_SITE_REVISION_CHANGED','CUSTOMER_SITE_ADDRESS_CHANGED','CUSTOMER_SITE_EQUIPMENT_CHANGED'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),amountCents=Number(req.body?.amountCents),note=clean(req.body?.note).slice(0,500);if(!requestId||!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100000000)return sendError(res,400,'INVALID_QUOTE');
+    const lineItems=validateQuoteItems(req.body?.items,amountCents);
     const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),settingsRef=db.doc(`${root}/nestlocal_settings/public`);let response=null;
-    await db.runTransaction(async tx=>{const [snap,settings]=await Promise.all([tx.get(ref),tx.get(settingsRef)]);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},status=clean(current.status);if(!['new','reviewing','quoted'].includes(status)||current.decision?.status)throw new TypeError('QUOTE_LOCKED');const validForMinutes=Math.min(1440,Math.max(5,Number(settings.data()?.validForMinutes||30))),now=new Date(),expiresAt=new Date(now.getTime()+validForMinutes*60000).toISOString(),quoteData={...(current.quote||{}),organizationId:req.access.orgId,serviceId:current.serviceId,quantity:Number(current.quantity||1),currency:'BRL',outcome:'priced',reasons:[],totalCents:amountCents,source:'manual',manualNote:note,createdAt:current.quote?.createdAt||now.toISOString(),expiresAt};
-      const update={quote:quoteData,'commercial.quotedAmountCents':amountCents,quotedAt:admin.firestore.Timestamp.now(),quotedBy:req.identity.uid,status:'quoted',updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(status!=='quoted')update.statusHistory=admin.firestore.FieldValue.arrayUnion({status:'quoted',at:admin.firestore.Timestamp.now(),by:req.identity.uid});tx.update(ref,update);response={ok:true,status:'quoted',amountCents,expiresAt}});
+    await db.runTransaction(async tx=>{const [snap,settings]=await Promise.all([tx.get(ref),tx.get(settingsRef)]);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');const current=snap.data()||{},status=clean(current.status);if(!['new','reviewing','quoted'].includes(status)||current.decision?.status)throw new TypeError('QUOTE_LOCKED');const before=Number(current.quote?.version)||(current.quote?.totalCents!=null?1:0),provided=req.body?.expectedQuoteVersion;
+      if(provided!==undefined&&(!Number.isSafeInteger(Number(provided))||Number(provided)!==before))throw new TypeError('QUOTE_REVISION_CHANGED');const validForMinutes=Math.min(1440,Math.max(5,Number(settings.data()?.validForMinutes||30))),now=new Date(),expiresAt=new Date(now.getTime()+validForMinutes*60000).toISOString(),quoteData={...(current.quote||{}),organizationId:req.access.orgId,serviceId:current.serviceId,quantity:Number(current.quantity||1),currency:'BRL',outcome:'priced',reasons:[],totalCents:amountCents,source:'manual',manualNote:note,items:lineItems,version:(Number(current.quote?.version)||(current.quote?.totalCents!=null?1:0))+1,createdAt:current.quote?.createdAt||now.toISOString(),expiresAt};
+      const update={quote:quoteData,'commercial.quotedAmountCents':amountCents,quotedAt:admin.firestore.Timestamp.now(),quotedBy:req.identity.uid,status:'quoted',updatedAt:admin.firestore.FieldValue.serverTimestamp()};if(status!=='quoted')update.statusHistory=admin.firestore.FieldValue.arrayUnion({status:'quoted',at:admin.firestore.Timestamp.now(),by:req.identity.uid});const revisionRef=db.doc(`${root}/nestlocal_requests/${requestId}/quote_versions/v${quoteData.version}`);
+      tx.create(revisionRef,{...quoteData,requestId,actorUid:req.identity.uid,issuedAt:admin.firestore.Timestamp.now()});
+      tx.update(ref,update);response={ok:true,status:'quoted',amountCents,expiresAt,quoteVersion:quoteData.version}});
     res.json(response);
-  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(code==='QUOTE_LOCKED')return sendError(res,409,code);if(code==='QUOTE_REVISION_CHANGED')return sendError(res,409,code);if(['INVALID_QUOTE_ITEMS','QUOTE_ITEMS_TOTAL_MISMATCH'].includes(code))return sendError(res,400,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/review-link',authenticate,authorize,async(req,res)=>{
@@ -2243,6 +2616,39 @@ app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/tracking-link'
   }catch(e){console.error(e);const code=e?.message;if(code==='REQUEST_NOT_FOUND')return sendError(res,404,code);if(['QUOTE_NOT_READY','TRACKING_LOCKED'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+// Authorized single-record read keeps older appointments actionable even when
+// their request is not in the dashboard's latest-page sample.
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
+  const id=safeId(req.params.requestId);
+  if(!id)return sendError(res,404,'REQUEST_NOT_FOUND');
+  try{
+    const snap=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${id}`).get();
+    if(!snap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const row={id:snap.id,...snap.data()};
+    delete row.trackingTokenHash;delete row.trackingTokenHashes;
+    delete row.reviewTokenHash;delete row.reviewTokenHashes;
+    res.set('Cache-Control','private, no-store');
+    return res.json({item:row});
+  }catch(error){console.error('NESTLOCAL_REQUEST_DETAIL_FAILED',error?.code||error?.name);return sendError(res,500,'REQUEST_UNAVAILABLE')}
+});
+
+// An explicitly authorized audit view; never treats operator entries as gateway receipts.
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/payment-events',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocalFinance(req.access))return sendError(res,403,'ACCESS_DENIED');
+  const requestId=safeId(req.params.requestId);
+  if(!requestId)return sendError(res,404,'REQUEST_NOT_FOUND');
+  try{
+    const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`);
+    const snap=await ref.get();
+    if(!snap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    const events=await ref.collection('payment_events').orderBy('createdAt','desc').limit(50).get();
+    res.set('Cache-Control','private, no-store');
+    return res.json({items:events.docs.map(doc=>({id:doc.id,...doc.data()})),hasMore:events.size===50,
+      source:'operator_entry',gatewayVerified:false});
+  }catch(error){console.error('NESTLOCAL_PAYMENT_HISTORY_FAILED',error?.code||error?.name);
+    return sendError(res,500,'PAYMENT_HISTORY_UNAVAILABLE')}
+});
+
 app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),b=req.body||{};if(!requestId)return sendError(res,400,'INVALID_REQUEST');
@@ -2250,9 +2656,16 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     let response={ok:true};
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
-      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b),paymentCorrection=manualPaymentAdjustment(current,b);
+      const previousFinal=Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0),
+        previousPaid=Number(current.commercial?.amountPaidCents||0),
+        previousStatus=clean(current.commercial?.paymentStatus||'pending'),
+        financialEdit=(b.finalAmountCents!==undefined&&Number(b.finalAmountCents)!==previousFinal)||
+          (b.amountPaidCents!==undefined&&Number(b.amountPaidCents)!==previousPaid)||
+          (b.paymentStatus!==undefined&&clean(b.paymentStatus)!==previousStatus);
+      if(financialEdit&&!canManageNestLocalFinance(req.access))throw new TypeError('FINANCE_ACCESS_DENIED');
       if(b.status!==undefined){
-        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');
+        const status=clean(b.status);if(!requestStatuses.has(status))throw new TypeError('INVALID_STATUS');if(status!==current.status&&!requestTransitions[clean(current.status)]?.has(status))throw new TypeError('INVALID_STATUS_TRANSITION');if(status==='accepted'&&status!==current.status&&quoteHasExpired(current.quote?.expiresAt))throw new TypeError('QUOTE_EXPIRED');
         update.status=status;
         if(status!==current.status){
           update.statusHistory=admin.firestore.FieldValue.arrayUnion({status,at:admin.firestore.Timestamp.now(),by:req.identity.uid});
@@ -2262,14 +2675,30 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         }
       }
       if(b.scheduledDate!==undefined){
-        const value=clean(b.scheduledDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_SCHEDULE_DATE');update['schedule.date']=value;
+        const value=clean(b.scheduledDate);if(value&&!validDate(value))throw new TypeError('INVALID_SCHEDULE_DATE');update['schedule.date']=value;
       }
       if(b.scheduledWindow!==undefined){
         const value=clean(b.scheduledWindow);if(value&&!serviceWindows.has(value))throw new TypeError('INVALID_SCHEDULE_WINDOW');update['schedule.window']=value;
       }
       if(b.assignedTo!==undefined)update['schedule.assignedTo']=clean(b.assignedTo).slice(0,100);
+      const appointment= scheduleRevisionAfterPatch(current.schedule||{},b);
+      if(appointment.changed){
+        update['schedule.revision']=appointment.revision;
+        if(current.schedule?.customerConfirmation){
+          update['schedule.confirmationHistory']=admin.firestore.FieldValue.arrayUnion({...current.schedule.customerConfirmation,revision:currentScheduleRevision(current.schedule)||1});
+        }
+        update['schedule.customerConfirmation']=null;
+      }
       if(b.executionNotes!==undefined)update['execution.notes']=clean(b.executionNotes).slice(0,1500);
-      if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
+      if(b.executionChecklist!==undefined){
+        const workStatus=clean(b.status||current.status);
+        if(!['in_progress','completed'].includes(workStatus))throw new TypeError('EXECUTION_CHECKLIST_LOCKED');
+        const rows=validateExecutionChecklist(b.executionChecklist);
+        update['execution.checklist']=rows;
+        update['execution.checklistUpdatedBy']=req.identity.uid;
+        update['execution.checklistUpdatedAt']=admin.firestore.FieldValue.serverTimestamp();
+      }
+      if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!validDate(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
       if(b.warrantyNotes!==undefined)update['warranty.notes']=clean(b.warrantyNotes).slice(0,500);
       if(b.finalAmountCents!==undefined){
         const value=Number(b.finalAmountCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.finalAmountCents']=value;
@@ -2281,7 +2710,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         const value=clean(b.paymentStatus);if(!paymentStatuses.has(value))throw new TypeError('INVALID_PAYMENT_STATUS');update['commercial.paymentStatus']=value;
       }
       if(b.nextServiceDate!==undefined){
-        const value=clean(b.nextServiceDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_NEXT_SERVICE_DATE');update['return.nextServiceDate']=value;update['return.source']=value?'manual':admin.firestore.FieldValue.delete();
+        const value=clean(b.nextServiceDate);if(value&&!validDate(value))throw new TypeError('INVALID_NEXT_SERVICE_DATE');update['return.nextServiceDate']=value;update['return.source']=value?'manual':admin.firestore.FieldValue.delete();
       }
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
@@ -2292,6 +2721,8 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         if(nextPayment==='pending'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='partial'&&!(nextPaid>0&&nextPaid<nextFinal))throw new TypeError('INVALID_PAYMENT_STATE');
         if(nextPayment==='paid'&&nextPaid!==nextFinal)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='paid'&&nextFinal<=0)throw new TypeError('INVALID_PAYMENT_STATE');
+        if(nextPayment==='cancelled'&&nextPaid!==0)throw new TypeError('INVALID_PAYMENT_STATE');
       }
       const nextSchedule={
         date:b.scheduledDate!==undefined?clean(b.scheduledDate):clean(current.schedule?.date),
@@ -2299,7 +2730,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         assignedTo:b.assignedTo!==undefined?safeId(b.assignedTo):safeId(current.schedule?.assignedTo)
       };
       const shouldHoldSlot=scheduleSlotStatuses.has(nextStatus),currentSlotId=clean(current.schedule?.slotId);
-      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt,customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
+      const completedNow=nextStatus==='completed'&&!current.completionRecordedAt&&clean(current.status)!=='completed',customerId=safeId(current.customerId),serviceId=safeId(current.serviceId);
       let nextSlotId='',memberRef=null,slotRef=null,oldSlotRef=null,customerRef=null,serviceRef=null,settingsRef=null;
       if(shouldHoldSlot){
         if(!nextSchedule.date||!serviceWindows.has(nextSchedule.window)||!nextSchedule.assignedTo)throw new TypeError('SCHEDULE_REQUIRED');
@@ -2308,17 +2739,19 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         slotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${nextSlotId}`);
       }
       if(currentSlotId&&currentSlotId!==nextSlotId)oldSlotRef=db.doc(`organizations/${req.access.orgId}/nestlocal_schedule_slots/${currentSlotId}`);
-      if(completedNow&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
+      if((completedNow||financialCorrection.changed)&&customerId)customerRef=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);
       if(completedNow&&serviceId)serviceRef=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${serviceId}`);
       if(completedNow)settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);
+      const assistedEventRef=financialCorrection.changed&&current.attribution?.assisted===true?db.doc(`organizations/${req.access.orgId}/nestlocal_revenue_events/${requestId}`):null;
 
-      const [member,slot,oldSlot,customer,service,settings]=await Promise.all([
+      const [member,slot,oldSlot,customer,service,settings,assistedEvent]=await Promise.all([
         memberRef?tx.get(memberRef):Promise.resolve(null),
         slotRef?tx.get(slotRef):Promise.resolve(null),
         oldSlotRef?tx.get(oldSlotRef):Promise.resolve(null),
         customerRef?tx.get(customerRef):Promise.resolve(null),
         serviceRef?tx.get(serviceRef):Promise.resolve(null),
-        settingsRef?tx.get(settingsRef):Promise.resolve(null)
+        settingsRef?tx.get(settingsRef):Promise.resolve(null),
+        assistedEventRef?tx.get(assistedEventRef):Promise.resolve(null)
       ]);
 
       if(memberRef&&(!member?.exists||inactive(member.data())||!(clean(member.data()?.role||member.data()?.organizationRole).toLowerCase()==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true)))throw new TypeError('INVALID_ASSIGNEE');
@@ -2335,6 +2768,20 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
       if(oldSlotRef&&oldSlot?.exists&&oldSlot.data()?.requestId===requestId)tx.delete(oldSlotRef);
       if(!shouldHoldSlot&&currentSlotId)update['schedule.slotId']=admin.firestore.FieldValue.delete();
 
+      if(paymentCorrection.changed){
+        update['commercial.paymentRevision']=paymentCorrection.revision;
+        // Audit is a manually entered cash record, not confirmation of a gateway payment.
+        const paymentEvent=ref.collection('payment_events').doc();
+        tx.create(paymentEvent,{requestId,actorUid:req.identity.uid,
+          kind:'manual_payment_adjustment',
+          oldAmountCents:paymentCorrection.oldAmountCents,
+          newAmountCents:paymentCorrection.newAmountCents,
+          deltaCents:paymentCorrection.deltaCents,
+          previousStatus:paymentCorrection.oldStatus,
+          nextStatus:paymentCorrection.newStatus,
+          revision:paymentCorrection.revision,
+          source:'operator_entry',createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      }
       if(completedNow){
         const finalAmount=Number.isSafeInteger(Number(b.finalAmountCents))?Number(b.finalAmountCents):Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0);
         update.completionRecordedAt=admin.firestore.FieldValue.serverTimestamp();
@@ -2350,7 +2797,29 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
           if(autoDate){update['return.nextServiceDate']=autoDate;update['return.reason']=nextServiceReason;update['return.source']='service_rule';update['return.ruleDays']=ruleDays}
           tx.set(customerRef,{name:current.customer?.name||customer?.data()?.name||'',phone:current.customer?.phone||customer?.data()?.phone||'',lastCompletedAt:admin.firestore.FieldValue.serverTimestamp(),lastServiceId:current.serviceId||'',lastRequestId:requestId,lifetimeRevenueCents:lifetime+Math.max(0,finalAmount||0),nextServiceDate,nextServiceReason,nextServiceSource:autoDate?'service_rule':nextServiceDate?'manual_or_existing':'',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
         }
-      } else if(current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
+      } else if(financialCorrection.changed){
+        // Correct executed-service value, not the amount actually received.
+        if(!customerId||!customer?.exists||(assistedEventRef&&!assistedEvent?.exists))
+          throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
+        const delta=financialCorrection.deltaCents,previous=Number(customer.data()?.lifetimeRevenueCents);
+        if(!Number.isSafeInteger(previous)||previous+delta<0)
+          throw new TypeError('FINANCIAL_RECONCILIATION_REQUIRED');
+        tx.update(customerRef,{lifetimeRevenueCents:admin.firestore.FieldValue.increment(delta),
+          updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+        if(assistedEventRef){
+          tx.update(assistedEventRef,{amountCents:financialCorrection.newAmountCents,
+            adjustedAt:admin.firestore.FieldValue.serverTimestamp()});
+          tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_metrics/revenue`),
+            {assistedRevenueCents:admin.firestore.FieldValue.increment(delta),
+             updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+        }
+        const adjustmentRef=db.collection(`organizations/${req.access.orgId}/nestlocal_financial_adjustments`).doc();
+        tx.create(adjustmentRef,{requestId,customerId,actorUid:req.identity.uid,kind:'completed_amount_correction',
+          oldAmountCents:financialCorrection.oldAmountCents,
+          newAmountCents:financialCorrection.newAmountCents,
+          deltaCents:delta,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+      }
+      if(!completedNow&&current.customerId&&(b.nextServiceDate!==undefined||b.returnReason!==undefined)){
         tx.set(db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${current.customerId}`),{nextServiceDate:clean(b.nextServiceDate!==undefined?b.nextServiceDate:current.return?.nextServiceDate),nextServiceReason:clean(b.returnReason!==undefined?b.returnReason:current.return?.reason),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       }
       tx.update(ref,update);response={ok:true,status:nextStatus};
@@ -2358,7 +2827,8 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_STATUS_TRANSITION'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
+    if(code==='FINANCE_ACCESS_DENIED')return sendError(res,403,code);
+    if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_EXECUTION_CHECKLIST','EXECUTION_CHECKLIST_LOCKED','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','PAYMENT_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
 });

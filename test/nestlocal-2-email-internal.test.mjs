@@ -7,7 +7,7 @@ test('authenticated operator can create internal request using email without Wha
  const b=server.indexOf("app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote'",a);
  const route=server.slice(a,b);
  assert.ok(a>=0&&b>a);
- for(const x of ['authenticate,authorize','customerEmail=clean(b.email)','validContactEmail(customerEmail)',"hash(customerPhone||'email:'+customerEmail)",'customer:{name,phone:customerPhone,email:customerEmail}','tx.create(requestRef,record)'])assert.ok(route.includes(x),'missing '+x);
+ for(const x of ['authenticate,authorize','customerEmail=clean(b.email)','validContactEmail(customerEmail)',"hash(customerPhone||'email:'+customerEmail)",'customer:{name,phone:customerPhone,email:customerEmail}','tx.create(requestRef,{...record,...siteSnapshot(site,siteOwner)})'])assert.ok(route.includes(x),'missing '+x);
  assert.equal(route.includes('customerPhone.length<10||!serviceId'),false);
 });
 test('internal intake supports email or phone but requires at least one reply channel',()=>{

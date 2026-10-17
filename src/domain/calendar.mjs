@@ -2,7 +2,7 @@
 // No customer's name, phone, address, notes, payment or tracking token may be exported.
 const OK=/^\d{4}-\d{2}-\d{2}$/;
 const windows={morning:'Manhã',afternoon:'Tarde',evening:'Noite',flexible:'Período flexível'};
-function validDate(iso){
+export function validDate(iso){
   if(!OK.test(String(iso||'')))return false;
   const d=new Date(iso+'T00:00:00Z');
   return !Number.isNaN(d.getTime())&&d.toISOString().slice(0,10)===iso;

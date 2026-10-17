@@ -2,6 +2,14 @@ import {chromium} from 'playwright';
 import {mkdirSync,readFileSync} from 'node:fs';
 import assert from 'node:assert/strict';
 
+// Fixture must use the organization's business day, never the runner's UTC day.
+function nextLocalDay(timeZone){
+  const instant=new Date(Date.now()+86400000);
+  const parts=Object.fromEntries(new Intl.DateTimeFormat('en',{timeZone,
+    year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(instant)
+    .map(part=>[part.type,part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
 const browser=await chromium.launch({headless:true});
 mkdirSync('artifacts/experience',{recursive:true});
 try {
@@ -108,7 +116,7 @@ try {
     assert.ok((await page.locator('.opportunity-preview').textContent()).includes('Sugestão de IA'));
     await page.screenshot({path:`artifacts/experience/opportunity-nestai-${width}.png`,fullPage:true});
     await page.locator('.followup-task summary').first().click();
-    await page.locator('[data-task-create] input[name=dueDate]').fill(new Date(Date.now()+86400000).toISOString().slice(0,10));
+    await page.locator('[data-task-create] input[name=dueDate]').fill(nextLocalDay('America/Sao_Paulo'));
     await page.locator('[data-task-create] input[name=dueTime]').fill('09:30');
     await page.locator('[data-task-create] button[type=submit]').click();
     await page.locator('[data-task-done]').first().waitFor();

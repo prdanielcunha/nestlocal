@@ -23,7 +23,12 @@ jobs:
           distribution: temurin
           java-version: '21'
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install browser for the real API user journey
+        run: |
+          npm install --no-save --no-package-lock --ignore-scripts playwright@1.56.1
+          npx playwright install --with-deps chromium
       - name: Exercise actual API and Firestore transactions without cloud credentials
         env:
           FIREBASE_PROJECT_ID: demo-nestlocal-integration
-        run: npx --yes firebase-tools@15.26.0 emulators:exec --only firestore --project demo-nestlocal-integration --config firebase.emulators.json 'node scripts/integration-emulator.mjs --core-only'
+          NESTLOCAL_BROWSER_INTEGRATION: 'true'
+        run: npx --yes firebase-tools@15.26.0 emulators:exec --only firestore --project demo-nestlocal-integration --config firebase.emulators.json 'node scripts/integration-emulator.mjs'
