@@ -45,8 +45,8 @@ try{
   assert.equal(writes.filter(x=>x.kind==='settings').length,2);
   const capacity=page.locator('#capacity-settings');
   await capacity.locator('[name="timezone"]').fill('UTC');
-  await capacity.locator('[name="capacityDay"][value="2"]').check();
-  await capacity.locator('[name="capacityWindow"][value="afternoon"]').check();
+  await capacity.locator('label:has(input[name="capacityDay"][value="2"])').click();
+  await capacity.locator('label:has(input[name="capacityWindow"][value="afternoon"])').click();
   await capacity.locator('button[type="submit"]').click();
   await page.waitForFunction(()=>document.querySelector('#capacity-settings [name="timezone"]')?.value==='UTC'&&!document.querySelector('#capacity-settings button[type="submit"]').disabled);
   const saved=writes.find(x=>x.kind==='capacity');assert.equal(saved.body.timezone,'UTC');
