@@ -138,7 +138,7 @@ try{
   assert.equal(published.catalogVersion,saved.catalogVersion);
  },true);
  await check('manual creation retries produce one request and one usage increment',async()=>{
-  const body={name:'Synthetic repeat customer',phone:'11999990003',serviceId:'clean',coverageCode:'test-city',quantity:1,addressLine:'Synthetic address',preferredWindow:'flexible'};
+  const body={name:'Synthetic repeat customer',phone:'11999990003',serviceId:'clean',coverageCode:'test-city',quantity:1,equipmentType:'split',safeAccess:true,addressLine:'Synthetic address',preferredWindow:'flexible'};
   const before=(await db.doc(`${root}/nestlocal_usage/${new Date().toISOString().slice(0,7)}`).get()).data()?.requestCount||0;
   const headers={'Idempotency-Key':'integration-manual-retry'};
   const first=await call('/requests','POST',body,ownerToken,201,headers);

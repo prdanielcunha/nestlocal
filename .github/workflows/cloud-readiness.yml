@@ -1,6 +1,7 @@
 name: NestLocal cloud readiness read only
 on:
-  pull_request:
+  push:
+    branches: [main, production]
     paths:
       - scripts/nestlocal-cloud-readiness.mjs
       - .github/workflows/cloud-readiness.yml
@@ -10,7 +11,6 @@ permissions:
   id-token: write
 jobs:
   audit:
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
