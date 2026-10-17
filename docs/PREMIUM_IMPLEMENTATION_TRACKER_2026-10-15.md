@@ -1,5 +1,11 @@
 # NestLocal — implantação rastreável do Diagnóstico 15/10/2026
 
+## Evidência adicional em 16/10/2026
+
+A [suíte autenticada de API com Firestore emulado](./NESTLOCAL_FIRESTORE_INTEGRATION_2026-10-16.md) passou em sete cenários: capacidade, isolamento de organização/permissão financeira, revogação de membro, pagamentos concorrentes/reversão manual, correção de receita por diferença, 125 pedidos paginados e consentimento público. Não são mocks de banco; não são dados reais de produção. `npm run check`: 453 aprovados. Conferir também o novo workflow no SHA final.
+
+Foram encontradas e corrigidas gravações com chaves literais pontuadas em capacidade, habilitação de membro e consentimento. O PR #129 separa essas correções da reformulação ampla, incluindo o bloqueio por `sourceDraftId` indefinido no pedido público. A liberação ampla continua condicionada às pendências de dados reais, infraestrutura, recuperação e aparelhos; não declarar C02/C08/C13/C14/C20/C21 integralmente homologados.
+
 Origem: *NestLocal — Diagnóstico e plano de melhoria*, versão 1.0, 22 páginas.
 Auditoria de referência: `ef7e16ed3595c596f7479d49335a21e436bd0764`.
 Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) em branch isolada.
