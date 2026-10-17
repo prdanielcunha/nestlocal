@@ -75,6 +75,58 @@ try{
   await call('/team/integration-field','PUT',{enabled:true});
   await call('','GET',undefined,memberToken);
  });
+ await check('canonical capability grants, revocations and seat toggles enforce API writes without escalation',async()=>{
+  await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:true}},memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,capabilities:{admin:true}},ownerToken,400);
+  await call('/team/integration-field','PUT',{},ownerToken,400);
+  await db.doc(`${root}/members/integration-field`).set({appAccess:{nestlocal:{permissions:{'nestlocal.manage':true,financeWrite:true,sitesWrite:true}}}},{merge:true});
+  assert.equal((await call('','GET',undefined,memberToken)).canManageFinance,true);
+  await call('/team/integration-field','PUT',{enabled:false});
+  await call('','GET',undefined,memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true});
+  assert.equal((await call('','GET',undefined,memberToken)).canManageSites,true);
+  await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:false,sitesWrite:false}});
+  const revoked=await call('','GET',undefined,memberToken);
+  assert.equal(revoked.canManageFinance,false);assert.equal(revoked.canManageSites,false);assert.equal(revoked.canManageTeam,false);
+  await db.doc(`${root}/nestlocal_requests/capability`).set({status:'reviewing',serviceId:'service',quantity:1,quote:{totalCents:10000},commercial:{paymentStatus:'pending',amountPaidCents:0}});
+  await call('/requests/capability/quote','POST',{amountCents:10000},memberToken,403);
+  await call('/requests/capability','PATCH',{amountPaidCents:1000,paymentStatus:'partial'},memberToken,403);
+  await call('/customers/no-customer/sites','POST',{label:'Sample',line:'Sample road',city:'Sample',equipment:[]},memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:true}});
+  await call('/requests/capability/quote','POST',{amountCents:10000,expectedQuoteVersion:1},memberToken);
+  await call('/requests/capability','PATCH',{amountPaidCents:1000,paymentStatus:'partial'},memberToken);
+  assert.equal((await db.doc(`${root}/nestlocal_requests/capability`).get()).data().commercial.amountPaidCents,1000);
+  for(const path of [`${root}/members/integration-field`,`organization_members/${orgId}_integration-field`]){
+   const access=(await db.doc(path).get()).data().appAccess.nestlocal;
+   assert.equal(access.permissions.sitesWrite,true);assert.equal(access.capabilities.financeWrite,true);assert.equal(access.capabilities.sitesWrite,false);
+  }
+  await call('/team/integration-owner','PUT',{enabled:false},ownerToken,409);
+  await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:false}});
+ },true);
+ await check('customer import previews, date rejection, retries and stale conflicts preserve existing data and consent',async()=>{
+  const customerPhone='5511912345678',id=hash(customerPhone).slice(0,28),ref=db.doc(`${root}/nestlocal_customers/${id}`);
+  await ref.set({name:'Existing',phone:customerPhone,address:{line:'Existing road',city:'Existing city'},messaging:{consents:{maintenanceReminders:{accepted:true}}},updatedAt:admin.firestore.Timestamp.fromMillis(1000)});
+  const customers=[{name:'Updated',phone:customerPhone,addressLine:'New road'},{name:'New customer',phone:'5511923456789',lastServiceDate:'2024-02-29'},
+   {name:'Bad date',phone:'5511934567890',nextServiceDate:'2026-02-31'},{name:'Duplicate',phone:customerPhone},
+   {name:'Trailing date',phone:'5511945678901',nextServiceDate:'2026-01-01invalid'}];
+  const preview=await call('/customers/batch/preview','POST',{customers});
+  assert.deepEqual(preview.counts,{create:1,update:1,invalid:2,duplicate:1});
+  assert.equal((await ref.get()).data().name,'Existing');
+  const payload={customers,preflightRows:preview.rows,requestKey:'synthetic-import-key-001'};
+  const results=await Promise.all([call('/customers/batch','POST',payload,ownerToken,201),call('/customers/batch','POST',payload,ownerToken,201)]);
+  assert.equal(results[0].createdCount,1);assert.equal(results[0].updatedCount,1);assert.equal(results[0].skippedCount,3);
+  assert.deepEqual(results[0],results[1]);
+  const saved=(await ref.get()).data();assert.equal(saved.address.line,'New road');assert.equal(saved.address.city,'Existing city');
+  assert.equal(saved.messaging.consents.maintenanceReminders.accepted,true);
+  assert.equal((await db.doc(`${root}/nestlocal_customers/${hash('5511923456789').slice(0,28)}`).get()).data().messaging,undefined);
+  const events=await db.collection(`${root}/nestlocal_audit`).where('action','==','customers.batch_import').get();
+  assert.equal(events.size,1);assert.equal(events.docs[0].data().phone,undefined);
+  await call('/customers/batch','POST',{...payload,customers:[{...customers[0],name:'Changed'}]},ownerToken,409);
+  const stale=await call('/customers/batch/preview','POST',{customers:[customers[0]]});
+  await ref.update({name:'Concurrent change',updatedAt:admin.firestore.Timestamp.now()});
+  await call('/customers/batch','POST',{customers:[customers[0]],preflightRows:stale.rows,requestKey:'synthetic-import-key-002'},ownerToken,409);
+  assert.equal((await ref.get()).data().name,'Concurrent change');
+ },true);
  await check('payment retries do not duplicate audit events; reversal reconciles deltas',async()=>{
   const patch={amountPaidCents:3000,paymentStatus:'partial'};
   await Promise.all([call('/requests/finance','PATCH',patch),call('/requests/finance','PATCH',patch)]);

@@ -16,9 +16,9 @@ test('customer spreadsheet import is tenant-scoped and does not fabricate messag
 });
 
 test('customer import UI parses Sheets-style rows and supports Brazilian dates',()=>{
-  const client=read('../web/live.js');
-  for(const token of ['function parseCustomerBatch(text)','const importDate=','customerBatchText','customerBatchImport','customerImportPlaceholder']) assert.ok(client.includes(token),`missing ${token}`);
-  assert.ok(client.includes("m[3]}-"));
+  const client=read('../web/live.js'),parser=read('../web/customer-import.js');
+  for(const token of ['parseCustomerBatch','customerBatchText','customerBatchImport','customerImportPlaceholder']) assert.ok(client.includes(token),`missing ${token}`);
+  assert.ok(parser.includes('match[3]}-'));
 });
 
 test('C19: customer import preflight is checked again before writing and audit event contains no contact data',()=>{
