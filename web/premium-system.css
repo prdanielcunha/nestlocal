@@ -39,12 +39,16 @@
   transition:transform var(--nl-motion) ease,border-color var(--nl-motion) ease,background var(--nl-motion) ease;
 }
 .shell .button:disabled{opacity:.58;cursor:not-allowed;transform:none}
-.shell :where(input,textarea,select){
+.shell :where(input:not([type="checkbox"]):not([type="radio"]),textarea,select){
   min-height:44px;
   border-radius:12px;
   color:var(--nl-text);
+  background:var(--nl-surface);
+  border:1px solid var(--nl-edge);
+  padding:11px 12px;
   max-width:100%;
 }
+.shell .capacity-options input:focus-visible+span{outline:3px solid var(--nl-ring);outline-offset:3px}
 .shell textarea{min-height:96px;resize:vertical}
 .shell .request,.shell .customer-card,.shell .agenda-item{
   border-color:var(--nl-edge);
