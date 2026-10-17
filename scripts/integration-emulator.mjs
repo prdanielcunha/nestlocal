@@ -5,6 +5,7 @@ import {spawn} from 'node:child_process';
 import {randomBytes,createHash} from 'node:crypto';
 import {once} from 'node:events';
 import admin from 'firebase-admin';
+import express from 'express';
 
 const projectId='demo-nestlocal-integration',coreOnly=process.argv.includes('--core-only');
 assert.equal(process.env.FIREBASE_PROJECT_ID,projectId,'Only the synthetic demo project is allowed');
@@ -116,13 +117,14 @@ try{
   assert.ok(!Object.hasOwn(saved,'messaging.consents.maintenanceReminders'));
  });
  await check('catalog drafts preserve live page and template connection until atomic publication',async()=>{
-  await db.doc(`${root}/nestlocal_settings/public`).set({slug:'integration-store',publishedSlug:'integration-store',messaging:{connected:true,templates:{serviceUpdate:'old_template'}}},{merge:true});
-  const settingsBody={businessName:'Revised synthetic business',slug:'integration-store',coverageCodes:['test-city'],validForMinutes:30,whatsappServiceTemplate:'new_template',whatsappMaintenanceTemplate:'maintenance_template'};
+  await db.doc(`${root}/nestlocal_settings/public`).set({slug:'integration-store',publishedSlug:'integration-store',trustSetupVersion:2,communicationMode:'official',messaging:{connected:true,templates:{serviceUpdate:'old_template'}}},{merge:true});
+  const settingsBody={businessName:'Revised synthetic business',slug:'integration-store',coverageCodes:['test-city'],validForMinutes:30,communicationMode:'official',contactEmail:'',contactPhone:'',whatsappServiceTemplate:'new_template',whatsappMaintenanceTemplate:'maintenance_template'};
   await call('/settings','PUT',settingsBody);
   let saved=(await db.doc(`${root}/nestlocal_settings/public`).get()).data();
   assert.equal(saved.businessName,'Synthetic business');assert.equal(saved.published,true);
   assert.equal(saved.draftSettings.messaging.templates.serviceUpdate,'new_template');
   assert.ok(!Object.hasOwn(saved.draftSettings,'messaging.templates.serviceUpdate'));
+  const dashboard=await call('');assert.equal(dashboard.settings.messaging.connected,true);assert.equal(dashboard.setupReadiness.ready,true);
   await call('/services/clean','PUT',{name:'Revised synthetic service',mode:'review',returnAfterDays:30,inclusions:'Revised scope',exclusions:'Parts'});
   saved=(await db.doc(`${root}/nestlocal_services/clean`).get()).data();
   assert.equal(saved.name,'Synthetic cleaning');assert.equal(saved.published,true);
@@ -169,6 +171,8 @@ try{
   await call('/requests/lifecycle/quote','POST',{amountCents:13000,expectedQuoteVersion:2},ownerToken,409);
   assert.equal((await ref.collection('quote_versions').get()).size,2);
   // Keep the capability local to the synthetic test; never log or store a real token.
+  await call('/requests/lifecycle','PATCH',{scheduledDate:'2099-02-31'},ownerToken,400);
+  await call('/requests/lifecycle','PATCH',{warrantyUntil:'2099-13-01'},ownerToken,400);
   const schedule={status:'scheduled',scheduledDate:'2099-01-01',scheduledWindow:'afternoon',assignedTo:'integration-owner'};
   await call('/requests/lifecycle','PATCH',schedule);
   const confirmation=async(revision,status)=>{
@@ -185,6 +189,52 @@ try{
   const completed=(await ref.get()).data();assert.ok(completed.completionRecordedAt);
   assert.equal((await db.doc(`${root}/nestlocal_customers/lifecycle-customer`).get()).data().lifetimeRevenueCents,12000);
  },true);
+ if(process.env.NESTLOCAL_BROWSER_INTEGRATION==='true'&&!coreOnly){
+  await check('browser saves settings through the real API into Firestore',async()=>{
+   const {chromium}=await import('playwright');
+   const web=express();
+   web.use('/api',express.raw({type:()=>true,limit:'128kb'}),async(req,res)=>{
+    try{
+     const upstream=await fetch(`http://127.0.0.1:${apiPort}${req.originalUrl}`,{
+      method:req.method,headers:{...(req.headers.authorization?{authorization:req.headers.authorization}:{}),'content-type':'application/json'},
+      ...(['GET','HEAD'].includes(req.method)?{}:{body:req.body?.length?req.body:undefined})});
+     res.status(upstream.status).type('application/json').send(await upstream.text());
+    }catch{res.status(502).json({error:'SYNTHETIC_PROXY_UNAVAILABLE'})}
+   });
+   web.use(express.static(new URL('../web',import.meta.url).pathname));
+   const webServer=web.listen(18187,'127.0.0.1');await once(webServer,'listening');
+   let browser;
+   try{
+    browser=await chromium.launch({headless:true});
+    for(const width of [390,1440]){
+     const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
+     page.on('pageerror',error=>errors.push(error.message));
+     await page.addInitScript(({token,org})=>{sessionStorage.setItem('nl_session_token',token);localStorage.setItem('nl_org',org)},{token:ownerToken,org:orgId});
+     await page.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
+     await page.locator('.shell').waitFor({timeout:15000});
+     await page.evaluate(()=>document.querySelector('.sidebar [data-nav="services"]').click());
+     const business=`Browser verified ${width}`;
+     await page.locator('#settings [name="business"]').fill(business);
+     const response=page.waitForResponse(r=>r.url().endsWith('/nestlocal/settings')&&r.request().method()==='PUT');
+     await page.locator('#settings button[type="submit"]').click();
+     assert.equal((await response).status(),200);
+     // Proves DOM -> HTTP handler -> canonical authorized transaction -> database,
+     // rather than accepting the toast or a mocked response as proof of saving.
+     const stored=(await db.doc(`${root}/nestlocal_settings/public`).get()).data();
+     assert.equal(stored.draftSettings.businessName,business);
+     assert.equal(stored.published,true);assert.equal(stored.messaging.connected,true);
+     await page.locator('#settings [name="business"]').waitFor();
+     const capacity=page.locator('#capacity-settings');
+     const saved=page.waitForResponse(r=>r.url().endsWith('/nestlocal/capacity')&&r.request().method()==='PUT');
+     await capacity.locator('[name="timezone"]').fill('UTC');
+     await capacity.locator('button[type="submit"]').click();
+     assert.equal((await saved).status(),200);
+     assert.equal((await db.doc(`${root}/nestlocal_settings/public`).get()).data().timezone,'UTC');
+     assert.deepEqual(errors,[]);await page.close();
+    }
+   }finally{if(browser)await browser.close();await new Promise(resolve=>webServer.close(resolve))}
+  });
+ }
  console.log(`NESTLOCAL_EMULATOR_${coreOnly?'CORE':'FULL'}_INTEGRATION_PASSED (synthetic data; no cloud certification)`);
 }catch(error){console.error(error);process.exitCode=1}
 finally{

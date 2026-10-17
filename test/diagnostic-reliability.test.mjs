@@ -96,7 +96,7 @@ test('C02: operational priorities query every actionable status independently an
 
 test('C04/C05: catalog readiness accounts for draft changes and review services retain their scope',()=>{
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
- assert.match(server,/effectiveSettings=settingsData\?\.draftSettings\?/);
+ assert.match(server,/effectiveSettings=effectiveNestLocalSettings\(settingsData\)/);
  assert.match(server,/setupReadiness=catalogReadiness\(effectiveSettings,serviceRows\)/);
  assert.match(server,/mode:b\.mode,returnAfterDays,inclusions:clean\(b\.inclusions\)/);
 });

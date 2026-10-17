@@ -15,7 +15,7 @@ import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './s
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
 import {redactOpportunityForAi,pilotOpportunityAiEnabled,maxDailyAiRequests,projectNestAiOpportunityExtraction} from './src/domain/opportunity-ai.mjs';
 import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunityIdempotencyKey,draftPublicView} from './src/domain/opportunity-drafts.mjs';
-import { buildNestLocalIcs, safeCalendarEvents } from './src/domain/calendar.mjs';
+import { buildNestLocalIcs, safeCalendarEvents, validDate } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
 import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
@@ -105,6 +105,14 @@ const canManageNestLocalSites=access=>canManageNestLocal(access)||access?.member
 const sendError=(res,status,code)=>res.status(status).json({error:code});
 const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
 const validContactEmail=value=>/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(clean(value).toLowerCase());
+function effectiveNestLocalSettings(settings){
+  if(!settings?.draftSettings)return settings;
+  const draft=settings.draftSettings,messaging={...(settings.messaging||{}),...(draft.messaging||{})};
+  messaging.templates={...(settings.messaging?.templates||{}),...(draft.messaging?.templates||{})};
+  for(const [key,field] of [['messaging.templates.serviceUpdate','serviceUpdate'],['messaging.templates.maintenanceReminder','maintenanceReminder']])
+    if(Object.hasOwn(draft,key))messaging.templates[field]=draft[key];
+  return {...settings,...draft,messaging};
+}
 function catalogReadiness(settings,services=[]){
   const issues=[];
   if(!settings){issues.push('SETUP_REQUIRED');return{ready:false,issues}}
@@ -1159,7 +1167,7 @@ app.post('/api/public/stores/:storeSlug/requests',async(req,res)=>{
     if(!(await rateLimit(req,'request',org.id)))return sendError(res,429,'RATE_LIMITED');
     const entitlement=await getPublicEntitlement(org.id);if(!entitlement.active)return sendError(res,402,'STORE_SUBSCRIPTION_INACTIVE');
     const body=req.body||{};const name=clean(body.name).slice(0,100),customerPhone=phone(body.phone),customerEmail=clean(body.email).toLowerCase().slice(0,254),serviceId=clean(body.serviceId),coverageCode=slug(body.coverageCode),quantity=Number(body.quantity),addressLine=clean(body.addressLine).slice(0,180),preferredDate=clean(body.preferredDate).slice(0,10),preferredWindow=clean(body.preferredWindow).slice(0,30),serviceUpdatesOptIn=body.whatsappServiceOptIn===true,maintenanceOptIn=body.whatsappMaintenanceOptIn===true;
-    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||(customerPhone.length<10&&(serviceUpdatesOptIn||maintenanceOptIn))||!serviceId||!coverageCode||addressLine.length<5||!validDate(preferredDate)||!['morning','afternoon','evening','flexible'].includes(preferredWindow)||!Number.isSafeInteger(quantity)||quantity<1||quantity>10||body.acceptedTerms!==true)return sendError(res,400,'INVALID_REQUEST');
     const [settingsSnap,servicesSnap]=await Promise.all([db.doc(`organizations/${org.id}/nestlocal_settings/public`).get(),db.collection(`organizations/${org.id}/nestlocal_services`).where('published','==',true).get()]);
     if(!settingsSnap.exists||settingsSnap.data()?.published!==true)return sendError(res,409,'STORE_NOT_READY');
     const settings=settingsSnap.data(),orgTimeZone=validTimeZone(clean(settings.timezone))?clean(settings.timezone):'UTC';if(preferredDate<localIsoDate(orgTimeZone))return sendError(res,400,'INVALID_REQUEST');const services=servicesSnap.docs.map(x=>({id:x.id,...x.data()})),selectedService=services.find(x=>x.id===serviceId);if(!selectedService)return sendError(res,400,'INVALID_REQUEST');let intake={};try{intake=normalizeIntakeValues(selectedService.intakeFields,body.intake)}catch{return sendError(res,400,'INVALID_INTAKE')}
@@ -1328,7 +1336,7 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_requests`).count().get(),
       db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=settingsData?.draftSettings?{...settingsData,...settingsData.draftSettings}:settingsData,setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
+    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
     res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
@@ -1833,7 +1841,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authentic
     for(const [index,row] of rows.entries()){
       const name=clean(row?.name).slice(0,100),normalized=phone(row?.phone),
         lastDate=clean(row?.lastServiceDate).slice(0,10),nextDate=clean(row?.nextServiceDate).slice(0,10),
-        invalid=name.length<2||normalized.length<10||(lastDate&&!/^\d{4}-\d{2}-\d{2}$/.test(lastDate))||(nextDate&&!/^\d{4}-\d{2}-\d{2}$/.test(nextDate));
+        invalid=name.length<2||normalized.length<10||(lastDate&&!validDate(lastDate))||(nextDate&&!validDate(nextDate));
       if(invalid){results.push({index,name,status:'invalid',reason:'INVALID_CUSTOMER'});continue}
       const id=hash(normalized).slice(0,28);
       if(seen.has(id)){results.push({index,name,status:'duplicate',reason:'DUPLICATE_IN_BATCH'});continue}
@@ -1985,7 +1993,7 @@ app.put('/api/organizations/:orgId/nestlocal/customers/:customerId/maintenance-p
   try{
     const customerId=safeId(req.params.customerId),b=req.body||{},active=b.active===true,name=clean(b.name).slice(0,120),intervalDays=Number(b.intervalDays||0),nextVisitDate=clean(b.nextVisitDate).slice(0,10),contractStart=clean(b.contractStart).slice(0,10),contractEnd=clean(b.contractEnd).slice(0,10),notes=clean(b.notes).slice(0,500);
     if(!customerId||!Number.isInteger(intervalDays)||intervalDays<0||intervalDays>730)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
-    for(const value of [nextVisitDate,contractStart,contractEnd])if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
+    for(const value of [nextVisitDate,contractStart,contractEnd])if(value&&!validDate(value))return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     if(contractStart&&contractEnd&&contractEnd<contractStart)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     if(active&&!name)return sendError(res,400,'INVALID_MAINTENANCE_PLAN');
     const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_customers/${customerId}`);let result=null;
@@ -2132,7 +2140,7 @@ app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,as
       // edits must retry publication rather than disappear under draft deletion.
       const [settings,services]=await Promise.all([tx.get(settingsRef),tx.get(servicesRef)]);
       const active=settings.exists?settings.data():null,
-        data=active?.draftSettings?{...active,...active.draftSettings}:active,
+        data=effectiveNestLocalSettings(active),
         list=services.docs.map(x=>({id:x.id,...x.data(),...(x.data().draft||{})})),
         readiness=catalogReadiness(data,list);
       if(!readiness.ready){result={error:'PUBLISH_NOT_READY',issues:readiness.issues};return}
@@ -2471,7 +2479,7 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIn
 app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
   try{
     const b=req.body||{},sourceDraftId=clean(b.sourceDraftId),name=clean(b.name).slice(0,100),customerPhone=phone(b.phone),customerEmail=clean(b.email).toLowerCase().slice(0,254),serviceId=safeId(b.serviceId),addressLine=clean(b.addressLine).slice(0,180),city=clean(b.city).slice(0,80),coverageCode=slug(b.coverageCode),preferredDate=clean(b.preferredDate).slice(0,10),preferredWindow=clean(b.preferredWindow||'flexible'),note=clean(b.note).slice(0,1000);
-    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!/^\d{4}-\d{2}-\d{2}$/.test(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
+    if(name.length<2||!(customerPhone.length>=10||validContactEmail(customerEmail))||customerEmail&&!validContactEmail(customerEmail)||!serviceId||addressLine.length<5||!coverageCode||(preferredDate&&!validDate(preferredDate))||!serviceWindows.has(preferredWindow))return sendError(res,400,'INVALID_REQUEST');
     const key=clean(req.get('Idempotency-Key'));if(key&&!/^[A-Za-z0-9_.:-]{8,128}$/.test(key))return sendError(res,400,'INVALID_IDEMPOTENCY_KEY');
     const root=`organizations/${req.access.orgId}`,[settings,service]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.doc(`${root}/nestlocal_services/${serviceId}`).get()]);
     if(!settings.exists)return sendError(res,409,'SETUP_REQUIRED');if(!service.exists)return sendError(res,400,'INVALID_SERVICE');
@@ -2667,7 +2675,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         }
       }
       if(b.scheduledDate!==undefined){
-        const value=clean(b.scheduledDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_SCHEDULE_DATE');update['schedule.date']=value;
+        const value=clean(b.scheduledDate);if(value&&!validDate(value))throw new TypeError('INVALID_SCHEDULE_DATE');update['schedule.date']=value;
       }
       if(b.scheduledWindow!==undefined){
         const value=clean(b.scheduledWindow);if(value&&!serviceWindows.has(value))throw new TypeError('INVALID_SCHEDULE_WINDOW');update['schedule.window']=value;
@@ -2690,7 +2698,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         update['execution.checklistUpdatedBy']=req.identity.uid;
         update['execution.checklistUpdatedAt']=admin.firestore.FieldValue.serverTimestamp();
       }
-      if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
+      if(b.warrantyUntil!==undefined){const value=clean(b.warrantyUntil);if(value&&!validDate(value))throw new TypeError('INVALID_WARRANTY_DATE');update['warranty.until']=value}
       if(b.warrantyNotes!==undefined)update['warranty.notes']=clean(b.warrantyNotes).slice(0,500);
       if(b.finalAmountCents!==undefined){
         const value=Number(b.finalAmountCents);if(!Number.isSafeInteger(value)||value<0||value>100000000)throw new TypeError('INVALID_AMOUNT');update['commercial.finalAmountCents']=value;
@@ -2702,7 +2710,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         const value=clean(b.paymentStatus);if(!paymentStatuses.has(value))throw new TypeError('INVALID_PAYMENT_STATUS');update['commercial.paymentStatus']=value;
       }
       if(b.nextServiceDate!==undefined){
-        const value=clean(b.nextServiceDate);if(value&&!/^\d{4}-\d{2}-\d{2}$/.test(value))throw new TypeError('INVALID_NEXT_SERVICE_DATE');update['return.nextServiceDate']=value;update['return.source']=value?'manual':admin.firestore.FieldValue.delete();
+        const value=clean(b.nextServiceDate);if(value&&!validDate(value))throw new TypeError('INVALID_NEXT_SERVICE_DATE');update['return.nextServiceDate']=value;update['return.source']=value?'manual':admin.firestore.FieldValue.delete();
       }
       if(b.returnReason!==undefined)update['return.reason']=clean(b.returnReason).slice(0,240);
 
