@@ -472,6 +472,7 @@ function quoteItemsField(quote,requestId){
   </details>`;
 }
 function quotePanel(r){
+  if(S.data?.canManageFinance===false)return '';
   const q=r.quote||{},commercial=r.commercial||{},amount=Number(q.totalCents??commercial.quotedAmountCents??0),quoteReady=Number.isSafeInteger(amount)&&amount>0,editable=['new','reviewing','quoted'].includes(r.status)&&!r.decision?.status;
   if(!editable)return '';
   const aiDraft=S.aiDrafts?.[`quote:${r.id}`]||'';

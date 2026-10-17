@@ -2603,6 +2603,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,a
 });
 
 app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/quote',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocalFinance(req.access))return sendError(res,403,'FINANCE_ACCESS_DENIED');
   try{
     const requestId=safeId(req.params.requestId),amountCents=Number(req.body?.amountCents),note=clean(req.body?.note).slice(0,500);if(!requestId||!Number.isSafeInteger(amountCents)||amountCents<=0||amountCents>100000000)return sendError(res,400,'INVALID_QUOTE');
     const lineItems=validateQuoteItems(req.body?.items,amountCents);

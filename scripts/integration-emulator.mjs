@@ -88,10 +88,12 @@ try{
   await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:false,sitesWrite:false}});
   const revoked=await call('','GET',undefined,memberToken);
   assert.equal(revoked.canManageFinance,false);assert.equal(revoked.canManageSites,false);assert.equal(revoked.canManageTeam,false);
-  await db.doc(`${root}/nestlocal_requests/capability`).set({status:'reviewing',quote:{totalCents:10000},commercial:{paymentStatus:'pending',amountPaidCents:0}});
+  await db.doc(`${root}/nestlocal_requests/capability`).set({status:'reviewing',serviceId:'service',quantity:1,quote:{totalCents:10000},commercial:{paymentStatus:'pending',amountPaidCents:0}});
+  await call('/requests/capability/quote','POST',{amountCents:10000},memberToken,403);
   await call('/requests/capability','PATCH',{amountPaidCents:1000,paymentStatus:'partial'},memberToken,403);
   await call('/customers/no-customer/sites','POST',{label:'Sample',line:'Sample road',city:'Sample',equipment:[]},memberToken,403);
   await call('/team/integration-field','PUT',{enabled:true,capabilities:{financeWrite:true}});
+  await call('/requests/capability/quote','POST',{amountCents:10000,expectedQuoteVersion:1},memberToken);
   await call('/requests/capability','PATCH',{amountPaidCents:1000,paymentStatus:'partial'},memberToken);
   assert.equal((await db.doc(`${root}/nestlocal_requests/capability`).get()).data().commercial.amountPaidCents,1000);
   for(const path of [`${root}/members/integration-field`,`organization_members/${orgId}_integration-field`]){

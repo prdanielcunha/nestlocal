@@ -6,7 +6,7 @@ Esta revisão corrige dois problemas encontrados na entrega anterior e acrescent
 
 O servidor aceita as permissões canônicas no formato de lista e no formato de mapa. Ativar ou desativar uma vaga preserva as demais concessões. A revogação continua sendo aplicada por `enabled=false` a cada requisição, inclusive a sessões existentes.
 
-Somente proprietário, administrador da organização ou administrador canônico do ecossistema pode conceder ou retirar edição de valores/recebimentos e gerenciamento de locais/equipamentos. Concessões explícitas falsas prevalecem sobre permissões antigas. As duas cópias de associação são sincronizadas no mesmo commit e a alteração gera auditoria sem contatos. As permissões inerentes de proprietários/administradores não são reduzidas por essas opções.
+Somente proprietário, administrador da organização ou administrador canônico do ecossistema pode conceder ou retirar edição de valores/recebimentos e gerenciamento de locais/equipamentos. A permissão financeira também protege a emissão e edição de orçamentos, impedindo alteração indireta de valores por outro endpoint. Concessões explícitas falsas prevalecem sobre permissões antigas. As duas cópias de associação são sincronizadas no mesmo commit e a alteração gera auditoria sem contatos. As permissões inerentes de proprietários/administradores não são reduzidas por essas opções.
 
 Essas são permissões de escrita. Não constituem perfis completos de leitura restrita ou de técnico limitado aos próprios serviços. Os membros habilitados ainda acessam os registros operacionais da empresa; não apresentar a opção financeira como ocultação de valores.
 
