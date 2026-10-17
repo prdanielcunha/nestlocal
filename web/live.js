@@ -1,4 +1,5 @@
 
+import {parseCustomerBatch} from './customer-import.js?v=20261017-import-v1';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {buildPulseSnapshot,renderPulse} from './pulse.js';
 import {renderCalendarIntro,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl,cw} from './calendar.js';
@@ -53,6 +54,9 @@ Object.assign(D.pt,{advancedMessaging:'Modelos de mensagens (opcional)',advanced
 Object.assign(D.en,{advancedMessaging:'Message templates (optional)',advancedMessagingHelp:'Configure only when approved messaging templates are available.'});
 Object.assign(D.es,{advancedMessaging:'Plantillas de mensajes (opcional)',advancedMessagingHelp:'Configúrelas solo si ya utiliza plantillas aprobadas.'});
 Object.assign(D.pt,{previewImport:'Verificar importação',importConfirm:'Confirmar importação',importPreviewTitle:'Revise antes de importar',importCreates:'Novos',importUpdates:'Cadastros que serão atualizados',importRejected:'Linhas ignoradas',importNoValid:'Nenhum cadastro válido para importar'});
+Object.assign(D.pt,{financePermission:'Alterar valores e recebimentos',sitesPermission:'Gerenciar locais e equipamentos',customerImportFile:'Abrir arquivo CSV ou TSV (UTF-8, até 64 KB e 100 clientes)',customerImportFileError:'Use CSV ou TSV em UTF-8, com até 64 KB e 100 clientes.',customerImportParseError:'Confira as colunas, aspas e o limite de 100 clientes. Nenhum dado foi importado.',importChanged:'A lista mudou. Revise novamente antes de confirmar.',importStale:'Um cadastro mudou desde a revisão. Verifique a importação novamente.'});
+Object.assign(D.en,{financePermission:'Edit amounts and payments',sitesPermission:'Manage sites and equipment',customerImportFile:'Open CSV or TSV (UTF-8, up to 64 KB and 100 customers)',customerImportFileError:'Use UTF-8 CSV or TSV, up to 64 KB and 100 customers.',customerImportParseError:'Check columns, quotes and the 100-customer limit. No records were imported.',importChanged:'The list changed. Review again before confirming.',importStale:'A record changed after review. Review the import again.'});
+Object.assign(D.es,{financePermission:'Editar importes y cobros',sitesPermission:'Gestionar ubicaciones y equipos',customerImportFile:'Abrir CSV o TSV (UTF-8, hasta 64 KB y 100 clientes)',customerImportFileError:'Use CSV o TSV UTF-8, hasta 64 KB y 100 clientes.',customerImportParseError:'Revise columnas, comillas y el límite de 100 clientes. No se importó ningún registro.',importChanged:'La lista cambió. Revísela antes de confirmar.',importStale:'Un registro cambió después de la revisión. Revise la importación de nuevo.'});
 Object.assign(D.en,{previewImport:'Review import',importConfirm:'Confirm import',importPreviewTitle:'Review before importing',importCreates:'New',importUpdates:'Existing records to update',importRejected:'Skipped rows',importNoValid:'No valid customers to import'});
 Object.assign(D.es,{previewImport:'Revisar importación',importConfirm:'Confirmar importación',importPreviewTitle:'Revise antes de importar',importCreates:'Nuevos',importUpdates:'Registros existentes para actualizar',importRejected:'Filas omitidas',importNoValid:'No hay clientes válidos para importar'});
 Object.assign(D.pt,{saveFailed:'Não foi possível salvar. Seus dados continuam no formulário.',networkRetry:'A conexão demorou. Confira os dados e tente salvar novamente.'});
@@ -916,8 +920,8 @@ function customerCard(customer){
   return `<article class="customer-card"><div class="customer-main"><div class="avatar">${esc((customer.name||'?').slice(0,1).toUpperCase())}</div><div><strong>${esc(customer.name||'—')}</strong><span>${esc(customer.phone||'—')}</span></div>${plan.active?`<span class="tag">${esc(plan.name||t('maintenancePlan'))}</span>`:''}</div><div class="customer-facts"><span>${t('lifetimeRevenue')}: <strong>${money(customer.lifetimeRevenueCents||0)}</strong></span><span>${t('lastService')}: <strong>${esc(customer.lastServiceLabel||customer.lastServiceId||'—')}</strong>${customer.lastServiceDate?` · ${esc(customer.lastServiceDate)}`:''}</span><span>${t('nextServiceDate')}: <strong>${esc(customer.nextServiceDate||'—')}</strong></span></div><div class="customer-actions">${phoneValue?`<a class="button tiny" href="tel:+${esc(phoneValue)}">${t('call')}</a>`:''}${phoneValue&&wa?`<a class="button tiny" target="_blank" rel="noopener" href="https://wa.me/${esc(phoneValue)}">WhatsApp</a>`:''}${route?`<a class="button tiny" target="_blank" rel="noopener" href="${esc(route)}">${t('route')}</a>`:''}<small class="${wa?'ready':'blocked'}">${wa?t('maintenanceConsent'):t('noMaintenanceConsent')}</small></div>${maintenancePlanForm(customer)}${customerSitesPanel(customer)}</article>`;
 }
 function customerImportPanel(){
- const preview=S.customerBatchPreview,counts=preview?.counts||{},textValue=preview?.inputText||'';
- return `<details class="card customer-import-card" ${preview?'open':''}><summary><div><span class="eyebrow">${t('customerImport')}</span><strong>${t('customerImportButton')}</strong><small>${t('customerImportHelp')}</small></div></summary><div class="customer-import-body"><textarea id="customerBatchText" rows="7" placeholder="${esc(t('customerImportPlaceholder'))}">${esc(textValue)}</textarea>
+ const preview=S.customerBatchPreview,counts=preview?.counts||{},textValue=preview?.inputText||S.customerBatchInput||'';
+ return `<details class="card customer-import-card" ${preview?'open':''}><summary><div><span class="eyebrow">${t('customerImport')}</span><strong>${t('customerImportButton')}</strong><small>${t('customerImportHelp')}</small></div></summary><div class="customer-import-body"><label>${t('customerImportFile')}<input id="customerBatchFile" type="file" accept=".csv,.tsv,text/csv,text/tab-separated-values"></label><textarea id="customerBatchText" aria-label="${esc(t('customerImport'))}" rows="7" placeholder="${esc(t('customerImportPlaceholder'))}">${esc(textValue)}</textarea>
  ${preview?`<section role="status" class="customer-import-preview"><h3>${t('importPreviewTitle')}</h3><p>${t('importCreates')}: ${counts.create||0} · ${t('importUpdates')}: ${counts.update||0} · ${t('importRejected')}: ${(counts.invalid||0)+(counts.duplicate||0)}</p><ul>${(preview.rows||[]).slice(0,20).map(row=>`<li>${esc(row.name||'—')} ${row.phoneEnding?`(••••${esc(row.phoneEnding)})`:''} — ${esc(row.status)} ${row.reason?`(${esc(row.reason)})`:''}</li>`).join('')}</ul>${!preview.canImport?`<p>${t('importNoValid')}</p>`:''}</section>`:''}
  <button class="button primary small" id="customerBatchImport" type="button" ${preview&&!preview.canImport?'disabled':''}>${preview?t('importConfirm'):t('previewImport')}</button></div></details>`;
 }
@@ -973,7 +977,11 @@ const playbookChoices=[['climate','templateClimate'],['cleaning','templateCleani
 function catalogAccelerator(){
   return `<article class="card wide-card playbook-accelerator"><div class="section-title"><div><h2>${t('catalogAccelerator')}</h2><p class="help">${t('catalogAcceleratorHelp')}</p></div></div><div class="accelerator-actions"><select id="playbook-add-select" class="field">${playbookChoices.map(([id,label])=>`<option value="${id}">${esc(t(label))}</option>`).join('')}</select><button class="button primary small" id="playbook-add" type="button">${t('addPlaybook')}</button></div></article>`;
 }
-function team(){const e=S.data.entitlement||{},seats=e.seats||{},members=S.data.team||[];return `<article class="card wide-card"><div class="section-title"><h2>${t('team')}</h2><span>${seats.used||0}/${seats.limit||1} ${t('seats')}</span></div><div class="team-list">${members.map(member=>`<div class="team-member"><div><strong>${esc(member.name||member.email||member.uid)}</strong><span>${esc(member.email||member.role||'')}</span></div>${member.owner?`<span class="tag">${t('ownerSeat')}</span>`:`<button class="button small" data-team="${esc(member.uid)}" data-enabled="${member.nestlocalEnabled?'false':'true'}">${member.nestlocalEnabled?t('disableAccess'):t('enableAccess')}</button>`}</div>`).join('')}</div></article>`}
+function team(){
+ const e=S.data.entitlement||{},seats=e.seats||{},members=S.data.team||[],manage=S.data.canManageTeam===true;
+ return `<article class="card wide-card"><div class="section-title"><h2>${t('team')}</h2><span>${seats.used||0}/${seats.limit||1} ${t('seats')}</span></div><div class="team-list">${members.map(member=>`<div class="team-member"><div><strong>${esc(member.name||member.email||member.uid)}</strong><span>${esc(member.email||member.role||'')}</span></div><div class="team-controls">${member.owner?`<span class="tag">${t('ownerSeat')}</span>`:manage?`<button type="button" class="button small" data-team="${esc(member.uid)}" data-enabled="${member.nestlocalEnabled?'false':'true'}">${member.nestlocalEnabled?t('disableAccess'):t('enableAccess')}</button>`:''}
+ ${manage&&member.nestlocalEnabled&&!['owner','admin'].includes(member.role)?`<form data-member-capabilities="${esc(member.uid)}"><label><input type="checkbox" name="financeWrite" ${member.capabilities?.financeWrite?'checked':''}> ${t('financePermission')}</label><label><input type="checkbox" name="sitesWrite" ${member.capabilities?.sitesWrite?'checked':''}> ${t('sitesPermission')}</label><button type="submit" class="button small">${t('save')}</button></form>`:''}</div></div>`).join('')}</div></article>`;
+}
 function readinessPanel(){
   const readiness=S.data.setupReadiness||{ready:false,issues:['SETUP_REQUIRED']};
   return `<article class="card readiness-card ${readiness.ready?'ready':'blocked'}"><div class="section-title"><div><span class="eyebrow">${t('publishReadiness')}</span><h2>${readiness.ready?t('publishReady'):t('publishBlocked')}</h2></div><span class="tag ${readiness.ready?'':'review'}">${readiness.ready?'✓':readiness.issues.length}</span></div>${readiness.issues.length?`<div class="readiness-checklist">${readiness.issues.map(issue=>`<div><span>•</span><strong>${esc(t(`readiness_${issue}`))}</strong></div>`).join('')}</div>`:''}</article>`;
@@ -1115,16 +1123,6 @@ function growthFunnelView(metrics={}){
 const inferGrowthChannel=value=>{const v=String(value||'').toLowerCase();if(v.includes('instagram'))return 'instagram';if(v.includes('liga')||v.includes('phone')||v.includes('call'))return 'phone';if(v.includes('mail'))return 'email';if(v.includes('indic')||v.includes('referr'))return 'referral';if(v.includes('parce')||v.includes('partner'))return 'partner';if(v.includes('org'))return 'organic';return ['xray','instagram','phone','email','referral','partner','organic','other'].includes(v)?v:'other'};
 const inferGrowthAngle=value=>{const v=String(value||'').toLowerCase();if(v.includes('orçamento')||v.includes('orcamento')||v.includes('follow'))return 'quote_followup';if(v.includes('reativ')||v.includes('deveria voltar')||v.includes('retorno'))return 'customer_reactivation';if(v.includes('ocios')||v.includes('ocioso')||v.includes('horário')||v.includes('horario'))return 'empty_schedule';if(v.includes('whatsapp')||v.includes('caos'))return 'whatsapp_chaos';if(v.includes('receita')||v.includes('dinheiro')||v.includes('oportunidade'))return 'revenue_visibility';if(v.includes('indic')||v.includes('referr'))return 'referral';return ['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other'].includes(v)?v:'other'};
 const growthNumber=value=>{const n=Number(String(value??'').trim().replace(',','.'));return Number.isFinite(n)?Math.max(0,Math.min(1,n)):0};
-const importDate=value=>{const v=String(value||'').trim();if(!v)return '';if(/^\d{4}-\d{2}-\d{2}$/.test(v))return v;const m=v.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);return m?`${m[3]}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`:''};
-const importKey=value=>String(value||'').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-function parseCustomerBatch(text){
-  const rows=String(text||'').split(/\r?\n/).map(line=>line.trimEnd()).filter(line=>line.trim());if(!rows.length)return [];
-  const header=rows[0].split('\t').map(importKey),hasHeader=header.some(x=>x==='nome'||x==='name')&&header.some(x=>x.includes('whatsapp')||x.includes('telefone')||x==='phone');
-  const find=(...terms)=>header.findIndex(x=>terms.some(term=>x.includes(term)));
-  const indexes=hasHeader?{name:find('nome','name'),phone:find('whatsapp','telefone','phone'),city:find('cidade','city'),address:find('endereco','address','direccion'),lastService:find('ultimo servico','last service','ultimo servicio'),lastDate:find('ultimo atendimento','last service date','ultima atencion'),nextDate:find('proximo retorno','next return','proximo retorno'),reason:find('motivo','reason')}:null;
-  return (hasHeader?rows.slice(1):rows).slice(0,100).map(line=>{const x=line.split('\t').map(v=>v.trim()),get=(key,fallback)=>indexes&&indexes[key]>=0?x[indexes[key]]||'':x[fallback]||'';return{name:get('name',0),phone:get('phone',1),city:get('city',2),addressLine:get('address',3),lastServiceLabel:get('lastService',4),lastServiceDate:importDate(get('lastDate',5)),nextServiceDate:importDate(get('nextDate',6)),nextServiceReason:get('reason',7)}}).filter(x=>x.name&&x.phone);
-}
-
 function parseGrowthBatch(text){
   const rows=String(text||'').split(/\r?\n/).map(line=>line.trimEnd()).filter(line=>line.trim());
   if(!rows.length)return [];
@@ -1489,7 +1487,7 @@ async function beginGoogleLogin(selectAccount=false){
 async function switchGoogleAccount(){
   try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}
   try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}
-  S.unsavedFormDrafts.clear();S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
+  S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';
   storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');
   storageRemove(localStorage,'nl_direct_google');
   S.error='';S.loading=false;render();
@@ -1747,8 +1745,8 @@ function bind(){
     try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.unsavedFormDrafts.clear();S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
-  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.pendingRequestSite=null;S.pendingManualRequestKey='';S.unsavedFormDrafts.clear();S.customerSites={};S.quoteItemDrafts={};S.checklistDrafts={};S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.pendingRequestSite=null;S.pendingManualRequestKey='';S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
       try{await ensureNativeNestAiSession()}
@@ -1982,21 +1980,54 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
   });
   document.querySelector('#growthLead')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,f=new FormData(form),signalNames=['quote','whatsapp','scheduling','recurrence','demand','smallTeam','ownerInvolved','noStrongSystem'],signals={};signalNames.forEach(k=>signals[k]=f.get(k)==='on'?1:0);await api('/api/admin/nestlocal/growth/leads',{method:'POST',body:JSON.stringify({businessName:f.get('businessName'),contactName:f.get('contactName'),phone:f.get('phone'),city:f.get('city'),segment:f.get('segment'),channel:f.get('channel'),angle:f.get('angle'),campaign:f.get('campaign'),nextAction:f.get('nextAction'),signals})});await loadGrowth();render();toast(t('save'))});
   document.querySelector('#dossier42Import')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{const result=await api('/api/admin/nestlocal/growth/leads/batch',{method:'POST',body:JSON.stringify({leads:dossier42})});await loadGrowth();render();toast(`${result.createdCount||0} ${t('dossierImported')} · ${result.skippedCount||0} ${t('skippedRows')}`)}catch(err){button.disabled=false;toast(err.message)}});
+  document.querySelectorAll('[data-member-capabilities]').forEach(form=>form.onsubmit=async event=>{
+   event.preventDefault();const button=form.querySelector('button[type="submit"]');button.disabled=true;
+   try{
+    await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/team/${encodeURIComponent(form.dataset.memberCapabilities)}`,{method:'PUT',body:JSON.stringify({enabled:true,capabilities:{financeWrite:form.elements.financeWrite.checked,sitesWrite:form.elements.sitesWrite.checked}})});
+    await loadData();render();toast(t('save'));
+   }catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelector('#customerBatchFile')?.addEventListener('change',async event=>{
+   const file=event.currentTarget.files?.[0],org=S.orgId,field=document.querySelector('#customerBatchText');
+   if(!file||!field)return;
+   try{
+    if(!/\.(csv|tsv)$/i.test(file.name)||file.size>65536)throw new TypeError('CUSTOMER_IMPORT_FILE_LIMIT');
+    const text=new TextDecoder('utf-8',{fatal:true}).decode(await file.arrayBuffer());parseCustomerBatch(text);
+    if(org!==S.orgId||!field.isConnected)return;
+    field.value=text;field.dispatchEvent(new Event('input',{bubbles:true}));
+   }catch{toast(t('customerImportFileError'))}
+  });
+  document.querySelector('#customerBatchText')?.addEventListener('input',event=>{
+   S.customerBatchInput=event.currentTarget.value;
+   S.customerBatchPreview=null;
+   const button=document.querySelector('#customerBatchImport');if(button){button.disabled=false;button.textContent=t('previewImport')}
+   document.querySelector('.customer-import-preview')?.remove();
+  });
   document.querySelector('#customerBatchImport')?.addEventListener('click',async e=>{
-  const button=e.currentTarget,text=document.querySelector('#customerBatchText')?.value||'',customers=parseCustomerBatch(text);
+  const button=e.currentTarget,text=document.querySelector('#customerBatchText')?.value||'';let customers;
+  try{customers=parseCustomerBatch(text)}catch{toast(t('customerImportParseError'));return}
   if(!customers.length){toast('INVALID_CUSTOMER_BATCH');return}
+  const org=S.orgId,uid=S.user?.uid,field=document.querySelector('#customerBatchText'),fileInput=document.querySelector('#customerBatchFile');
   button.disabled=true;
+  if(field)field.readOnly=true;if(fileInput)fileInput.disabled=true;
   try{
     if(!S.customerBatchPreview||S.customerBatchPreview.inputText!==text){
       const preview=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/customers/batch/preview`,{method:'POST',body:JSON.stringify({customers})});
-      S.customerBatchPreview={...preview,inputText:text};
+      if(org!==S.orgId||uid!==S.user?.uid||!button.isConnected)return;
+      S.customerBatchPreview={...preview,inputText:text,operationKey:crypto.randomUUID()};
       render();return;
     }
     if(!S.customerBatchPreview.canImport)return;
-    const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/customers/batch`,{method:'POST',body:JSON.stringify({customers,preflightRows:S.customerBatchPreview.rows||[]})});
-    S.customerBatchPreview=null;await loadData();render();
+    const result=await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/customers/batch`,{method:'POST',body:JSON.stringify({customers,preflightRows:S.customerBatchPreview.rows||[],requestKey:S.customerBatchPreview.operationKey})});
+    if(org!==S.orgId||uid!==S.user?.uid)return;
+    S.customerBatchPreview=null;S.customerBatchInput='';await loadData();render();
     toast(`${result.importedCount||0} ${t('importedCustomers')} · ${result.skippedCount||0} ${t('customerImportSkipped')}`);
-  }catch(error){button.disabled=false;toast(error.message)}
+  }catch(error){
+   if(org!==S.orgId||uid!==S.user?.uid)return;
+   button.disabled=false;
+   if(error.message==='CUSTOMER_IMPORT_PREVIEW_STALE'){S.customerBatchPreview=null;document.querySelector('.customer-import-preview')?.remove();button.textContent=t('previewImport');toast(t('importStale'))}
+   else toast(error.message);
+  }finally{if(field?.isConnected)field.readOnly=false;if(fileInput?.isConnected)fileInput.disabled=false}
 });
   document.querySelectorAll('[data-load-customer-sites]').forEach(button=>button.onclick=async()=>{
     const customerId=button.dataset.loadCustomerSites,org=S.orgId;button.disabled=true;

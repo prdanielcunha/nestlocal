@@ -23,7 +23,7 @@ test('C19 C21: sites use transaction, revision guard, tenant-scoped audit and ex
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
  assert.match(server,/canManageNestLocalSites=access/);
- assert.match(server,/permissions\?\.sitesWrite===true/);
+ assert.match(server,/nestLocalCapability\(access\?\.member,'sitesWrite'\)/);
  assert.match(server,/app\.get\('\/api\/organizations\/:orgId\/nestlocal\/customers\/:customerId\/sites'/);
  assert.match(server,/app\.post\('\/api\/organizations\/:orgId\/nestlocal\/customers\/:customerId\/sites'/);
  assert.match(server,/app\.patch\('\/api\/organizations\/:orgId\/nestlocal\/customers\/:customerId\/sites\/:siteId'/);

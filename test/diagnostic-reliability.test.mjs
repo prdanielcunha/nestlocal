@@ -139,7 +139,7 @@ test('C21: field workers can complete jobs but cannot change financial amounts w
  const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
  const live=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
  assert.match(server,/canManageNestLocalFinance=access=>canManageNestLocal\(access\)/);
- assert.match(server,/permissions\?\.financeWrite===true/);
+ assert.match(server,/nestLocalCapability\(access\?\.member,'financeWrite'\)/);
  assert.match(server,/financialEdit&&!canManageNestLocalFinance\(req\.access\)/);
  assert.match(server,/FINANCE_ACCESS_DENIED'\)return sendError\(res,403/);
  assert.match(live,/canManageFinance===false/);

@@ -706,3 +706,8 @@
   .shell .return-rule-input{min-width:0;max-width:100%}
   .shell .return-rule-input input{min-width:0}
 }
+.shell .team-member{flex-wrap:wrap}
+.shell .team-controls{max-width:100%;gap:10px}
+.shell .team-controls form{display:grid;gap:8px;max-width:100%}
+.shell .team-controls label{display:flex;align-items:center;gap:8px;overflow-wrap:anywhere}
+.shell .customer-import-body input[type=file]{max-width:100%;min-width:0;width:100%}

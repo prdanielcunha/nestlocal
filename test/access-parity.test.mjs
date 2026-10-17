@@ -31,7 +31,7 @@ test('non-global access requires canonical membership and individual NestLocal a
     "organizationRole==='owner'",
     "memberAccess?.enabled!==true",
     "MEMBER_APP_ACCESS_DISABLED",
-    "member.permissions?.['nestlocal.manage']===true",
+    "hasNestLocalPermission(member,'nestlocal.manage')",
     "PERMISSION_DENIED",
   ]) assert.ok(block.includes(token),'missing '+token);
 });

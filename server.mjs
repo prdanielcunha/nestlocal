@@ -1,4 +1,5 @@
 import { radarServicePlaybooks } from './src/domain/radar-playbooks.mjs';
+import {hasNestLocalPermission,nestLocalCapability,prepareNestLocalMemberAccess} from './src/domain/member-permissions.mjs';
 import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
@@ -100,8 +101,8 @@ const validImage=file=>(file.mimetype==='image/jpeg'&&file.buffer[0]===0xff&&fil
 const inactive=d=>d?.enabled===false||['inactive','suspended','disabled','removed','revoked','archived'].includes(d?.status);
 const canManageNestLocal=access=>globalRoles.has(access?.systemRole)||['owner','admin'].includes(clean(access?.member?.role||access?.member?.organizationRole).toLowerCase());
 const canManageNestLocalFinance=access=>canManageNestLocal(access)||
-  access?.member?.appAccess?.nestlocal?.permissions?.financeWrite===true;
-const canManageNestLocalSites=access=>canManageNestLocal(access)||access?.member?.appAccess?.nestlocal?.permissions?.sitesWrite===true;
+  nestLocalCapability(access?.member,'financeWrite');
+const canManageNestLocalSites=access=>canManageNestLocal(access)||nestLocalCapability(access?.member,'sitesWrite');
 const sendError=(res,status,code)=>res.status(status).json({error:code});
 const trackingTokenValid=(record,value)=>{const digest=hash(value);return record?.trackingTokenHash===digest||(Array.isArray(record?.trackingTokenHashes)&&record.trackingTokenHashes.includes(digest))};
 const validContactEmail=value=>/^[a-z0-9._%+-]+@[a-z0-9.-]+[.][a-z]{2,}$/i.test(clean(value).toLowerCase());
@@ -170,7 +171,7 @@ function resolveNestLocalAccess({userDoc,orgDoc,memberDoc,subscriptionDoc,trialD
   const organizationRole=clean(member.role||member.organizationRole||'member').toLowerCase(),owner=organizationRole==='owner',memberAccess=member.appAccess?.nestlocal;
   if(!entitlement.active)return{accessible:false,reason:entitlement.reason,systemRole,administrative:false,organizationRole,member,entitlement};
   if(!owner&&memberAccess?.enabled!==true)return{accessible:false,reason:'MEMBER_APP_ACCESS_DISABLED',systemRole,administrative:false,organizationRole,member,entitlement};
-  const canManage=owner||member.permissions?.['nestlocal.manage']===true||memberAccess?.permissions?.includes?.('nestlocal.manage');
+  const canManage=owner||hasNestLocalPermission(member,'nestlocal.manage');
   if(!canManage)return{accessible:false,reason:'PERMISSION_DENIED',systemRole,administrative:false,organizationRole,member,entitlement};
   return{accessible:true,reason:'',systemRole,administrative:false,organizationRole,member,entitlement};
 }
@@ -1336,8 +1337,8 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_requests`).count().get(),
       db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
-    const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner,capabilities:{financeWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'financeWrite'),sitesWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'sitesWrite')}}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
+    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageTeam:canManageNestLocal(req.access),canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
@@ -1829,7 +1830,40 @@ app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,autho
 });
 
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
-  try{const targetUid=safeId(req.params.uid),enabled=req.body?.enabled===true,actorRole=clean(req.access.member?.role||req.access.member?.organizationRole).toLowerCase();if(!targetUid)return sendError(res,400,'INVALID_MEMBER');if(!globalRoles.has(req.access.systemRole)&&!['owner','admin'].includes(actorRole))return sendError(res,403,'ACCESS_DENIED');const memberRef=db.doc(`organizations/${req.access.orgId}/members/${targetUid}`),legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),membersQuery=db.collection(`organizations/${req.access.orgId}/members`).limit(100);await db.runTransaction(async tx=>{const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');const targetRole=clean(member.data()?.role||member.data()?.organizationRole).toLowerCase();if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');const alreadyEnabled=targetRole==='owner'||member.data()?.appAccess?.nestlocal?.enabled===true;const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;if(enabled&&!alreadyEnabled&&used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');const appAccess={enabled,permissions:enabled?['nestlocal.manage']:[],updatedAt:admin.firestore.FieldValue.serverTimestamp()};tx.set(memberRef,{appAccess:{nestlocal:appAccess}}, {merge:true});tx.set(legacyRef,{appAccess:{nestlocal:appAccess}}, {merge:true})});res.json({ok:true,uid:targetUid,enabled})}catch(e){console.error(e);const code=e?.message;if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT'].includes(code))return sendError(res,409,code);sendError(res,500,'INTERNAL_ERROR')}});
+ if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
+ try{
+  const targetUid=safeId(req.params.uid),enabled=req.body?.enabled,capabilities=req.body?.capabilities;
+  if(!targetUid)return sendError(res,400,'INVALID_MEMBER');
+  prepareNestLocalMemberAccess({},enabled,capabilities);
+  const root=`organizations/${req.access.orgId}`,memberRef=db.doc(`${root}/members/${targetUid}`),
+   legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),
+   membersQuery=db.collection(`${root}/members`).limit(101),auditRef=db.collection(`${root}/nestlocal_audit`).doc();
+  await db.runTransaction(async tx=>{
+   const [member,members]=await Promise.all([tx.get(memberRef),tx.get(membersQuery)]);
+   if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');
+   const target=member.data(),targetRole=clean(target.role||target.organizationRole).toLowerCase();
+   if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');
+   if(capabilities!==undefined&&['owner','admin'].includes(targetRole))throw new TypeError('ADMIN_CAPABILITIES_INHERITED');
+   const alreadyEnabled=targetRole==='owner'||target.appAccess?.nestlocal?.enabled===true;
+   if(enabled&&!alreadyEnabled){
+    if(members.size>100)throw new TypeError('TEAM_LIMIT_REQUIRES_REVIEW');
+    const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;
+    if(used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');
+   }
+   const appAccess={...prepareNestLocalMemberAccess(target.appAccess?.nestlocal||{},enabled,capabilities),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+   tx.set(memberRef,{appAccess:{nestlocal:appAccess}},{mergeFields:['appAccess.nestlocal']});
+   tx.set(legacyRef,{appAccess:{nestlocal:appAccess}},{mergeFields:['appAccess.nestlocal']});
+   tx.create(auditRef,{action:'team.access_updated',targetUid,enabled,actorUid:req.identity.uid,
+    ...(capabilities===undefined?{}:{capabilities}),at:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  res.json({ok:true,uid:targetUid,enabled});
+ }catch(error){
+  const code=error?.message;
+  if(['INVALID_MEMBER_ACCESS','INVALID_MEMBER_CAPABILITIES'].includes(code))return sendError(res,400,code);
+  if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT','TEAM_LIMIT_REQUIRES_REVIEW','ADMIN_CAPABILITIES_INHERITED'].includes(code))return sendError(res,409,code);
+  console.error('TEAM_ACCESS_UPDATE_FAILED',error?.code||error?.name);sendError(res,500,'INTERNAL_ERROR');
+ }
+});
 
 // Preview never modifies customer records. Existing phone matches are marked as updates,
 // not treated as brand new people. A preview is advisory: the write path revalidates.
@@ -1840,7 +1874,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch/preview',authentic
     const seen=new Set(),valid=[],results=[];
     for(const [index,row] of rows.entries()){
       const name=clean(row?.name).slice(0,100),normalized=phone(row?.phone),
-        lastDate=clean(row?.lastServiceDate).slice(0,10),nextDate=clean(row?.nextServiceDate).slice(0,10),
+        lastDate=clean(row?.lastServiceDate),nextDate=clean(row?.nextServiceDate),
         invalid=name.length<2||normalized.length<10||(lastDate&&!validDate(lastDate))||(nextDate&&!validDate(nextDate));
       if(invalid){results.push({index,name,status:'invalid',reason:'INVALID_CUSTOMER'});continue}
       const id=hash(normalized).slice(0,28);
@@ -1865,8 +1899,8 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
     const rows=Array.isArray(req.body?.customers)?req.body.customers:[];if(!rows.length||rows.length>100)return sendError(res,400,'INVALID_CUSTOMER_BATCH');
     const prepared=[],seen=new Set(),skipped=[];
     for(const [index,row] of rows.entries()){
-      const name=clean(row?.name).slice(0,100),customerPhone=phone(row?.phone),city=clean(row?.city).slice(0,80),addressLine=clean(row?.addressLine).slice(0,180),lastServiceLabel=clean(row?.lastServiceLabel).slice(0,120),lastServiceDate=clean(row?.lastServiceDate).slice(0,10),nextServiceDate=clean(row?.nextServiceDate).slice(0,10),nextServiceReason=clean(row?.nextServiceReason).slice(0,240);
-      if(name.length<2||customerPhone.length<10||(lastServiceDate&&!/^\d{4}-\d{2}-\d{2}$/.test(lastServiceDate))||(nextServiceDate&&!/^\d{4}-\d{2}-\d{2}$/.test(nextServiceDate))){skipped.push({index,reason:'INVALID_CUSTOMER'});continue}
+const name=clean(row?.name).slice(0,100),customerPhone=phone(row?.phone),city=clean(row?.city).slice(0,80),addressLine=clean(row?.addressLine).slice(0,180),lastServiceLabel=clean(row?.lastServiceLabel).slice(0,120),lastServiceDate=clean(row?.lastServiceDate),nextServiceDate=clean(row?.nextServiceDate),nextServiceReason=clean(row?.nextServiceReason).slice(0,240);
+      if(name.length<2||customerPhone.length<10||(lastServiceDate&&!validDate(lastServiceDate))||(nextServiceDate&&!validDate(nextServiceDate))){skipped.push({index,reason:'INVALID_CUSTOMER'});continue}
       const id=hash(customerPhone).slice(0,28);if(seen.has(id)){skipped.push({index,reason:'DUPLICATE_IN_BATCH'});continue}seen.add(id);
       prepared.push({index,id,name,phone:customerPhone,city,addressLine,lastServiceLabel,lastServiceDate,nextServiceDate,nextServiceReason});
     }
@@ -1876,9 +1910,17 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
       expected=Array.isArray(req.body?.preflightRows)?req.body.preflightRows:null;
     const expectedByIndex=expected?new Map(expected.filter(row=>row&&['create','update'].includes(row.status))
       .map(row=>[Number(row.index),row])):null;
-    const auditRef=db.collection(`${root}/nestlocal_audit`).doc();
+    const requestKey=clean(req.body?.requestKey);
+    if(requestKey&&!/^[A-Za-z0-9_-]{16,80}$/.test(requestKey))return sendError(res,400,'INVALID_IMPORT_KEY');
+    const payloadHash=hash(JSON.stringify({rows,preflightRows:expected}));
+    const auditRef=requestKey?db.doc(`${root}/nestlocal_audit/customer-import-${hash(requestKey).slice(0,32)}`):db.collection(`${root}/nestlocal_audit`).doc();
     let createdCount=0,updatedCount=0;
     await db.runTransaction(async tx=>{
+      const receipt=requestKey?await tx.get(auditRef):null;
+      if(receipt?.exists){
+        if(receipt.data()?.payloadHash!==payloadHash)throw new TypeError('CUSTOMER_IMPORT_KEY_CONFLICT');
+        createdCount=receipt.data().createdCount;updatedCount=receipt.data().updatedCount;return;
+      }
       // Read every source document before any write; status changes between preview
       // and commit trigger a conflict and Firestore retries the transaction.
       const existing=await Promise.all(refs.map(ref=>tx.get(ref)));
@@ -1896,7 +1938,7 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
         const data={name:item.name,phone:item.phone,source:'customer_import',
           updatedAt:admin.firestore.FieldValue.serverTimestamp(),
           importedAt:admin.firestore.FieldValue.serverTimestamp()};
-        if(item.addressLine||item.city)data.address={line:item.addressLine,city:item.city};
+        if(item.addressLine||item.city)data.address={...(item.addressLine?{line:item.addressLine}:{}),...(item.city?{city:item.city}:{})};
         if(item.lastServiceLabel)data.lastServiceLabel=item.lastServiceLabel;
         if(item.lastServiceDate)data.lastServiceDate=item.lastServiceDate;
         if(item.nextServiceDate){
@@ -1908,11 +1950,11 @@ app.post('/api/organizations/:orgId/nestlocal/customers/batch',authenticate,auth
       }
       tx.create(auditRef,{action:'customers.batch_import',createdCount:creates,updatedCount:updates,
         skippedCount:skipped.length,actorUid:req.identity.uid,
-        at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:2});
+        ...(requestKey?{payloadHash}:{}),at:admin.firestore.FieldValue.serverTimestamp(),schemaVersion:3});
       createdCount=creates;updatedCount=updates;
     });
     res.status(201).json({importedCount:prepared.length,createdCount,updatedCount,skippedCount:skipped.length,skipped});
-  }catch(e){if(e?.message==='CUSTOMER_IMPORT_PREVIEW_STALE')return sendError(res,409,e.message);console.error(e);sendError(res,500,'INTERNAL_ERROR')}
+  }catch(e){if(['CUSTOMER_IMPORT_PREVIEW_STALE','CUSTOMER_IMPORT_KEY_CONFLICT'].includes(e?.message))return sendError(res,409,e.message);console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 
