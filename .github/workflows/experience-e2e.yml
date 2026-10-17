@@ -14,6 +14,7 @@ on:
       - "scripts/e2e-native-google-success.mjs"
       - "web/direct-auth.js"
       - "scripts/e2e-operation-ui.mjs"
+      - "scripts/e2e-settings-save.mjs"
       - "scripts/e2e-opportunity-capture.mjs"
       - "scripts/e2e-calendar.mjs"
       - ".github/workflows/experience-e2e.yml"
@@ -49,6 +50,7 @@ jobs:
           node scripts/e2e-direct-login.mjs
           node scripts/e2e-native-google-success.mjs
           node scripts/e2e-operation-ui.mjs
+          node scripts/e2e-settings-save.mjs
           node scripts/e2e-opportunity-capture.mjs
           node scripts/e2e-calendar.mjs
       - name: Archive real browser captures
