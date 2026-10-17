@@ -40,14 +40,18 @@ try{
   assert.equal(await form.locator('[name="business"]').inputValue(),'Changed synthetic business');
   assert.equal(await submit.isDisabled(),false);
   // Retry the same form after a server failure. A save response reloads the UI.
+  const settingsSaved=page.waitForResponse(response=>response.url().endsWith('/nestlocal/settings')&&response.request().method()==='PUT');
   await submit.click();
-  await page.waitForFunction(()=>document.querySelector('#settings [name="business"]')?.value==='Changed synthetic business'&&!document.querySelector('#settings [data-form-error]'));
+  assert.equal((await settingsSaved).status(),200);
+  await page.waitForFunction(()=>document.querySelector('#settings [name="business"]')?.value==='Changed synthetic business'&&!document.querySelector('#settings [data-form-error]')&&!document.querySelector('#settings button[type="submit"]').disabled);
   assert.equal(writes.filter(x=>x.kind==='settings').length,2);
   const capacity=page.locator('#capacity-settings');
   await capacity.locator('[name="timezone"]').fill('UTC');
   await capacity.locator('label:has(input[name="capacityDay"][value="2"])').click();
   await capacity.locator('label:has(input[name="capacityWindow"][value="afternoon"])').click();
+  const capacitySaved=page.waitForResponse(response=>response.url().endsWith('/nestlocal/capacity')&&response.request().method()==='PUT');
   await capacity.locator('button[type="submit"]').click();
+  assert.equal((await capacitySaved).status(),200);
   await page.waitForFunction(()=>document.querySelector('#capacity-settings [name="timezone"]')?.value==='UTC'&&!document.querySelector('#capacity-settings button[type="submit"]').disabled);
   const saved=writes.find(x=>x.kind==='capacity');assert.equal(saved.body.timezone,'UTC');
   assert.deepEqual(saved.body.workingDays,[1,2]);assert.deepEqual(saved.body.windows,['morning','afternoon']);
