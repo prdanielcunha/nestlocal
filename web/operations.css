@@ -416,6 +416,11 @@
 .template-verticals .template-option{min-width:0}
 .catalog-card #publish:disabled{opacity:.42;cursor:not-allowed}
 @media(max-width:760px){
+  .shell .topbar{flex-wrap:wrap;align-items:flex-start;gap:12px}
+  .shell .topbar>div{min-width:0}
+  .shell .top-actions{width:100%;max-width:100%;min-width:0;flex-wrap:wrap}
+  .shell .top-actions .field.compact{min-width:0;max-width:100%;flex:1 1 150px}
+  .shell .top-actions .lang{min-width:0;flex:0 0 auto}
   .request-facts,.request-quote-form,.request-schedule-form,.request-operation-form,.customer-card,.customer-facts{grid-template-columns:1fr}
   .customer-actions{justify-content:flex-start}
   .agenda-item{align-items:flex-start;display:grid}
