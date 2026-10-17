@@ -637,6 +637,7 @@
 
 /* Settings remain operable on narrow phones, including long service names. */
 .shell :where(.main,.grid,.card,.form-grid,.service-editor,.messaging-settings){min-width:0}
+.shell .field{min-width:0;max-width:100%}
 .shell :where(.form-grid,.service-editor,.capacity-settings,.messaging-settings) :where(input,select,textarea){min-width:0;max-width:100%}
 .shell :where(.section-title,.service-editor-head){flex-wrap:wrap;gap:10px}
 .shell :where(.section-title,.service-editor-head,.team-member)>div{min-width:0;overflow-wrap:anywhere}
