@@ -16,9 +16,9 @@ const token=randomBytes(32).toString('base64url'),ownerToken=`nl_${token}`;
 const memberToken=`nl_${randomBytes(32).toString('base64url')}`;
 const hash=value=>createHash('sha256').update(value).digest('hex');
 let server,logs='';
-async function call(path,method='GET',body,auth=ownerToken,expected=200){
+async function call(path,method='GET',body,auth=ownerToken,expected=200,extraHeaders={}){
  const response=await fetch(`http://127.0.0.1:${apiPort}/api/organizations/${orgId}/nestlocal${path}`,{
-  method,headers:{authorization:`Bearer ${auth}`,'content-type':'application/json'},
+  method,headers:{authorization:`Bearer ${auth}`,'content-type':'application/json',...extraHeaders},
   ...(body===undefined?{}:{body:JSON.stringify(body)})});
  const result=await response.json();
  assert.equal(response.status,expected,`${method} ${path}: ${JSON.stringify(result)}`);
@@ -115,6 +115,76 @@ try{
   assert.equal(saved.messaging?.consents?.maintenanceReminders?.accepted,true);
   assert.ok(!Object.hasOwn(saved,'messaging.consents.maintenanceReminders'));
  });
+ await check('catalog drafts preserve live page and template connection until atomic publication',async()=>{
+  await db.doc(`${root}/nestlocal_settings/public`).set({slug:'integration-store',publishedSlug:'integration-store',messaging:{connected:true,templates:{serviceUpdate:'old_template'}}},{merge:true});
+  const settingsBody={businessName:'Revised synthetic business',slug:'integration-store',coverageCodes:['test-city'],validForMinutes:30,whatsappServiceTemplate:'new_template',whatsappMaintenanceTemplate:'maintenance_template'};
+  await call('/settings','PUT',settingsBody);
+  let saved=(await db.doc(`${root}/nestlocal_settings/public`).get()).data();
+  assert.equal(saved.businessName,'Synthetic business');assert.equal(saved.published,true);
+  assert.equal(saved.draftSettings.messaging.templates.serviceUpdate,'new_template');
+  assert.ok(!Object.hasOwn(saved.draftSettings,'messaging.templates.serviceUpdate'));
+  await call('/services/clean','PUT',{name:'Revised synthetic service',mode:'review',returnAfterDays:30,inclusions:'Revised scope',exclusions:'Parts'});
+  saved=(await db.doc(`${root}/nestlocal_services/clean`).get()).data();
+  assert.equal(saved.name,'Synthetic cleaning');assert.equal(saved.published,true);
+  await call('/publish','POST',{});
+  saved=(await db.doc(`${root}/nestlocal_settings/public`).get()).data();
+  assert.equal(saved.businessName,settingsBody.businessName);
+  assert.equal(saved.messaging.connected,true);
+  assert.equal(saved.messaging.templates.serviceUpdate,'new_template');
+  assert.equal(saved.messaging.templates.maintenanceReminder,'maintenance_template');
+  assert.ok(!saved.draftSettings);
+  const published=(await db.doc(`${root}/nestlocal_services/clean`).get()).data();
+  assert.equal(published.name,'Revised synthetic service');assert.ok(!published.draft);
+  assert.equal(published.catalogVersion,saved.catalogVersion);
+ },true);
+ await check('manual creation retries produce one request and one usage increment',async()=>{
+  const body={name:'Synthetic repeat customer',phone:'11999990003',serviceId:'clean',coverageCode:'test-city',quantity:1,addressLine:'Synthetic address',preferredWindow:'flexible'};
+  const before=(await db.doc(`${root}/nestlocal_usage/${new Date().toISOString().slice(0,7)}`).get()).data()?.requestCount||0;
+  const headers={'Idempotency-Key':'integration-manual-retry'};
+  const first=await call('/requests','POST',body,ownerToken,201,headers);
+  const again=await call('/requests','POST',body,ownerToken,200,headers);
+  assert.equal(first.requestId,again.requestId);
+  assert.equal((await db.doc(`${root}/nestlocal_usage/${new Date().toISOString().slice(0,7)}`).get()).data().requestCount,before+1);
+  await call('/requests','POST',{...body,note:'Changed intent'},ownerToken,409,headers);
+ },true);
+ await check('quote revisions, expiry and simultaneous approval preserve accepted price',async()=>{
+  const ref=db.doc(`${root}/nestlocal_requests/lifecycle`);
+  await ref.set({status:'new',serviceId:'clean',quantity:1,customerId:'lifecycle-customer',customer:{name:'Synthetic customer'},quote:{totalCents:null},commercial:{paymentStatus:'pending',amountPaidCents:0},createdAt:admin.firestore.Timestamp.now()});
+  const first=await call('/requests/lifecycle/quote','POST',{amountCents:10000,expectedQuoteVersion:0,items:[{description:'Service',quantity:1,unitPriceCents:10000}]});
+  assert.equal(first.quoteVersion,1);
+  await call('/requests/lifecycle/quote','POST',{amountCents:12000,expectedQuoteVersion:0},ownerToken,409);
+  const revised=await call('/requests/lifecycle/quote','POST',{amountCents:12000,expectedQuoteVersion:1});
+  const link=await call('/requests/lifecycle/tracking-link','POST',{});
+  const capability=new URL(link.trackingPath,'http://localhost').search;
+  const decision=async(body,status=200)=>{
+   const response=await fetch(`http://127.0.0.1:${apiPort}/api/public/requests/lifecycle/decision${capability}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+   const result=await response.json();assert.equal(response.status,status,JSON.stringify(result));return result;
+  };
+  assert.equal((await decision({decision:'accepted',quoteVersion:1},409)).error,'QUOTE_REVISION_CHANGED');
+  await ref.update({'quote.expiresAt':'2000-01-01T00:00:00.000Z'});
+  assert.equal((await decision({decision:'accepted',quoteVersion:revised.quoteVersion},409)).error,'QUOTE_EXPIRED');
+  await ref.update({'quote.expiresAt':'2099-01-01T00:00:00.000Z'});
+  await Promise.all([decision({decision:'accepted',quoteVersion:2}),decision({decision:'accepted',quoteVersion:2})]);
+  assert.equal((await ref.get()).data().decision.quoteTotalCents,12000);
+  await call('/requests/lifecycle/quote','POST',{amountCents:13000,expectedQuoteVersion:2},ownerToken,409);
+  assert.equal((await ref.collection('quote_versions').get()).size,2);
+  // Keep the capability local to the synthetic test; never log or store a real token.
+  const schedule={status:'scheduled',scheduledDate:'2099-01-01',scheduledWindow:'afternoon',assignedTo:'integration-owner'};
+  await call('/requests/lifecycle','PATCH',schedule);
+  const confirmation=async(revision,status)=>{
+   const response=await fetch(`http://127.0.0.1:${apiPort}/api/public/requests/lifecycle/schedule-confirmation${capability}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({decision:'confirmed',revision})});
+   assert.equal(response.status,status,JSON.stringify(await response.json()));
+  };
+  await confirmation(1,201);
+  await call('/requests/lifecycle','PATCH',{scheduledDate:'2099-01-02'});
+  await confirmation(1,409);await confirmation(2,201);
+  const saved=(await ref.get()).data();assert.equal(saved.schedule.customerConfirmation.revision,2);
+  assert.equal(saved.schedule.confirmationHistory.length,1);
+  await call('/requests/lifecycle','PATCH',{status:'in_progress'});
+  await call('/requests/lifecycle','PATCH',{status:'completed',executionChecklist:[{id:'done',label:'Synthetic work',done:true}],finalAmountCents:12000});
+  const completed=(await ref.get()).data();assert.ok(completed.completionRecordedAt);
+  assert.equal((await db.doc(`${root}/nestlocal_customers/lifecycle-customer`).get()).data().lifetimeRevenueCents,12000);
+ },true);
  console.log(`NESTLOCAL_EMULATOR_${coreOnly?'CORE':'FULL'}_INTEGRATION_PASSED (synthetic data; no cloud certification)`);
 }catch(error){console.error(error);process.exitCode=1}
 finally{

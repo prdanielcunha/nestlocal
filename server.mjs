@@ -2030,7 +2030,7 @@ app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,
 
 app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,async(req,res)=>{
   if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
-  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,'messaging.templates.serviceUpdate':clean(b.whatsappServiceTemplate).slice(0,120),'messaging.templates.maintenanceReminder':clean(b.whatsappMaintenanceTemplate).slice(0,120),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+  const b=req.body||{};const data={businessName:clean(b.businessName).slice(0,100),slug:slug(b.slug),whatsapp:phone(b.whatsapp),coverageCodes:Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],validForMinutes:Number(b.validForMinutes||30),published:false,messaging:{templates:{serviceUpdate:clean(b.whatsappServiceTemplate).slice(0,120),maintenanceReminder:clean(b.whatsappMaintenanceTemplate).slice(0,120)}},updatedAt:admin.firestore.FieldValue.serverTimestamp()};
   const updatingChannels=b.communicationMode!==undefined||b.contactEmail!==undefined||b.contactPhone!==undefined;
   if(updatingChannels){
     const communicationMode=clean(b.communicationMode||'none'),contactEmail=clean(b.contactEmail).toLowerCase().slice(0,254),contactPhone=phone(b.contactPhone);
@@ -2041,7 +2041,7 @@ app.put('/api/organizations/:orgId/nestlocal/settings',authenticate,authorize,as
     }
     Object.assign(data,{communicationMode,contactEmail,contactPhone,trustSetupVersion:2});
   }
-  if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);const active=await settingsRef.get();if(active.data()?.published===true){const {published,updatedAt,...draftSettings}=data;await settingsRef.set({draftSettings,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})}else await settingsRef.set(data,{merge:true});res.json({ok:true,draft:active.data()?.published===true})
+  if(data.businessName.length<2||data.slug.length<3||!data.coverageCodes.length||!Number.isSafeInteger(data.validForMinutes)||data.validForMinutes<5||data.validForMinutes>1440)return sendError(res,400,'INVALID_SETTINGS');const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`);let draft=false;await db.runTransaction(async tx=>{const active=await tx.get(settingsRef);draft=active.data()?.published===true;if(draft){const {published,updatedAt,...draftSettings}=data;tx.set(settingsRef,{draftSettings,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})}else tx.set(settingsRef,data,{merge:true})});res.json({ok:true,draft})
 });
 
 // Privacy Center: no provider credentials, no raw contact details in audit records.
@@ -2119,20 +2119,44 @@ app.put('/api/organizations/:orgId/nestlocal/services/:serviceId',authenticate,a
   const data={name:clean(b.name).slice(0,100),mode:b.mode,returnAfterDays,inclusions:clean(b.inclusions).slice(0,500),exclusions:clean(b.exclusions).slice(0,500)};
   if(b.mode==='fixed')Object.assign(data,{unitPriceCents:Number(b.unitPriceCents),durationMinutes:Number(b.durationMinutes),maxQuantity:Number(b.maxQuantity),equipmentTypes:Array.isArray(b.equipmentTypes)?b.equipmentTypes.map(slug).filter(Boolean):[],requiresEquipmentType:b.requiresEquipmentType!==false,requiresSafeAccess:b.requiresSafeAccess!==false});
   try{quote({catalog:{organizationId:req.access.orgId,version:'validation',status:'published',currency:'BRL',validForMinutes:30,coverageCodes:['validation'],services:[{id,...data}]},request:{serviceId:id,quantity:1,coverageCode:'validation',equipmentType:data.requiresEquipmentType===false?undefined:data.equipmentTypes?.[0],safeAccess:data.requiresSafeAccess===false?undefined:true},now:new Date()})}catch(e){if(data.mode==='fixed')return sendError(res,400,'INVALID_SERVICE')}
-  const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${id}`);const existing=await ref.get();if(existing.data()?.published===true){await ref.set({draft:data,draftUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true})}else{await ref.set({...data,published:false},{merge:true})}res.json({ok:true,draft:existing.data()?.published===true})
+  const ref=db.doc(`organizations/${req.access.orgId}/nestlocal_services/${id}`);let draft=false;await db.runTransaction(async tx=>{const existing=await tx.get(ref);draft=existing.data()?.published===true;if(draft)tx.set(ref,{draft:data,draftUpdatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});else tx.set(ref,{...data,published:false},{merge:true})});res.json({ok:true,draft})
 });
 
 app.post('/api/organizations/:orgId/nestlocal/publish',authenticate,authorize,async(req,res)=>{
   if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   try{
-    const settingsRef=db.doc(`organizations/${req.access.orgId}/nestlocal_settings/public`),[settings,services]=await Promise.all([settingsRef.get(),db.collection(`organizations/${req.access.orgId}/nestlocal_services`).get()]);
-    const active=settings.exists?settings.data():null,data=active?.draftSettings?{...active,...active.draftSettings}:active,list=services.docs.map(x=>{const service=x.data();return{id:x.id,...service,...(service.draft||{})}}),readiness=catalogReadiness(data,list);
-    if(!readiness.ready)return res.status(409).json({error:'PUBLISH_NOT_READY',issues:readiness.issues});
-    const version=`v${Date.now()}`,directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`);
-    if(services.size>350)return sendError(res,409,'CATALOG_TOO_LARGE_FOR_ATOMIC_PUBLISH');
-    await db.runTransaction(async tx=>{const directory=await tx.get(directoryRef);if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});tx.set(settingsRef,{...(active?.draftSettings||{}),draftSettings:admin.firestore.FieldValue.delete(),published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});for(const item of services.docs){const draft=item.data()?.draft||{};tx.set(item.ref,{...draft,draft:admin.firestore.FieldValue.delete(),published:true,catalogVersion:version},{merge:true})}});
-    res.json({ok:true,version,publicPath:`/s/${data.slug}`});
-  }catch(e){console.error(e);if(e?.message==='SLUG_TAKEN')return sendError(res,409,'SLUG_TAKEN');sendError(res,500,'INTERNAL_ERROR')}
+    const root=`organizations/${req.access.orgId}`,settingsRef=db.doc(`${root}/nestlocal_settings/public`),servicesRef=db.collection(`${root}/nestlocal_services`);
+    let result;
+    await db.runTransaction(async tx=>{
+      // Read the settings and service query inside the transaction. Concurrent
+      // edits must retry publication rather than disappear under draft deletion.
+      const [settings,services]=await Promise.all([tx.get(settingsRef),tx.get(servicesRef)]);
+      const active=settings.exists?settings.data():null,
+        data=active?.draftSettings?{...active,...active.draftSettings}:active,
+        list=services.docs.map(x=>({id:x.id,...x.data(),...(x.data().draft||{})})),
+        readiness=catalogReadiness(data,list);
+      if(!readiness.ready){result={error:'PUBLISH_NOT_READY',issues:readiness.issues};return}
+      if(services.size>350)throw new TypeError('CATALOG_TOO_LARGE_FOR_ATOMIC_PUBLISH');
+      const directoryRef=db.doc(`nestlocal_public_stores/${data.slug}`),directory=await tx.get(directoryRef);
+      if(directory.exists&&directory.data()?.organizationId!==req.access.orgId)throw new TypeError('SLUG_TAKEN');
+      const version=`v${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+      if(data.publishedSlug&&data.publishedSlug!==data.slug)tx.delete(db.doc(`nestlocal_public_stores/${data.publishedSlug}`));
+      tx.set(directoryRef,{organizationId:req.access.orgId,updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+      const changes={...(active?.draftSettings||{})};
+      // Normalize drafts saved by older code with literal dotted keys, without
+      // overwriting channel connection state or unrelated settings.
+      for(const [key,field] of [['messaging.templates.serviceUpdate','serviceUpdate'],['messaging.templates.maintenanceReminder','maintenanceReminder']]){
+        if(Object.hasOwn(changes,key)){
+          changes.messaging={...(changes.messaging||{}),templates:{...(changes.messaging?.templates||{}),[field]:changes[key]}};
+          delete changes[key];
+        }
+      }
+      tx.set(settingsRef,{...changes,draftSettings:admin.firestore.FieldValue.delete(),published:true,publishedSlug:data.slug,catalogVersion:version,publishedAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      for(const item of services.docs)tx.set(item.ref,{...(item.data()?.draft||{}),draft:admin.firestore.FieldValue.delete(),published:true,catalogVersion:version},{merge:true});
+      result={ok:true,version,publicPath:`/s/${data.slug}`};
+    });
+    res.status(result.error?409:200).json(result);
+  }catch(e){console.error(e);if(['SLUG_TAKEN','CATALOG_TOO_LARGE_FOR_ATOMIC_PUBLISH'].includes(e?.message))return sendError(res,409,e.message);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 app.post('/api/organizations/:orgId/nestlocal/experiments',authenticate,authorize,async(req,res)=>{
