@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import express from 'express';
-import {buildNestLocalIcs,safeCalendarEvents,isoDayAdd} from '../src/domain/calendar.mjs';
+import {buildNestLocalIcs,safeCalendarEvents,isoDayAdd,validDate} from '../src/domain/calendar.mjs';
 import {calendarAddDay,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl,renderCalendarIntro,calendarWords} from '../web/calendar.js';
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 const ui=readFileSync(new URL('../web/live.js',import.meta.url),'utf8');
@@ -85,4 +85,11 @@ test('UI exposes calendar subscription, individual event export and notice that 
 test('Express 5 accepts the public .ics capability path without route boot errors',()=>{
   const router=express.Router();
   assert.doesNotThrow(()=>router.get('/api/calendar/feeds/:orgId/:uid.ics',(_req,res)=>res.status(200).end()));
+});
+
+// Newly submitted dates must represent a calendar day, not just match a pattern.
+test('calendar day validation rejects overflow dates and accepts leap years',()=>{
+  for(const date of ['2026-02-29','2026-02-31','2026-13-01','2026-00-01','2026-01-00','2026-1-1','not-a-date'])assert.equal(validDate(date),false,date);
+  assert.equal(validDate('2028-02-29'),true);
+  assert.equal(validDate('2026-10-17'),true);
 });
