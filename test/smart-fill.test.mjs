@@ -20,8 +20,10 @@ test('capacity updates use an isolated authenticated endpoint', () => {
   const route = server.slice(start, end);
   assert.ok(route.includes("authenticate,authorize"));
   assert.ok(route.includes("validTimeZone"));
-  assert.ok(route.includes("'capacity.workingDays'"));
-  assert.ok(route.includes("'capacity.windows'"));
+  // set(..., {merge:true}) requires nested maps; dotted keys are literal fields.
+  assert.match(route, /capacity:\{workingDays,windows\}/);
+  assert.doesNotMatch(route, /['"]capacity\.workingDays['"]\s*:/);
+  assert.doesNotMatch(route, /['"]capacity\.windows['"]\s*:/);
   assert.equal(route.includes("published:false"), false);
 });
 
