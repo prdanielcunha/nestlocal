@@ -55,10 +55,11 @@ try{
   await page.waitForFunction(()=>document.querySelector('#capacity-settings [name="timezone"]')?.value==='UTC'&&!document.querySelector('#capacity-settings button[type="submit"]').disabled);
   const saved=writes.find(x=>x.kind==='capacity');assert.equal(saved.body.timezone,'UTC');
   assert.deepEqual(saved.body.workingDays,[1,2]);assert.deepEqual(saved.body.windows,['morning','afternoon']);
-  const size=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,width:innerWidth}));
+  await page.screenshot({path:`artifacts/experience/settings-save-${width}.png`,fullPage:true});
+  const size=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,width:innerWidth,
+   overflowing:Array.from(document.querySelectorAll('.main *')).filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,8).map(el=>({tag:el.tagName,class:el.className,right:Math.round(el.getBoundingClientRect().right)}))}));
   assert.ok(size.actual<=size.width+1,JSON.stringify(size));
   assert.deepEqual(errors,[]);
-  await page.screenshot({path:`artifacts/experience/settings-save-${width}.png`,fullPage:true});
   await page.close();
  }
  console.log('PASS settings and capacity submit, failure recovery and retry at 320/390/1440px (synthetic API)');

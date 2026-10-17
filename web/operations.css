@@ -629,3 +629,16 @@
 .native-ai-notice .help{margin:5px 0 0;font-size:12px;line-height:1.5}
 .native-ai-notice button{min-height:44px;flex-shrink:0}
 @media(max-width:560px){.native-ai-notice{flex-direction:column;align-items:stretch}.native-ai-notice button{width:100%}}
+
+/* Settings remain operable on narrow phones, including long service names. */
+.shell :where(.main,.grid,.card,.form-grid,.service-editor,.messaging-settings){min-width:0}
+.shell :where(.form-grid,.service-editor,.capacity-settings,.messaging-settings) :where(input,select,textarea){min-width:0;max-width:100%}
+.shell :where(.section-title,.service-editor-head){flex-wrap:wrap;gap:10px}
+.shell :where(.section-title,.service-editor-head,.team-member)>div{min-width:0;overflow-wrap:anywhere}
+@media(max-width:760px){
+  .shell .grid.two,.shell .form-grid{grid-template-columns:minmax(0,1fr)}
+  .shell .service-editor{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .shell .service-editor>label{min-width:0}
+  .shell .return-rule-input{min-width:0;max-width:100%}
+  .shell .return-rule-input input{min-width:0}
+}
