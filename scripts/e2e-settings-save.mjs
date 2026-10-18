@@ -84,7 +84,7 @@ try{
   const accessSaved=page.waitForResponse(r=>r.url().endsWith('/team/synthetic-member')&&r.request().method()==='PUT');
   await permissions.locator('button[type="submit"]').click();assert.equal((await accessSaved).status(),200);
   await page.waitForFunction(()=>document.querySelector('[data-member-capabilities] [name="financeWrite"]')?.checked&&!document.querySelector('[data-member-capabilities] button').disabled);
-  assert.deepEqual(writes.find(x=>x.kind==='capabilities').body,{enabled:true,capabilities:{financeWrite:true,sitesWrite:false}});
+  assert.deepEqual(writes.find(x=>x.kind==='capabilities').body,{enabled:true,profile:'legacy',capabilities:{financeWrite:true,sitesWrite:false}});
   await page.evaluate(()=>document.querySelector('.sidebar [data-nav="customers"]').click());
   await page.locator('.customer-import-card summary').click();
   await page.locator('#customerBatchFile').setInputFiles({name:'clientes.csv',mimeType:'text/csv',buffer:Buffer.from('Nome;WhatsApp;Endereço\n"Ana, AC";5511999999999;"Rua A, 10"')});
