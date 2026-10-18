@@ -31,6 +31,7 @@ try{
  // Never print a GoogleAuth response/config, which may contain credentials.
  console.error('NESTLOCAL_BACKUP_INVENTORY_UNAVAILABLE',JSON.stringify({stage,location,
   status:Number(error?.response?.status)||null,code:error?.response?.data?.error?.status||
-   (['DATABASE_IDENTITY_UNAVAILABLE','BACKUP_INVENTORY_INCOMPLETE','BACKUP_SCOPE_MISMATCH'].includes(error?.message)?error.message:'READ_FAILED')}));
+   (['DATABASE_IDENTITY_UNAVAILABLE','BACKUP_INVENTORY_INCOMPLETE','BACKUP_SCOPE_MISMATCH'].includes(error?.message)?error.message:'READ_FAILED'),
+   ...(Number(error?.response?.status)===400?{detail:String(error.response.data?.error?.message||'').replace(/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}/gi,'[database-uid]').slice(0,400)}:{})}));
  process.exitCode=2;
 }
