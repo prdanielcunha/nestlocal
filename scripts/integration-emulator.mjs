@@ -286,6 +286,51 @@ try{
   await call('/team/integration-owner','PUT',{enabled:true,profile:'viewer'},ownerToken,409);
   await call('/team/integration-field','PUT',{enabled:true,profile:'legacy'});
  },true);
+ await check('site imports preview, preserve conflicts, reject stale changes and retry atomically',async()=>{
+  const customer='site-batch-test',base='/customers/'+customer+'/sites/import',ref=db.doc(`${root}/nestlocal_customers/${customer}`),
+   site={label:'Main office',line:'Sample road 123',city:'Test city',notes:'Private notes',equipment:['AC room','AC hall']};
+  await ref.set({name:'Site import sample',phone:'5511888888888',siteCount:0,createdAt:admin.firestore.Timestamp.now(),messaging:{consents:{maintenanceReminders:{accepted:false}}},lifetimeRevenueCents:12345});
+  const preview=await call(base+'/preview','POST',{sites:[site]});
+  assert.equal(preview.counts.create,1);assert.equal((await ref.collection('sites').get()).size,0);
+  const payload={sites:[site],previewToken:preview.previewToken,operationKey:'nl-site-import-synthetic-0001'};
+  const send=async(path,body)=>{
+   const response=await fetch(`http://127.0.0.1:${apiPort}/api/organizations/${orgId}/nestlocal${path}`,{method:'POST',headers:{authorization:`Bearer ${ownerToken}`,'content-type':'application/json'},body:JSON.stringify(body)});
+   return {status:response.status,body:await response.json()};
+  };
+  const responses=await Promise.all([send(base,payload),send(base,payload)]);
+  assert.deepEqual(responses.map(x=>x.status).sort(),[200,201],JSON.stringify(responses));
+  assert.ok(responses.every(x=>x.body.created===1));
+  assert.equal((await ref.collection('sites').get()).size,1);assert.equal((await ref.get()).data().siteCount,1);
+  assert.equal((await ref.get()).data().lifetimeRevenueCents,12345);
+  assert.equal((await ref.get()).data().messaging.consents.maintenanceReminders.accepted,false);
+  await call(base,'POST',{...payload,sites:[{...site,label:'Altered'}]},ownerToken,409);
+  const unchanged=await call(base+'/preview','POST',{sites:[site]});assert.equal(unchanged.counts.existing,1);assert.equal(unchanged.canImport,false);
+  const conflict=await call(base+'/preview','POST',{sites:[{...site,notes:'Different'}]});assert.equal(conflict.counts.conflict,1);
+  await call(base,'POST',{sites:[{...site,notes:'Different'}],previewToken:conflict.previewToken,operationKey:'nl-site-import-synthetic-conflict'},ownerToken,409);
+  const next={...site,label:'Branch'},stale=await call(base+'/preview','POST',{sites:[next]});
+  const existing=(await ref.collection('sites').get()).docs[0];await existing.ref.update({notes:'Modified by another operator',revision:2});
+  await call(base,'POST',{sites:[next],previewToken:stale.previewToken,operationKey:'nl-site-import-synthetic-stale'},ownerToken,409);
+  assert.equal((await ref.collection('sites').get()).size,1);
+  await call(base+'/preview','POST',{sites:[site]},memberToken,403);
+  for(const profile of ['field','viewer','finance']){
+   await call('/team/integration-field','PUT',{enabled:true,profile});
+   await call(base+'/preview','POST',{sites:[site]},memberToken,403);
+   await call(base,'POST',payload,memberToken,403);
+  }
+  await call('/team/integration-field','PUT',{enabled:true,profile:'legacy'});
+  await call('/customers/no-such-customer/sites/import/preview','POST',{sites:[site]},ownerToken,404);
+  const audit=await db.collection(`${root}/nestlocal_audit`).where('action','==','customers.sites_imported').get();
+  const rows=audit.docs.filter(x=>x.data().customerId===customer);assert.equal(rows.length,1);
+  assert.ok(!JSON.stringify(rows[0].data()).includes('Private notes'));assert.ok(!JSON.stringify(rows[0].data()).includes('Sample road'));
+  // Only one of two different imports can consume the twentieth site slot.
+  const full='site-batch-capacity',fullRef=db.doc(`${root}/nestlocal_customers/${full}`),fullPath='/customers/'+full+'/sites/import';
+  await fullRef.set({name:'Capacity test',siteCount:19});
+  const batch=db.batch();for(let i=0;i<19;i++)batch.set(fullRef.collection('sites').doc('old-'+i),{...site,label:'Existing '+i});await batch.commit();
+  const a={...site,label:'New A'},b={...site,label:'New B'},pa=await call(fullPath+'/preview','POST',{sites:[a]}),pb=await call(fullPath+'/preview','POST',{sites:[b]});
+  const competing=await Promise.all([send(fullPath,{sites:[a],previewToken:pa.previewToken,operationKey:'nl-site-import-capacity-aaaa'}),send(fullPath,{sites:[b],previewToken:pb.previewToken,operationKey:'nl-site-import-capacity-bbbb'})]);
+  assert.deepEqual(competing.map(x=>x.status).sort(),[201,409],JSON.stringify(competing));
+  assert.equal((await fullRef.collection('sites').get()).size,20);assert.equal((await fullRef.get()).data().siteCount,20);
+ },true);
  if(process.env.NESTLOCAL_BROWSER_INTEGRATION==='true'&&!coreOnly){
   await check('browser saves settings through the real API into Firestore',async()=>{
    mkdirSync('artifacts/profiles',{recursive:true});
@@ -329,6 +374,40 @@ try{
      assert.equal((await saved).status(),200);
      assert.equal((await db.doc(`${root}/nestlocal_settings/public`).get()).data().timezone,'UTC');
      assert.deepEqual(errors,[]);await page.close();
+    }
+    for(const width of [320,390,1440]){
+     const customerId='aaa-site-browser-'+width,customerRef=db.doc(`${root}/nestlocal_customers/${customerId}`);
+     await customerRef.set({name:'Browser site import '+width,phone:'5511777777777',siteCount:0,createdAt:admin.firestore.Timestamp.now()});
+     const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
+     page.on('pageerror',error=>errors.push(error.message));
+     await page.addInitScript(({token,org})=>{sessionStorage.setItem('nl_session_token',token);localStorage.setItem('nl_org',org)},{token:ownerToken,org:orgId});
+     await page.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
+     await page.locator('[data-nav="customers"]:visible').first().click();
+     await page.locator(`[data-load-customer-sites="${customerId}"]`).click();
+     const form=page.locator(`[data-site-batch="${customerId}"]`);await form.locator('xpath=..').locator('summary').click();
+     const csv='Local;Endereço;Cidade;Equipamento;Observações\nMatriz;Rua Exemplo 123;Londrina;Split sala;Recepção\nMatriz;Rua Exemplo 123;Londrina;Split cozinha;Recepção\nFilial;Rua Filial 456;Cambé;;';
+     await form.locator('[data-site-file]').setInputFiles({name:'locais.csv',mimeType:'text/csv',buffer:Buffer.from(csv)});
+     await page.waitForFunction(id=>document.querySelector(`[data-site-batch="${id}"] textarea`).value.includes('Split cozinha'),customerId);
+     const reviewed=page.waitForResponse(r=>r.url().endsWith('/sites/import/preview')&&r.request().method()==='POST');
+     await form.locator('[type=submit]').click();assert.equal((await reviewed).status(),200);
+     await form.locator('[data-site-preview] li').first().waitFor();
+     assert.equal((await customerRef.collection('sites').get()).size,0,'Preview must not write');
+     assert.equal(await form.locator('[data-site-preview] li').count(),2);
+     const actionVisible=await form.locator('[type=submit]').evaluate(button=>{
+      const box=button.getBoundingClientRect(),nav=document.querySelector('.bottom-nav'),boundary=nav&&getComputedStyle(nav).display!=='none'?nav.getBoundingClientRect().top:innerHeight;
+      return box.top>=0&&box.bottom<=Math.min(boundary,innerHeight)-8;
+     });
+     assert.ok(actionVisible,'Confirmation must stay above mobile navigation '+width);
+     await page.screenshot({path:`artifacts/profiles/site-import-${width}.png`});
+     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Site import overflow '+width);
+     // Editing invalidates the previous preview before any import can occur.
+     await form.locator('textarea').fill(csv+'\n');assert.equal(await form.locator('[data-site-preview] li').count(),0);
+     const again=page.waitForResponse(r=>r.url().endsWith('/sites/import/preview'));await form.locator('[type=submit]').click();assert.equal((await again).status(),200);
+     const imported=page.waitForResponse(r=>r.url().endsWith('/sites/import')&&r.request().method()==='POST');
+     await form.locator('[type=submit]').click();assert.equal((await imported).status(),201);
+     const sites=await customerRef.collection('sites').get();assert.equal(sites.size,2);
+     assert.equal(sites.docs.find(x=>x.data().label==='Matriz').data().equipment.length,2);
+     assert.equal((await customerRef.get()).data().siteCount,2);assert.deepEqual(errors,[]);await page.close();
     }
     for(const width of [320,390,1440]){
      const id=`aaa-browser-${width}`,ref=db.doc(`${root}/nestlocal_requests/${id}`);

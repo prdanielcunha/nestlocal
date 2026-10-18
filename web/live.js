@@ -1,5 +1,6 @@
 
 import {parseCustomerBatch} from './customer-import.js?v=20261017-import-v1';
+import {renderSiteImport,bindSiteImports} from './site-import.js?v=20261018-batch-v1';
 import {renderConversationImport,bindConversationImport} from './conversation-import.js?v=20261018-v1';
 import {renderRoleWorkspace} from './role-workspace.js?v=20261018-profiles-v1';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
@@ -923,6 +924,7 @@ function customerSitesPanel(customer){
         <button type="button" class="button small" data-new-request-for-site="${esc(customer.id)}" data-site-id="${esc(site.id)}">${t('createRequestAtSite')}</button>
         ${canEdit?siteForm(site):''}</details>`).join(''):`<p class="help">${t('siteEmpty')}</p>`}
       ${canEdit&&state.items?.length<20?`<details class="customer-site-add"><summary>${t('addCustomerSite')}</summary>${siteForm()}</details>`:''}
+      ${canEdit&&state.items?.length<20?renderSiteImport(customer.id,S.lang,esc):''}
       ${state.items?.length>=20?`<p class="help">${t('siteLimit')}</p>`:''}
     </div>`:''}</section>`;
 }
@@ -1241,7 +1243,7 @@ function restorePublicFormDraft(){
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
 
-const trackedFormSelector='#settings,#capacity-settings,#internal-request,[data-request-operation],[data-request-quote],[data-request-schedule],[data-maintenance-plan],[data-service],[data-customer-site-save],[data-field-job],[data-finance-job]';
+const trackedFormSelector='#settings,#capacity-settings,#internal-request,[data-request-operation],[data-request-quote],[data-request-schedule],[data-maintenance-plan],[data-service],[data-customer-site-save],[data-site-batch],[data-field-job],[data-finance-job]';
 function transientFormKey(form){
   if(!form||!S.user||!S.orgId||!S.data||!form.matches(trackedFormSelector))return '';
   const identity=String(S.user.uid||S.user.id||'user');
@@ -1253,6 +1255,7 @@ function transientFormKey(form){
     form.dataset.requestSchedule&&'schedule:'+form.dataset.requestSchedule||
     form.dataset.maintenancePlan&&'maintenance:'+form.dataset.maintenancePlan||
     form.dataset.customerSiteSave&&'site:'+form.dataset.customerSiteSave+':'+(form.dataset.siteId||'new')||
+    form.dataset.siteBatch&&'site-batch:'+form.dataset.siteBatch||
     form.dataset.service&&'service:'+form.dataset.service
   );
   return scope?identity+'|'+S.orgId+'|'+scope:'';
@@ -1529,6 +1532,13 @@ function checkTaskNotifications(){
   }catch{ /* Device denied delivery. No false notification confirmation. */ }
 }
 function bind(){
+  bindSiteImports({lang:S.lang,orgId:S.orgId,uid:S.user?.uid,api,esc,
+    isCurrent:(org,uid)=>S.orgId===org&&S.user?.uid===uid,
+    onSaved:async(result,form)=>{
+      clearTransientForm(form);const org=S.orgId,uid=S.user?.uid,id=form.dataset.siteBatch;
+      try{const sites=await api(`/api/organizations/${encodeURIComponent(org)}/nestlocal/customers/${encodeURIComponent(id)}/sites`);if(org===S.orgId&&uid===S.user?.uid){S.customerSites[id]=sites;render()}}catch{}
+      if(org===S.orgId&&uid===S.user?.uid)toast(t('saved'));
+    }});
   document.querySelectorAll('[data-enable-task-alerts]').forEach(button=>button.onclick=async()=>{
     if(typeof Notification==='undefined'||!('requestPermission' in Notification)){
       toast(t('alertsUnavailable'));return;
