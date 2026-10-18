@@ -141,7 +141,7 @@ test('C21: field workers can complete jobs but cannot change financial amounts w
  assert.match(server,/canManageNestLocalFinance=access=>canManageNestLocal\(access\)/);
  assert.match(server,/nestLocalCapability\(access\?\.member,'financeWrite'\)/);
  assert.match(server,/financialEdit&&!canManageNestLocalFinance\(req\.access\)/);
- assert.match(server,/FINANCE_ACCESS_DENIED'\)return sendError\(res,403/);
+ assert.match(server,/\['FINANCE_ACCESS_DENIED','ASSIGNMENT_ACCESS_DENIED','FIELD_CHECKLIST_SCOPE_DENIED'\]\.includes\(code\)\)return sendError\(res,403/);
  assert.match(live,/canManageFinance===false/);
  assert.match(live,/S\.data\?\.canManageFinance!==false\)Object\.assign\(payload/);
  assert.match(live,/data-payment-history=/);

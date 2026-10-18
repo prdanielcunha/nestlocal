@@ -57,6 +57,7 @@ try{
  // never create the probe parent or any document beneath it.
  stage='query_shapes';
  const probe='organizations/nestlocal-readiness-query-probe';
+ await db.collection(`${probe}/nestlocal_requests`).where('schedule.assignedTo','==','readiness-probe-uid').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
  await db.collection(`${probe}/nestlocal_requests`).where('status','==','quoted').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
  await db.collection(`${probe}/nestlocal_customers`).where('nextServiceDate','<=','2099-01-01').orderBy('nextServiceDate').limit(1).get();
  await db.collection(`${probe}/nestlocal_schedule_slots`).orderBy('date').orderBy(admin.firestore.FieldPath.documentId()).limit(1).get();
