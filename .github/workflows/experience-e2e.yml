@@ -7,6 +7,8 @@ on:
       - "web/live.js"
       - "web/transient-form-drafts.js"
       - "web/conversation-import.js"
+      - "web/site-import.js"
+      - "web/customer-import.js"
       - "web/calendar.js"
       - "web/operations.css"
       - "web/premium-system.css"

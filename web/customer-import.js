@@ -10,11 +10,11 @@ const aliases={
  nextServiceReason:['motivo do retorno','return reason','motivo','reason','motivo del retorno']
 };
 const fields=Object.keys(aliases);
-function table(text,delimiter){
+function table(text,delimiter,maxRows=101){
  const rows=[];let row=[],cell='',quoted=false,closed=false;
  const pushCell=()=>{row.push(cell.trim());cell='';closed=false};
  const pushRow=()=>{pushCell();if(row.some(Boolean))rows.push(row);row=[];
-  if(rows.length>101)throw new TypeError('CUSTOMER_IMPORT_ROW_LIMIT')};
+  if(rows.length>maxRows)throw new TypeError('CUSTOMER_IMPORT_ROW_LIMIT')};
  for(let i=0;i<text.length;i++){
   const c=text[i];
   if(quoted){if(c==='"'){if(text[i+1]==='"'){cell+='"';i++}else{quoted=false;closed=true}}else cell+=c;continue}
@@ -34,7 +34,7 @@ function importDate(value){
  // Keep unrecognized dates visible to server validation, never silently erase.
  return match?`${match[3]}-${match[2].padStart(2,'0')}-${match[1].padStart(2,'0')}`:value;
 }
-export function parseCustomerBatch(input){
+export function parseDelimitedTable(input,maxRows=101){
  const text=String(input||'').replace(/^\uFEFF/,'');
  if(new TextEncoder().encode(text).length>65536)throw new TypeError('CUSTOMER_IMPORT_FILE_LIMIT');
  if(!text.trim())return [];
@@ -44,7 +44,11 @@ export function parseCustomerBatch(input){
   const c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){i++;continue}quoted=!quoted}
   if(!quoted){if(c==='\r'||c==='\n')break;if(counts.has(c))counts.set(c,counts.get(c)+1)}
  }
- const delimiter=[...counts].sort((a,b)=>b[1]-a[1])[0][0],rows=table(text,delimiter);
+ const delimiter=[...counts].sort((a,b)=>b[1]-a[1])[0][0];
+ return table(text,delimiter,maxRows);
+}
+export function parseCustomerBatch(input){
+ const rows=parseDelimitedTable(input);
  if(!rows.length)return [];
  const header=rows[0].map(key),index=Object.fromEntries(fields.map(field=>[field,header.findIndex(h=>aliases[field].includes(h))]));
  const hasHeader=index.name>=0&&index.phone>=0;
