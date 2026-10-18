@@ -393,7 +393,12 @@ try{
      await form.locator('[data-site-preview] li').first().waitFor();
      assert.equal((await customerRef.collection('sites').get()).size,0,'Preview must not write');
      assert.equal(await form.locator('[data-site-preview] li').count(),2);
-     await form.screenshot({path:`artifacts/profiles/site-import-${width}.png`});
+     const actionVisible=await form.locator('[type=submit]').evaluate(button=>{
+      const box=button.getBoundingClientRect(),nav=document.querySelector('.bottom-nav'),boundary=nav&&getComputedStyle(nav).display!=='none'?nav.getBoundingClientRect().top:innerHeight;
+      return box.top>=0&&box.bottom<=Math.min(boundary,innerHeight)-8;
+     });
+     assert.ok(actionVisible,'Confirmation must stay above mobile navigation '+width);
+     await page.screenshot({path:`artifacts/profiles/site-import-${width}.png`});
      assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Site import overflow '+width);
      // Editing invalidates the previous preview before any import can occur.
      await form.locator('textarea').fill(csv+'\n');assert.equal(await form.locator('[data-site-preview] li').count(),0);

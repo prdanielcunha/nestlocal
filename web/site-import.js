@@ -78,6 +78,8 @@ export function bindSiteImports({root=document,lang,orgId,uid,api,isCurrent,onSa
      panel.innerHTML=`<p>${c.summary}: ${result.counts.create} / ${result.counts.existing} / ${result.counts.conflict}</p><ul>${result.rows.map(row=>`<li><strong>${esc(row.label)}</strong> — ${esc(row.line)} · ${esc(row.city)}<br>${c.rows}: ${parsed[row.index].sourceRows.join(', ')} · ${row.equipment.length} ${c.equipment} · ${esc(c[row.status==='create'?'create':row.status==='existing'?'existing':'conflict'])}</li>`).join('')}</ul>`;
      button.textContent=c.confirm;button.disabled=!result.canImport;
      status.textContent=!result.withinLimit?c.capacity:result.counts.conflict?c.conflict:result.counts.create===0?c.noChanges:'';
+     button.scrollIntoView({block:'center',behavior:'instant'});
+     if(result.canImport)button.focus({preventScroll:true});
     }else{
      const result=await api(base,{method:'POST',body:JSON.stringify({sites:preview.sites,previewToken:preview.previewToken,operationKey})});
      if(!current()||version!==sequence)return;
