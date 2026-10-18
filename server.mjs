@@ -12,6 +12,7 @@ import { quoteHasExpired, currentScheduleRevision, scheduleRevisionAfterPatch, c
 import { validateExecutionChecklist } from './src/domain/field-checklist.mjs';
 import { validateQuoteItems } from './src/domain/quote-items.mjs';
 import { validateCustomerSite } from './src/domain/customer-sites.mjs';
+import {registerCustomerSiteImport} from './src/domain/customer-site-import.mjs';
 import {customerSiteRequestSnapshot} from './src/domain/customer-site-request.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
@@ -2002,6 +2003,7 @@ const name=clean(row?.name).slice(0,100),customerPhone=phone(row?.phone),city=cl
 
 
 // Locations and equipment are bounded subresources of one customer.
+registerCustomerSiteImport(app,{db,admin,authenticate,authorize,canManageSites:canManageNestLocalSites,hash,safeId,sendError,rateLimit});
 app.get('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
  const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
  const base=db.doc('organizations/'+req.access.orgId+'/nestlocal_customers/'+customerId);
