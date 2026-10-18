@@ -11,7 +11,7 @@ import {renderOutcomeLearning} from './outcome-learning.js';
 import {chooseOperationalFocus} from './operational-focus.js';
 import {enrollNestLocalPush,disableNestLocalPush,testNestLocalPush} from './push-notifications.js';
 import {mergeOperationalRows} from './operational-data.js';
-import {captureTransientForm,restoreTransientForm} from './transient-form-drafts.js';
+import {captureTransientForm,restoreTransientForm} from './transient-form-drafts.js?v=20261018-full-drafts-v1';
 import {makeTaskReminderIcs} from './task-calendar.js';
 import {dueTaskDigest,makeTaskNotification} from './task-reminders.js';
 import {experimentContextForAction,experimentForAction,renderExperimentAssist,renderExperimentContext,renderGuidedExperiment} from './guided-experiment.js';
