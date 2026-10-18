@@ -34,6 +34,17 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: millionsnest
         run: node scripts/nestlocal-cloud-readiness.mjs
+      - name: Inspect known release flags without exposing environment values
+        run: |
+          set -euo pipefail
+          gcloud run services describe nestlocal-api --project millionsnest --region us-central1 --format=json | node --input-type=module -e '
+            let raw=""; for await (const chunk of process.stdin) raw+=chunk;
+            const env=JSON.parse(raw).spec?.template?.spec?.containers?.[0]?.env;
+            if(!Array.isArray(env))throw new Error("RUNTIME_ENV_METADATA_MISSING");
+            const flags=["NESTLOCAL_OPPORTUNITY_DRAFTS_V2_ENABLED","NESTLOCAL_OPPORTUNITY_AI_V2_ENABLED","NESTLOCAL_AI_V2_ENABLED","NESTLOCAL_PULSE_V2_ENABLED","NESTLOCAL_PUSH_ENABLED"];
+            const pilots=["NESTLOCAL_OPPORTUNITY_DRAFTS_V2_PILOT_ORGS","NESTLOCAL_OPPORTUNITY_AI_PILOT_ORGS","NESTLOCAL_AI_V2_PILOT_ORGS","NESTLOCAL_PULSE_V2_PILOT_ORGS"];
+            console.log(JSON.stringify({readOnly:true,flags:Object.fromEntries(flags.map(name=>{const row=env.find(x=>x.name===name);return [name,{configured:Boolean(row),enabled:row?.value==="true",secretReference:Boolean(row?.valueFrom)}]})),pilots:Object.fromEntries(pilots.map(name=>{const row=env.find(x=>x.name===name);return [name,{configured:Boolean(row),organizationCount:typeof row?.value==="string"?new Set(row.value.split(",").map(x=>x.trim()).filter(Boolean)).size:null,secretReference:Boolean(row?.valueFrom)}]}))},null,2));
+          '
       - name: Inspect existing managed backup metadata without changes
         env:
           FIREBASE_PROJECT_ID: millionsnest
