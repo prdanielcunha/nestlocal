@@ -16,10 +16,11 @@ try{
  stage='backup_schedules';
  const schedules=await get(database+'/backupSchedules');
  stage='managed_backups';
- const backups=await get(`projects/${projectId}/locations/${location}/backups`,{filter:`databaseUid="${metadata.uid}"`});
+ const backups=await get(`projects/${projectId}/locations/${location}/backups`);
  if(backups.unreachable?.length)throw Error('BACKUP_INVENTORY_INCOMPLETE');
- const rows=Array.isArray(backups.backups)?backups.backups:[];
- if(rows.some(row=>row.databaseUid!==metadata.uid))throw Error('BACKUP_SCOPE_MISMATCH');
+ const listed=Array.isArray(backups.backups)?backups.backups:[];
+ if(listed.some(row=>typeof row.databaseUid!=='string'||!row.databaseUid))throw Error('BACKUP_SCOPE_MISMATCH');
+ const rows=listed.filter(row=>row.databaseUid===metadata.uid);
  const ready=rows.filter(row=>row.state==='READY'&&Date.parse(row.expireTime)>Date.now()),
   latest=[...ready].sort((a,b)=>Date.parse(b.snapshotTime)-Date.parse(a.snapshotTime))[0];
  console.log(JSON.stringify({schemaVersion:1,readOnly:true,projectId,databaseId:'(default)',
