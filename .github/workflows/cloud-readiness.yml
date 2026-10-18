@@ -4,6 +4,7 @@ on:
     branches: [production]
     paths:
       - scripts/nestlocal-cloud-readiness.mjs
+      - scripts/nestlocal-backup-inventory.mjs
       - .github/workflows/cloud-readiness.yml
   workflow_dispatch:
 permissions:
@@ -33,3 +34,7 @@ jobs:
         env:
           FIREBASE_PROJECT_ID: millionsnest
         run: node scripts/nestlocal-cloud-readiness.mjs
+      - name: Inspect existing managed backup metadata without changes
+        env:
+          FIREBASE_PROJECT_ID: millionsnest
+        run: node scripts/nestlocal-backup-inventory.mjs
