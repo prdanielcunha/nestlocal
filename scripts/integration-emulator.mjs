@@ -344,9 +344,10 @@ try{
      assert.equal(await page.locator('[name="finalAmount"]').count(),0);
      await form.locator('[name="executionNotes"]').fill(`Field verified ${width}`);
      await form.locator('label:has(input[type="checkbox"])').click();
-     const response=page.waitForResponse(r=>r.url().endsWith('/requests/'+id)&&r.request().method()==='PATCH');
      await page.screenshot({path:`artifacts/profiles/field-${width}.png`});
-     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`field overflow ${width}px`);
+     const layout=await page.evaluate(()=>({actual:document.documentElement.scrollWidth,width:innerWidth,overflow:Array.from(document.querySelectorAll('.main *')).filter(el=>el.getBoundingClientRect().right>innerWidth+1).slice(0,6).map(el=>({tag:el.tagName,class:el.className,right:el.getBoundingClientRect().right}))}));
+     assert.ok(layout.actual<=layout.width+1,`field overflow ${width}px: ${JSON.stringify(layout)}`);
+     const response=page.waitForResponse(r=>r.url().endsWith('/requests/'+id)&&r.request().method()==='PATCH');
      await form.locator('button[type="submit"]').click();const savedResponse=await response;
      assert.equal(savedResponse.status(),200,`field ${width}px: ${await savedResponse.text()}`);
      const saved=(await ref.get()).data();assert.equal(saved.status,'in_progress');assert.equal(saved.execution.notes,`Field verified ${width}`);assert.equal(saved.execution.checklist[0].done,true);assert.equal(saved.quote.totalCents,123456);

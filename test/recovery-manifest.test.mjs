@@ -29,3 +29,11 @@ test('C20: explicit, matching source organization scope is required',()=>{
  extra.organizations.org2={};
  assert.throws(()=>compareNestLocalRecoveryManifest(base,extra),{message:'RECOVERY_SCOPE_MISMATCH'});
 });
+test('C20: managed backup restore may use an isolated named database in the same project',()=>{
+ const source={...base,schemaVersion:2,databaseId:'(default)'},target={...source,databaseId:'nestlocal-recovery-drill'};
+ assert.deepEqual(compareNestLocalRecoveryManifest(source,target),{passed:true,findings:[]});
+ assert.throws(()=>compareNestLocalRecoveryManifest(source,source),/RECOVERY_DESTINATION_MUST_BE_ISOLATED/);
+ assert.throws(()=>compareNestLocalRecoveryManifest(source,{...target,databaseId:'bad/path'}),/INVALID_RECOVERY_DATABASE/);
+ assert.throws(()=>compareNestLocalRecoveryManifest(source,{...target,databaseId:undefined}),/INVALID_RECOVERY_DATABASE/);
+ assert.throws(()=>compareNestLocalRecoveryManifest(base,{...base,databaseId:'nestlocal-recovery-drill'}),/RECOVERY_DESTINATION_MUST_BE_ISOLATED/);
+});
