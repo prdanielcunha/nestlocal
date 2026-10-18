@@ -1,5 +1,6 @@
 
 import {parseCustomerBatch} from './customer-import.js?v=20261017-import-v1';
+import {renderConversationImport,bindConversationImport} from './conversation-import.js?v=20261018-v1';
 import {renderRoleWorkspace} from './role-workspace.js?v=20261018-profiles-v1';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {buildPulseSnapshot,renderPulse} from './pulse.js';
@@ -786,7 +787,7 @@ function captureQuickCard(){
   const origins=['whatsapp_manual','instagram','website','telephone','referral','other'];
   return `<article class="card quick-capture"><div class="section-title"><div><span class="eyebrow">NESTLOCAL</span><h2>${t('quickCapture')}</h2><p class="help">${t('quickHelp')}</p></div></div>
     <form id="opportunity-draft" class="quick-capture-form"><label>${t('captureOrigin')}<select name="origin">${origins.map(o=>`<option value="${o}">${esc(t('draftOrigin_'+o))}</option>`).join('')}</select></label>
-    <label>${t('captureMessage')}<textarea name="message" id="quick-message" maxlength="6000" rows="3" required placeholder="${esc(t('capturePlaceholder'))}"></textarea></label>
+    ${renderConversationImport(S.lang)}<label>${t('captureMessage')}<textarea name="message" id="quick-message" maxlength="6000" rows="3" required placeholder="${esc(t('capturePlaceholder'))}"></textarea></label>
     <button class="button primary" type="submit">${t('saveOpportunity')}</button><small class="help">${t('manualOnly')}</small></form></article>`;
 }
 function opportunityPreviewPanel(draftId){
@@ -1630,6 +1631,8 @@ function bind(){
   });
 
   document.querySelectorAll('[data-open-draft]').forEach(button=>button.onclick=()=>{S.page='today';render();document.querySelector('#quick-message')?.focus()});
+  const conversationOrg=S.orgId,conversationUid=S.user?.uid;
+  bindConversationImport(document.querySelector('#opportunity-draft'),S.lang,()=>S.orgId===conversationOrg&&S.user?.uid===conversationUid);
   document.querySelector('#opportunity-draft')?.addEventListener('submit',async e=>{
     e.preventDefault();const form=e.currentTarget,button=form.querySelector('[type="submit"]'),f=new FormData(form);
     button.disabled=true;
