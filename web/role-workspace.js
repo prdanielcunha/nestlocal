@@ -1,4 +1,4 @@
-export function renderRoleWorkspace(data,{t,esc,money}){
+export function renderRoleWorkspace(data,{t,esc,money,evidence=()=>''}){
  const field=data.accessProfile==='field',rows=data.requests||[],services=new Map((data.services||[]).map(row=>[row.id,row.name]));
  return `<div class="page-stack"><article class="card"><h2>${t(field?'roleField':'roleFinance')}</h2><p class="help">${t(field?'roleFieldHelp':'roleFinanceHelp')}</p></article>
  ${rows.map(row=>`<article class="card" data-role-job="${esc(row.id)}"><div class="section-title"><div><h3>${esc(row.customer?.name||'—')}</h3><p>${esc(services.get(row.serviceId)||row.serviceId||'')} · ${esc(t(row.status))}</p></div></div>
@@ -9,6 +9,6 @@ export function renderRoleWorkspace(data,{t,esc,money}){
  ${(row.execution?.checklist||[]).map(item=>`<label class="wide"><input type="checkbox" name="checklist-${esc(item.id)}" ${item.done?'checked':''}> ${esc(item.label)}</label>`).join('')}
  <label class="wide">${t('status')}<select name="status">${(row.status==='scheduled'?['in_progress']:['in_progress','completed']).map(status=>`<option value="${status}">${esc(t(status))}</option>`).join('')}</select></label><button type="submit" class="button primary wide">${t('save')}</button></form>`:`<p>${esc(row.execution?.notes||'')}</p>`}`:
  `<p>${t('quoteAmount')}: ${money(row.quote?.totalCents||0)}</p><form data-finance-job="${esc(row.id)}" class="form-grid"><label>${t('finalAmount')}<input name="finalAmount" type="number" min="0" max="1000000" step=".01" required value="${Number(row.commercial?.finalAmountCents??row.quote?.totalCents??0)/100}"></label><label>${t('amountPaid')}<input name="amountPaid" type="number" min="0" max="1000000" step=".01" required value="${Number(row.commercial?.amountPaidCents||0)/100}"></label><label class="wide">${t('paymentStatus')}<select name="paymentStatus">${['pending','partial','paid','cancelled'].map(status=>`<option value="${status}" ${status===(row.commercial?.paymentStatus||'pending')?'selected':''}>${esc(t(status))}</option>`).join('')}</select></label><button type="submit" class="button primary wide">${t('save')}</button></form>`}
- </article>`).join('')||`<article class="card">${t('roleNoJobs')}</article>`}
+ ${field?evidence(row):''}</article>`).join('')||`<article class="card">${t('roleNoJobs')}</article>`}
  ${data.assignedPage?.hasMore||data.requestsHasMore?`<button class="button wide" type="button" data-role-next>${t('loadMore')}</button>`:''}</div>`;
 }

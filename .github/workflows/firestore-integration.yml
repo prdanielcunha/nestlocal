@@ -32,3 +32,11 @@ jobs:
           FIREBASE_PROJECT_ID: demo-nestlocal-integration
           NESTLOCAL_BROWSER_INTEGRATION: 'true'
         run: npx --yes firebase-tools@15.26.0 emulators:exec --only firestore --project demo-nestlocal-integration --config firebase.emulators.json 'node scripts/integration-emulator.mjs'
+      - name: Archive synthetic profile browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nestlocal-operational-profiles
+          path: artifacts/profiles/
+          if-no-files-found: warn
+          retention-days: 10

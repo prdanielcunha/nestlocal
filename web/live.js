@@ -1174,7 +1174,7 @@ function shell(){
   let C='';
   try{
     setAuthStage('render_'+S.page);
-    C=['field','finance'].includes(S.data?.accessProfile)?renderRoleWorkspace(S.data,{t,esc,money}):renderer();
+    C=['field','finance'].includes(S.data?.accessProfile)?renderRoleWorkspace(S.data,{t,esc,money,evidence:fieldEvidencePanel}):renderer();
     if(S.data?.accessProfile==='viewer')C=`<article class="card" role="status">${esc(t('roleReadOnly'))}</article>`+C;
   }catch(e){
     console.error('[NESTLOCAL_PAGE_RENDER]',S.page,e);
@@ -1240,12 +1240,14 @@ function restorePublicFormDraft(){
 }
 function legalView(){const privacy=pathParts()[0]==='privacy';return `<main class="public-shell"><article class="public-card wide-public">${brand()}${lang()}<span class="eyebrow">NestLocal</span><h1>${privacy?t('privacy'):t('terms')}</h1><p>${privacy?t('privacyBody1'):t('termsBody1')}</p><p>${privacy?t('privacyBody2'):t('termsBody2')}</p><a class="button" href="/">${t('back')}</a></article></main>`}
 
-const trackedFormSelector='#settings,#capacity-settings,#internal-request,[data-request-operation],[data-request-quote],[data-request-schedule],[data-maintenance-plan],[data-service],[data-customer-site-save]';
+const trackedFormSelector='#settings,#capacity-settings,#internal-request,[data-request-operation],[data-request-quote],[data-request-schedule],[data-maintenance-plan],[data-service],[data-customer-site-save],[data-field-job],[data-finance-job]';
 function transientFormKey(form){
   if(!form||!S.user||!S.orgId||!S.data||!form.matches(trackedFormSelector))return '';
   const identity=String(S.user.uid||S.user.id||'user');
   const scope=form.id||(
     form.dataset.requestOperation&&'operation:'+form.dataset.requestOperation||
+    form.dataset.fieldJob&&'field:'+form.dataset.fieldJob||
+    form.dataset.financeJob&&'finance:'+form.dataset.financeJob||
     form.dataset.requestQuote&&'quote:'+form.dataset.requestQuote||
     form.dataset.requestSchedule&&'schedule:'+form.dataset.requestSchedule||
     form.dataset.maintenancePlan&&'maintenance:'+form.dataset.maintenancePlan||
@@ -2002,7 +2004,7 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
    if(!source)return;button.disabled=true;
    const payload=form.dataset.fieldJob?{status:f.get('status'),executionNotes:f.get('executionNotes'),executionChecklist:(source.execution?.checklist||[]).map(row=>({id:row.id,label:row.label,done:f.get('checklist-'+row.id)==='on'}))}:
     {finalAmountCents:Math.round(Number(f.get('finalAmount'))*100),amountPaidCents:Math.round(Number(f.get('amountPaid'))*100),paymentStatus:f.get('paymentStatus')};
-   try{await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/requests/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)});await loadData();render();toast(t('save'))}
+   try{await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/requests/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)});clearTransientForm(form);await loadData();render();toast(t('save'))}
    catch(error){button.disabled=false;toast(error.message)}
   });
   document.querySelector('[data-role-next]')?.addEventListener('click',async event=>{

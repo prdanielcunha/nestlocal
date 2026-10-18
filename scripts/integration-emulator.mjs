@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes,createHash} from 'node:crypto';
 import {once} from 'node:events';
+import {mkdirSync} from 'node:fs';
 import admin from 'firebase-admin';
 import express from 'express';
 
@@ -287,6 +288,7 @@ try{
  },true);
  if(process.env.NESTLOCAL_BROWSER_INTEGRATION==='true'&&!coreOnly){
   await check('browser saves settings through the real API into Firestore',async()=>{
+   mkdirSync('artifacts/profiles',{recursive:true});
    const {chromium}=await import('playwright');
    const web=express();
    web.use('/api',express.raw({type:()=>true,limit:'128kb'}),async(req,res)=>{
@@ -330,7 +332,7 @@ try{
     }
     for(const width of [320,390,1440]){
      const id=`aaa-browser-${width}`,ref=db.doc(`${root}/nestlocal_requests/${id}`);
-     await ref.set({status:'scheduled',serviceId:'clean',quantity:1,customer:{name:'Browser assigned customer',phone:'5511999999999'},address:{line:'Assigned road',city:'Test'},schedule:{assignedTo:'integration-field',date:'2099-01-02',window:'afternoon'},quote:{totalCents:123456},commercial:{amountPaidCents:0,paymentStatus:'pending'},execution:{checklist:[{id:'inspect',label:'Inspect site',done:false}]}});
+     await ref.set({status:'scheduled',serviceId:'clean',quantity:1,customer:{name:'Browser assigned customer',phone:'5511999999999'},address:{line:'Assigned road',city:'Test'},schedule:{assignedTo:'integration-field',date:width===320?'2099-01-03':width===390?'2099-01-04':'2099-01-05',window:'afternoon'},quote:{totalCents:123456},commercial:{amountPaidCents:0,paymentStatus:'pending'},execution:{checklist:[{id:'inspect',label:'Inspect site',done:false}]}});
      await call('/team/integration-field','PUT',{enabled:true,profile:'field'});
      const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
      page.on('pageerror',error=>errors.push(error.message));
@@ -343,7 +345,10 @@ try{
      await form.locator('[name="executionNotes"]').fill(`Field verified ${width}`);
      await form.locator('label:has(input[type="checkbox"])').click();
      const response=page.waitForResponse(r=>r.url().endsWith('/requests/'+id)&&r.request().method()==='PATCH');
-     await form.locator('button[type="submit"]').click();assert.equal((await response).status(),200);
+     await page.screenshot({path:`artifacts/profiles/field-${width}.png`});
+     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),`field overflow ${width}px`);
+     await form.locator('button[type="submit"]').click();const savedResponse=await response;
+     assert.equal(savedResponse.status(),200,`field ${width}px: ${await savedResponse.text()}`);
      const saved=(await ref.get()).data();assert.equal(saved.status,'in_progress');assert.equal(saved.execution.notes,`Field verified ${width}`);assert.equal(saved.execution.checklist[0].done,true);assert.equal(saved.quote.totalCents,123456);
      assert.deepEqual(errors,[]);await page.close();
     }
@@ -354,6 +359,7 @@ try{
     await db.doc(`${root}/nestlocal_requests/aaa-browser-390`).update({createdAt:admin.firestore.Timestamp.now()});
     await finance.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
     const receiptForm=finance.locator('[data-finance-job="aaa-browser-390"]');await receiptForm.waitFor({timeout:15000});
+    await finance.screenshot({path:'artifacts/profiles/finance-390.png'});
     await receiptForm.locator('[name="amountPaid"]').fill('1.00');await receiptForm.locator('[name="paymentStatus"]').selectOption('partial');
     const paid=finance.waitForResponse(r=>r.url().endsWith('/requests/aaa-browser-390')&&r.request().method()==='PATCH');
     await receiptForm.locator('button[type="submit"]').click();assert.equal((await paid).status(),200);

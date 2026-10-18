@@ -1352,7 +1352,7 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       return res.json({organization:{id:req.access.orgId,name:req.access.org.name},accessProfile:'field',features:{},
        entitlement:req.access.entitlement,settings:{timezone:settings.data()?.timezone||'UTC'},
        canManageTeam:false,canManageCatalog:false,canManageFinance:false,canManageSites:false,
-       requests:page.items,assignedPage:page,services:services.docs.map(doc=>({id:doc.id,name:clean(doc.data()?.name)})),
+       requests:page.items,assignedPage:page,services:services.docs.filter(doc=>page.items.some(row=>row.serviceId===doc.id)).map(doc=>({id:doc.id,name:clean(doc.data()?.name)})),
        customers:[],dueCustomers:[],team:[],messageOutbox:[],guidedExperiments:[],decisionMemory:{},experimentAccess:{canManage:false}});
     }
     const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
@@ -2108,6 +2108,7 @@ app.post('/api/organizations/:orgId/nestlocal/playbooks/:template/apply',authent
 });
 
 app.post('/api/organizations/:orgId/nestlocal/bootstrap',authenticate,authorize,async(req,res)=>{
+  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
   try{
     const b=req.body||{},template=clean(b.template||'general').toLowerCase(),businessName=clean(b.businessName||req.access.org.name).slice(0,100),coverageCodes=Array.isArray(b.coverageCodes)?[...new Set(b.coverageCodes.map(slug).filter(Boolean))].slice(0,30):[],whatsapp=phone(b.whatsapp),timezone=clean(b.timezone||'America/Sao_Paulo'),communicationMode=clean(b.communicationMode||'none'),contactEmail=clean(b.contactEmail).toLowerCase().slice(0,254),contactPhone=phone(b.contactPhone);
     if(!['none','manual'].includes(communicationMode)||communicationMode==='manual'&&whatsapp.length<10||contactEmail&&!validContactEmail(contactEmail)||contactPhone&&contactPhone.length<10)return sendError(res,400,'INVALID_CONTACT_CHANNEL');
@@ -2559,7 +2560,7 @@ app.post('/api/organizations/:orgId/nestlocal/messages/prepare-due-reminders',au
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
-app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIndex',authenticate,authorize,async(req,res)=>{try{const requestId=safeId(req.params.requestId),index=Number(req.params.photoIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>4)return sendError(res,404,'NOT_FOUND');const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),attachment=doc.data()?.attachments?.[index];if(!doc.exists||!attachment?.path||!attachment.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/`))return sendError(res,404,'NOT_FOUND');res.set({'Content-Type':attachment.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="pedido-${requestId}-${index+1}"`});admin.storage().bucket().file(attachment.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res)}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
+app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/photos/:photoIndex',authenticate,authorize,async(req,res)=>{try{const requestId=safeId(req.params.requestId),index=Number(req.params.photoIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>4)return sendError(res,404,'NOT_FOUND');const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),attachment=doc.data()?.attachments?.[index];if(!doc.exists||(req.access.profile==='field'&&!assignedRequest(doc.data(),req.identity.uid))||!attachment?.path||!attachment.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/`))return sendError(res,404,'NOT_FOUND');res.set({'Content-Type':attachment.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="pedido-${requestId}-${index+1}"`});admin.storage().bucket().file(attachment.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res)}catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}});
 
 app.post('/api/organizations/:orgId/nestlocal/requests',authenticate,authorize,async(req,res)=>{
   try{
@@ -2679,7 +2680,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/evidence',auth
   try{
     const requestId=safeId(req.params.requestId),phase=clean(req.body?.phase||'after').toLowerCase(),note=clean(req.body?.note).slice(0,300);if(!requestId||!['before','after','other'].includes(phase))return sendError(res,400,'INVALID_EVIDENCE');
     const root=`organizations/${req.access.orgId}`,ref=db.doc(`${root}/nestlocal_requests/${requestId}`),doc=await ref.get();if(!doc.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
-    const current=doc.data()||{};if(!['scheduled','in_progress','completed'].includes(current.status))return sendError(res,409,'EVIDENCE_NOT_READY');
+    const current=doc.data()||{};if(req.access.profile==='field'&&!assignedRequest(current,req.identity.uid))return sendError(res,404,'REQUEST_NOT_FOUND');if(!['scheduled','in_progress','completed'].includes(current.status))return sendError(res,409,'EVIDENCE_NOT_READY');
     const existing=Array.isArray(current.workEvidence)?current.workEvidence:[],files=Array.isArray(req.files)?req.files:[];if(!files.length)return sendError(res,400,'PHOTOS_REQUIRED');if(existing.length+files.length>24)return sendError(res,409,'EVIDENCE_LIMIT');if(!files.every(validImage))return sendError(res,415,'INVALID_PHOTO');
     const bucket=admin.storage().bucket(),saved=[];for(const [index,file] of files.entries()){const ext={'image/jpeg':'jpg','image/png':'png','image/webp':'webp'}[file.mimetype],path=`${root}/nestlocal/requests/${requestId}/evidence/${Date.now()}-${index}.${ext}`;await bucket.file(path).save(file.buffer,{resumable:false,metadata:{contentType:file.mimetype,cacheControl:'private,max-age=0',metadata:{organizationId:req.access.orgId,requestId,phase}}});saved.push({path,contentType:file.mimetype,size:file.size,phase,note,uploadedBy:req.identity.uid,uploadedAt:admin.firestore.Timestamp.now()})}
     await ref.update({workEvidence:admin.firestore.FieldValue.arrayUnion(...saved),updatedAt:admin.firestore.FieldValue.serverTimestamp()});res.status(201).json({uploaded:saved.length,total:existing.length+saved.length,phase});
@@ -2689,7 +2690,7 @@ app.post('/api/organizations/:orgId/nestlocal/requests/:requestId/evidence',auth
 app.get('/api/organizations/:orgId/nestlocal/requests/:requestId/evidence/:evidenceIndex',authenticate,authorize,async(req,res)=>{
   try{
     const requestId=safeId(req.params.requestId),index=Number(req.params.evidenceIndex);if(!requestId||!Number.isSafeInteger(index)||index<0||index>23)return sendError(res,404,'NOT_FOUND');
-    const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),evidence=doc.data()?.workEvidence?.[index];if(!doc.exists||!evidence?.path||!evidence.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/evidence/`))return sendError(res,404,'NOT_FOUND');
+    const doc=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${requestId}`).get(),evidence=doc.data()?.workEvidence?.[index];if(!doc.exists||(req.access.profile==='field'&&!assignedRequest(doc.data(),req.identity.uid))||!evidence?.path||!evidence.path.startsWith(`organizations/${req.access.orgId}/nestlocal/requests/${requestId}/evidence/`))return sendError(res,404,'NOT_FOUND');
     res.set({'Content-Type':evidence.contentType,'Cache-Control':'private,no-store','Content-Disposition':`inline; filename="evidencia-${requestId}-${index+1}"`});admin.storage().bucket().file(evidence.path).createReadStream().on('error',e=>{console.error(e);if(!res.headersSent)sendError(res,404,'NOT_FOUND');else res.destroy(e)}).pipe(res);
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });

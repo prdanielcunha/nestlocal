@@ -9,6 +9,7 @@ const ownChannel=(method,path)=>
  (path==='/push/devices'&&['POST','DELETE'].includes(method))||
  (path==='/push/test'&&method==='POST');
 export function operationalRouteAllowed(profile,method,path,body={}){
+ body=body&&typeof body==='object'&&!Array.isArray(body)?body:{};
  if(['admin','legacy','operations'].includes(profile))return true;
  if(profile==='restricted')return false;
  if(ownChannel(method,path))return true;
