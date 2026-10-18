@@ -1,5 +1,14 @@
 # NestLocal — implantação rastreável do Diagnóstico 15/10/2026
 
+## Estado atualizado em 18/10/2026
+
+As seções históricas abaixo registram os gates existentes em cada entrega. Para a situação atual, prevalecem as evidências desta seção:
+
+- **Publicado:** perfis operações, campo, financeiro e consulta, com autorização canônica no servidor. Campo acessa apenas trabalhos atribuídos, com projeção sem valores e teste de revogação; financeiro altera somente os campos financeiros permitidos. Matriz negativa e navegação em 320/390/1440 px passaram com API real e Firestore emulado. Ver [matriz de perfis](./OPERATIONAL_PROFILES_2026-10-18.md). Isso não certifica dispositivos físicos ou todos os serviços externos do ecossistema.
+- **Recuperação:** manifesto schema 2 aceita restauração em um banco nomeado isolado no mesmo projeto; nunca no banco de origem. A sondagem administrativa de produção [39091758309](https://github.com/prdanielcunha/nestlocal/actions/runs/39091758309) encontrou PITR desabilitado, zero agendamentos e zero backups gerenciados para o banco `(default)` em `nam5`. Exportações para buckets não foram inventariadas. Nenhum backup, banco de recuperação ou serviço pago foi criado; restauração real continua pendente.
+- **Incremento de importação:** revisão local de conversa `.txt` em UTF-8, até 64 KiB, com seleção explícita de até 6.000 caracteres. Não infere remetente, identidade, preço ou consentimento. O trecho só chega ao servidor quando o operador salva a oportunidade; IA mantém sua autorização separada. PDF, ZIP, áudio e imagem continuam pendentes. Rascunhos agora preservam os 6.000 caracteres permitidos durante redesenhos da tela.
+- **Ainda não homologado:** backup e restauração reais, push com app fechado em aparelhos físicos, entrega/recibos oficiais de WhatsApp via Connect, agenda bidirecional, importação multimodal, mesclagem auditada de identidades, conciliação com provedor e piloto operacional. Testes sintéticos não encerram esses itens.
+
 ## Evidência adicional em 16/10/2026
 
 A [suíte autenticada de API com Firestore emulado](./NESTLOCAL_FIRESTORE_INTEGRATION_2026-10-16.md) passou em sete cenários: capacidade, isolamento de organização/permissão financeira, revogação de membro, pagamentos concorrentes/reversão manual, correção de receita por diferença, 125 pedidos paginados e consentimento público. Não são mocks de banco; não são dados reais de produção. `npm run check`: 453 aprovados. Conferir também o novo workflow no SHA final.
@@ -35,8 +44,8 @@ Implementação: [PR #128](https://github.com/prdanielcunha/nestlocal/pull/128) 
 | C17 | P2 | **Parcial**: opções avançadas recolhíveis, estilos operacionais responsivos e painel de notificação progressivo sob feature flag | Reorganizar módulos restantes por tarefas, inspecionar screenshots e testar em celular com dados reais |
 | C18 | P2 | Pedido interno usa perguntas/quantidade/qualificadores do catálogo compartilhado com público | Testar playbooks e validade de schema histórico |
 | C19 | P2 | **Parcial**: importação com prévia, transação e auditoria; múltiplos locais/equipamentos por cliente; pedido interno agora registra vínculo de local **com revisão e snapshot imutável**, validado na mesma transação e exibido no detalhe | Faltam mesclagem auditada de identidades multicanal, importação massiva de locais/equipamentos e homologação Firestore |
-| C20 | P2 | **Parcial**: manifesto read-only de contagens e assinaturas HMAC, comparação obrigatoriamente entre projetos distintos, testes sintéticos e runbook | Backup real, retenção, IAM e restauração isolada ensaiada ainda não executados |
-| C21 | P2 | **Parcial**: catálogo restrito a admin/owner; nova capacidade financeWrite limita alterações monetárias; profissionais podem concluir trabalho sem editar valores; histórico financeiro protegido | Perfis granulares completos de atendimento/campo/financeiro/consulta, papéis no Hub e matriz negativa multiempresa |
+| C20 | P2 | **Parcial**: manifesto read-only schema 2 com identidade de banco e comparação entre bancos isolados; inventário gerenciado de produção executado; testes e runbook | Zero backups gerenciados/agendamentos e PITR desligado na sondagem; faltam backup real, retenção e restauração isolada ensaiada |
+| C21 | P2 | **Publicado, homologação parcial**: perfis operações/campo/financeiro/consulta no membro canônico; atribuição revalidada, projeção de campo, capacidades e matriz negativa API/Firestore emulado | Homologação com organizações e aparelhos físicos; verificar autoridade dos demais serviços do ecossistema |
 
 **Correção adicional:** a criação pública de pedido referenciava `sourceDraftId` não definido; removida a referência no fluxo público.
 

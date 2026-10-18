@@ -13,7 +13,7 @@ function nextLocalDay(timeZone){
 const browser=await chromium.launch({headless:true});
 mkdirSync('artifacts/experience',{recursive:true});
 try {
-  for(const width of [390,1440]){
+  for(const width of [320,390,1440]){
     const page=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce',acceptDownloads:true});
     const errors=[],stored=[],orders=[],tasks=[],aiInputs=[];
     page.on('pageerror',error=>errors.push(error.message));
@@ -98,7 +98,24 @@ try {
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
     await page.locator('#opportunity-draft textarea[name=message]').waitFor();
     assert.ok((await page.locator('.nestlocal-today-v2').textContent()).includes('O que aconteceu hoje?'));
-    await page.locator('#opportunity-draft textarea[name=message]').fill('Cliente pediu orçamento para reparo.');
+    await page.locator('.conversation-import summary').click();
+    const expected='Cliente pediu orçamento para reparo.';
+    const conversation='[18/10/2026, 09:00] Histórico: '+ 'a'.repeat(6001)+'\n'+expected;
+    await page.locator('[data-conversation-file]').setInputFiles({name:'Conversa.txt',mimeType:'text/plain',buffer:Buffer.from(conversation)});
+    await page.locator('[data-conversation-use]').waitFor({state:'visible'});
+    assert.equal(stored.length,0,'Reading a local file must not save anything');
+    await page.locator('[data-conversation-use]').click();
+    assert.equal(await page.locator('#quick-message').inputValue(),'','Never truncate a long conversation');
+    await page.locator('[data-conversation-text]').evaluate((element,needle)=>element.setSelectionRange(element.value.indexOf(needle),element.value.length),expected);
+    await page.screenshot({path:`artifacts/experience/conversation-review-${width}.png`,fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Conversation review overflow');
+    await page.locator('[data-conversation-use]').click();
+    assert.equal(await page.locator('#quick-message').inputValue(),expected);
+    await page.locator('[data-conversation-file]').setInputFiles({name:'Outro.txt',mimeType:'text/plain',buffer:Buffer.from('Não substituir')});
+    await page.locator('[data-conversation-use]').waitFor({state:'visible'});
+    await page.locator('[data-conversation-use]').click();
+    assert.equal(await page.locator('#quick-message').inputValue(),expected,'Import must preserve existing edits');
+    assert.equal(stored.length,0);
     await page.locator('#opportunity-draft button[type=submit]').click();
     await page.locator('[data-prepare-draft]').waitFor();
     assert.equal(stored.length,1);
@@ -159,7 +176,7 @@ try {
     assert.deepEqual(errors,[],'Browser exceptions at '+width);
     await page.close();
   }
-  console.log('Synthetic NestLocal 2.0 E2E PASS: draft -> grounded preview -> follow-up completed -> validated order on 390/1440px; read-only export; no live Firestore/Stripe certification.');
+  console.log('Synthetic NestLocal 2.0 E2E PASS: local conversation review -> draft -> grounded preview -> follow-up completed -> validated order on 320/390/1440px; read-only export; no live Firestore/Stripe certification.');
 } finally {
   await browser.close();
 }

@@ -16,7 +16,7 @@ function formFields(elements){
 }
 export function captureTransientForm(elements){
   return formFields(elements).map(({key,field,type})=>({
-    key,type,value:type==='checkbox'||type==='radio'?'':String(field.value||'').slice(0,5000),
+    key,type,value:type==='checkbox'||type==='radio'?'':String(field.value||'').slice(0,Number.isInteger(field.maxLength)&&field.maxLength>0?Math.min(field.maxLength,64000):5000),
     checked:type==='checkbox'||type==='radio'?field.checked===true:undefined
   }));
 }

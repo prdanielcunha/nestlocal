@@ -4,6 +4,11 @@ import {readFileSync} from 'node:fs';
 import {captureTransientForm,restoreTransientForm} from '../web/transient-form-drafts.js';
 
 function input(name,value,type='text',extras={}){return {name,value,type,disabled:false,checked:false,...extras}}
+test('a 6000-character conversation excerpt survives a redraw without silent truncation',()=>{
+ const value='á'.repeat(6000),saved=captureTransientForm([input('message',value,'textarea',{maxLength:6000})]);
+ const after=[input('message','','textarea',{maxLength:6000})];
+ restoreTransientForm(after,saved);assert.equal(after[0].value,value);
+});
 test('C16: restores typed operational fields and checked capacity without persisting them',()=>{
  const before=[input('executionNotes','A alteração ficou incompleta','textarea'),
    input('capacityDay','1','checkbox',{checked:true}),input('capacityDay','2','checkbox',{checked:false}),
