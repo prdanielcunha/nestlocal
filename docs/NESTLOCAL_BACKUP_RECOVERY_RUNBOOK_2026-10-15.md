@@ -30,6 +30,8 @@ node scripts/nestlocal-recovery-manifest.mjs \
 
 O script registra contagens de pedidos, clientes, reservas e ajustes financeiros, e HMAC de configurações/catálogo. Ele nunca lê nem grava documentos de pagamentos ou clientes completos para fora do processo, e **não substitui um backup**. Os registros ainda podem mudar durante uso normal; a comparação deve ocorrer em uma janela de consistência controlada.
 
+Manifestos vazios, seções ausentes, contagens inválidas ou assinaturas malformadas são rejeitados, inclusive antes de consultar o destino. Uma comparação aprovada emite `NESTLOCAL_RECOVERY_MANIFEST_MATCH`: confirma somente contagens e configurações assinadas. Esse resultado não certifica o conteúdo dos pedidos/clientes, subcoleções financeiras ou integridade completa da restauração; a revisão adicional abaixo continua obrigatória.
+
 ## Procedimento de recuperação que ainda exige execução operacional
 
 1. Confirmar a política de backups gerenciados do Firestore (disponibilidade, retenção, região, custos e permissões). Registrar ID e timestamp do ponto recuperável, em armazenamento com controle de acesso, sem compartilhar segredos.
