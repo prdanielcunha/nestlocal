@@ -5,7 +5,7 @@ import admin from 'firebase-admin';
 import {getFirestore} from 'firebase-admin/firestore';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {fingerprint,signatureForCollection} from '../src/domain/release-safety.mjs';
-import {compareNestLocalRecoveryManifest,validRecoveryDatabaseId} from '../src/domain/recovery-manifest.mjs';
+import {compareNestLocalRecoveryManifest,validRecoveryDatabaseId,validateNestLocalRecoveryManifest} from '../src/domain/recovery-manifest.mjs';
 
 function arg(name){const i=process.argv.indexOf(name);return i<0?'':process.argv[i+1]||''}
 const capture=arg('--capture'),verify=arg('--verify'),input=arg('--orgs'),
@@ -20,6 +20,7 @@ if(!ids.length||ids.length>50||new Set(ids).size!==ids.length||
    ids.some(id=>!/^[A-Za-z0-9_-]{1,128}$/.test(id)))throw new Error('INVALID_ORG_SCOPE');
 const before=verify?JSON.parse(readFileSync(verify,'utf8')):null;
 if(before){
+  validateNestLocalRecoveryManifest(before);
   if(before.projectId===projectId&&(before.schemaVersion===1||(before.databaseId||'(default)')===databaseId))throw new Error('RECOVERY_DESTINATION_MUST_BE_ISOLATED');
   const oldIds=Object.keys(before.organizations||{}).sort();
   if(JSON.stringify(ids)!==JSON.stringify(oldIds))throw new Error('RECOVERY_SCOPE_MISMATCH');
@@ -53,7 +54,7 @@ if(capture){
   if(!result.passed){
     console.error('NESTLOCAL_RECOVERY_VERIFICATION_FAILED',JSON.stringify(result.findings));
     process.exitCode=2;
-  }else console.log('NESTLOCAL_RECOVERY_VERIFIED',ids.length,'organizations; source and isolated target agree');
+  }else console.log('NESTLOCAL_RECOVERY_MANIFEST_MATCH',ids.length,'organizations; counts and signed configuration agree; full restore integrity is NOT certified');
 }
 // A manifest cannot restore data. Actual cloud backup/export and isolated restore
 // must be run and audited by an authorized operator, per the recovery runbook.

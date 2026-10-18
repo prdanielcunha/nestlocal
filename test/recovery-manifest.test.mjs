@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {compareNestLocalRecoveryManifest} from '../src/domain/recovery-manifest.mjs';
+import {compareNestLocalRecoveryManifest,validateNestLocalRecoveryManifest} from '../src/domain/recovery-manifest.mjs';
 
 const base={schemaVersion:1,projectId:'nestlocal-production',organizations:{
- org1:{settings:'hashA',services:{count:2,digest:'hashB'},requests:251,
+ org1:{settings:'a'.repeat(64),services:{count:2,digest:'b'.repeat(64)},requests:251,
        customers:149,scheduleSlots:34,financialAdjustments:4}
 }};
 const restore=JSON.parse(JSON.stringify(base));
@@ -26,8 +26,24 @@ test('C20: a missing financial or operational record is flagged without PII',()=
 });
 test('C20: explicit, matching source organization scope is required',()=>{
  const extra=JSON.parse(JSON.stringify(restore));
- extra.organizations.org2={};
+ extra.organizations.org2={...base.organizations.org1};
  assert.throws(()=>compareNestLocalRecoveryManifest(base,extra),{message:'RECOVERY_SCOPE_MISMATCH'});
+});
+test('C20: empty or malformed manifests never pass as a verified restore',()=>{
+ for(const organizations of [{},[],null,{org1:{}},{'bad/path':base.organizations.org1}]){
+  assert.throws(()=>compareNestLocalRecoveryManifest({...base,organizations},{...restore,organizations}),/INVALID_RECOVERY_(SCOPE|SECTIONS)/);
+ }
+ for(const patch of [{requests:-1},{customers:1.5},{scheduleSlots:'34'},{financialAdjustments:Number.MAX_SAFE_INTEGER+1},{settings:'not-a-digest'},{services:{count:2}},{services:{count:-1,digest:'b'.repeat(64)}}]){
+  const broken={...base,organizations:{org1:{...base.organizations.org1,...patch}}};
+  assert.throws(()=>validateNestLocalRecoveryManifest(broken),/INVALID_RECOVERY_SECTIONS/);
+  assert.throws(()=>compareNestLocalRecoveryManifest(broken,{...broken,projectId:restore.projectId}),/INVALID_RECOVERY_SECTIONS/);
+ }
+});
+test('C20: valid empty collections and absent settings are explicit, not missing sections',()=>{
+ const source={...base,organizations:{org1:{settings:null,services:{count:0,digest:'b'.repeat(64)},requests:0,customers:0,scheduleSlots:0,financialAdjustments:0}}};
+ assert.equal(compareNestLocalRecoveryManifest(source,{...source,projectId:restore.projectId}).passed,true);
+ const missing=structuredClone(source);delete missing.organizations.org1.settings;
+ assert.throws(()=>validateNestLocalRecoveryManifest(missing),/INVALID_RECOVERY_SECTIONS/);
 });
 test('C20: managed backup restore may use an isolated named database in the same project',()=>{
  const source={...base,schemaVersion:2,databaseId:'(default)'},target={...source,databaseId:'nestlocal-recovery-drill'};
