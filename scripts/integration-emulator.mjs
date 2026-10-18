@@ -241,6 +241,50 @@ try{
   const completed=(await ref.get()).data();assert.ok(completed.completionRecordedAt);
   assert.equal((await db.doc(`${root}/nestlocal_customers/lifecycle-customer`).get()).data().lifetimeRevenueCents,12000);
  },true);
+ await check('profiles isolate field data, enforce financial/viewer writes and revalidate reassignment',async()=>{
+  const ownRef=db.doc(`${root}/nestlocal_requests/field-own`),otherRef=db.doc(`${root}/nestlocal_requests/field-other`),
+   job={status:'scheduled',serviceId:'clean',quantity:1,customer:{name:'Assigned customer',phone:'5511999999999',email:'private@example.test'},address:{line:'Assigned road',city:'Test city'},schedule:{assignedTo:'integration-field',date:'2099-01-02',window:'morning'},quote:{totalCents:123456},commercial:{amountPaidCents:0,paymentStatus:'pending'},execution:{checklist:[{id:'first',label:'Inspect site',done:false}]},trackingTokenHash:'private-secret'};
+  const batch=db.batch();batch.set(ownRef,job);batch.set(otherRef,{...job,schedule:{...job.schedule,assignedTo:'integration-owner'},customer:{name:'Other worker customer'}});
+  for(let i=0;i<125;i++)batch.set(db.doc(`${root}/nestlocal_requests/assigned-${String(i).padStart(3,'0')}`),{...job,status:'completed'});
+  await batch.commit();
+  await call('/team/integration-field','PUT',{enabled:true,profile:'field'});
+  const scoped=await call('','GET',undefined,memberToken);
+  assert.equal(scoped.accessProfile,'field');for(const key of ['customers','team','messageOutbox'])assert.equal(scoped[key].length,0);
+  assert.equal(scoped.requestsTotal,undefined);assert.equal(scoped.settings.payments,undefined);assert.equal(scoped.canManageFinance,false);
+  let cursor='',rows=[];
+  do{const page=await call('/lists/requests/page?limit=50'+(cursor?'&cursor='+cursor:''),'GET',undefined,memberToken);rows.push(...page.items);cursor=page.nextCursor||'';assert.equal(page.totalCount,null)}while(cursor);
+  assert.equal(rows.length,126);assert.equal(new Set(rows.map(row=>row.id)).size,126);
+  for(const row of rows){assert.equal(row.schedule.assignedTo,'integration-field');for(const key of ['quote','commercial','trackingTokenHash'])assert.equal(row[key],undefined);assert.equal(row.customer.email,undefined)}
+  for(const path of ['/requests/field-other','/requests/field-other/photos/0','/requests/field-other/evidence/0'])await call(path,'GET',undefined,memberToken,404);
+  const detail=await call('/requests/field-own','GET',undefined,memberToken);assert.equal(detail.item.quote,undefined);assert.equal(detail.item.customer.name,'Assigned customer');
+  for(const path of ['/lists/customers/page','/customers/customer/sites','/data-export/requests','/opportunity-drafts','/pulse/feedback','/requests/field-own/payment-events'])await call(path,'GET',undefined,memberToken,403);
+  for(const body of [{assignedTo:'integration-owner'},{amountPaidCents:1}])await call('/requests/field-own','PATCH',body,memberToken,403);
+  await call('/requests/field-own/quote','POST',{amountCents:1},memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'legacy'},memberToken,403);
+  await call('/requests/field-own','PATCH',{status:'in_progress',executionChecklist:[]},memberToken,403);
+  assert.equal((await ownRef.get()).data().status,'scheduled');
+  await call('/requests/field-own','PATCH',{status:'in_progress',executionNotes:'Work started',executionChecklist:[{id:'first',label:'Inspect site',done:true}]},memberToken);
+  await call('/requests/field-own','PATCH',{status:'completed'},memberToken);
+  assert.equal((await ownRef.get()).data().status,'completed');
+  await ownRef.update({'schedule.assignedTo':'integration-owner'});
+  await call('/requests/field-own','GET',undefined,memberToken,404);
+  await call('/requests/field-own','PATCH',{executionNotes:'No longer assigned'},memberToken,404);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'viewer'});
+  assert.equal((await call('','GET',undefined,memberToken)).accessProfile,'viewer');
+  await call('/requests/field-other','GET',undefined,memberToken);
+  await call('/requests/field-other','PATCH',{executionNotes:'Blocked'},memberToken,403);
+  await call('/customers/batch','POST',{customers:[]},memberToken,403);
+  await call('/ai/request-extract','POST',{},memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'finance'});
+  assert.equal((await call('','GET',undefined,memberToken)).canManageFinance,true);
+  await call('/requests/field-other','PATCH',{status:'completed'},memberToken,403);
+  await call('/requests/field-other','PATCH',{amountPaidCents:100,paymentStatus:'partial'},memberToken);
+  assert.equal((await otherRef.get()).data().commercial.amountPaidCents,100);
+  await call('/customers/batch','POST',{customers:[]},memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'unknown'},ownerToken,400);
+  await call('/team/integration-owner','PUT',{enabled:true,profile:'viewer'},ownerToken,409);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'legacy'});
+ },true);
  if(process.env.NESTLOCAL_BROWSER_INTEGRATION==='true'&&!coreOnly){
   await check('browser saves settings through the real API into Firestore',async()=>{
    const {chromium}=await import('playwright');
@@ -284,6 +328,39 @@ try{
      assert.equal((await db.doc(`${root}/nestlocal_settings/public`).get()).data().timezone,'UTC');
      assert.deepEqual(errors,[]);await page.close();
     }
+    for(const width of [320,390,1440]){
+     const id=`aaa-browser-${width}`,ref=db.doc(`${root}/nestlocal_requests/${id}`);
+     await ref.set({status:'scheduled',serviceId:'clean',quantity:1,customer:{name:'Browser assigned customer',phone:'5511999999999'},address:{line:'Assigned road',city:'Test'},schedule:{assignedTo:'integration-field',date:'2099-01-02',window:'afternoon'},quote:{totalCents:123456},commercial:{amountPaidCents:0,paymentStatus:'pending'},execution:{checklist:[{id:'inspect',label:'Inspect site',done:false}]}});
+     await call('/team/integration-field','PUT',{enabled:true,profile:'field'});
+     const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
+     page.on('pageerror',error=>errors.push(error.message));
+     await page.addInitScript(({token,org})=>{sessionStorage.setItem('nl_session_token',token);localStorage.setItem('nl_org',org)},{token:memberToken,org:orgId});
+     await page.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
+     const form=page.locator(`[data-field-job="${id}"]`);await form.waitFor({timeout:15000});
+     assert.equal(await page.locator('[data-nav="customers"]').count(),0);
+     assert.equal(await page.locator('[data-nav="services"]').count(),0);
+     assert.equal(await page.locator('[name="finalAmount"]').count(),0);
+     await form.locator('[name="executionNotes"]').fill(`Field verified ${width}`);
+     await form.locator('label:has(input[type="checkbox"])').click();
+     const response=page.waitForResponse(r=>r.url().endsWith('/requests/'+id)&&r.request().method()==='PATCH');
+     await form.locator('button[type="submit"]').click();assert.equal((await response).status(),200);
+     const saved=(await ref.get()).data();assert.equal(saved.status,'in_progress');assert.equal(saved.execution.notes,`Field verified ${width}`);assert.equal(saved.execution.checklist[0].done,true);assert.equal(saved.quote.totalCents,123456);
+     assert.deepEqual(errors,[]);await page.close();
+    }
+    await call('/team/integration-field','PUT',{enabled:true,profile:'finance'});
+    const finance=await browser.newPage({viewport:{width:390,height:900}});
+    await finance.addInitScript(({token,org})=>{sessionStorage.setItem('nl_session_token',token);localStorage.setItem('nl_org',org)},{token:memberToken,org:orgId});
+    // A createdAt field makes this job part of the ordinary recent-request page.
+    await db.doc(`${root}/nestlocal_requests/aaa-browser-390`).update({createdAt:admin.firestore.Timestamp.now()});
+    await finance.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
+    const receiptForm=finance.locator('[data-finance-job="aaa-browser-390"]');await receiptForm.waitFor({timeout:15000});
+    await receiptForm.locator('[name="amountPaid"]').fill('1.00');await receiptForm.locator('[name="paymentStatus"]').selectOption('partial');
+    const paid=finance.waitForResponse(r=>r.url().endsWith('/requests/aaa-browser-390')&&r.request().method()==='PATCH');
+    await receiptForm.locator('button[type="submit"]').click();assert.equal((await paid).status(),200);
+    assert.equal((await db.doc(`${root}/nestlocal_requests/aaa-browser-390`).get()).data().commercial.amountPaidCents,100);
+    await call('/team/integration-field','PUT',{enabled:true,profile:'viewer'});await finance.reload();
+    await finance.locator('.shell').waitFor({timeout:15000});assert.ok(await finance.getByText('Seu perfil permite apenas consultar os dados.').count());
+    await finance.close();
    }finally{if(browser)await browser.close();await new Promise(resolve=>webServer.close(resolve))}
   });
  }

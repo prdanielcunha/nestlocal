@@ -1,5 +1,6 @@
 
 import {parseCustomerBatch} from './customer-import.js?v=20261017-import-v1';
+import {renderRoleWorkspace} from './role-workspace.js?v=20261018-profiles-v1';
 import {buildOpportunitySnapshot,renderOpportunityPulse} from './opportunity-pulse.js';
 import {buildPulseSnapshot,renderPulse} from './pulse.js';
 import {renderCalendarIntro,calendarDigest,makeCalendarIcs,makeGoogleCalendarUrl,cw} from './calendar.js';
@@ -54,6 +55,9 @@ Object.assign(D.pt,{advancedMessaging:'Modelos de mensagens (opcional)',advanced
 Object.assign(D.en,{advancedMessaging:'Message templates (optional)',advancedMessagingHelp:'Configure only when approved messaging templates are available.'});
 Object.assign(D.es,{advancedMessaging:'Plantillas de mensajes (opcional)',advancedMessagingHelp:'Configúrelas solo si ya utiliza plantillas aprobadas.'});
 Object.assign(D.pt,{previewImport:'Verificar importação',importConfirm:'Confirmar importação',importPreviewTitle:'Revise antes de importar',importCreates:'Novos',importUpdates:'Cadastros que serão atualizados',importRejected:'Linhas ignoradas',importNoValid:'Nenhum cadastro válido para importar'});
+Object.assign(D.pt,{accessProfile:'Perfil de acesso',roleLegacy:'Acesso anterior',roleOperations:'Atendimento e operação',roleFinance:'Financeiro',roleField:'Meus serviços',roleViewer:'Somente consulta',roleFieldHelp:'Somente os serviços atribuídos a você. Valores e cadastros da empresa ficam restritos.',roleFinanceHelp:'Atualize valores finais e recebimentos. Alterações de agenda e execução ficam com a operação.',roleNoJobs:'Nenhum serviço disponível neste perfil.',roleReadOnly:'Seu perfil permite apenas consultar os dados.'});
+Object.assign(D.en,{accessProfile:'Access profile',roleLegacy:'Previous access',roleOperations:'Customer service and operations',roleFinance:'Finance',roleField:'My jobs',roleViewer:'View only',roleFieldHelp:'Only jobs assigned to you. Business amounts and customer records are restricted.',roleFinanceHelp:'Update final amounts and payments. Operations manages scheduling and execution.',roleNoJobs:'No jobs available for this profile.',roleReadOnly:'Your profile can only view records.'});
+Object.assign(D.es,{accessProfile:'Perfil de acceso',roleLegacy:'Acceso anterior',roleOperations:'Atención y operación',roleFinance:'Finanzas',roleField:'Mis servicios',roleViewer:'Solo consulta',roleFieldHelp:'Solo servicios asignados a usted. Importes y registros de clientes restringidos.',roleFinanceHelp:'Actualice importes finales y cobros. Operación gestiona agenda y ejecución.',roleNoJobs:'No hay servicios disponibles para este perfil.',roleReadOnly:'Su perfil solo permite consultar datos.'});
 Object.assign(D.pt,{importRowNew:'Novo cadastro',importRowUpdate:'Atualizar cadastro',importRowInvalid:'Nome, WhatsApp ou data inválidos',importRowDuplicate:'WhatsApp repetido nesta lista'});
 Object.assign(D.en,{importRowNew:'New customer',importRowUpdate:'Update customer',importRowInvalid:'Invalid name, WhatsApp or date',importRowDuplicate:'Duplicate WhatsApp in this list'});
 Object.assign(D.es,{importRowNew:'Nuevo cliente',importRowUpdate:'Actualizar cliente',importRowInvalid:'Nombre, WhatsApp o fecha no válidos',importRowDuplicate:'WhatsApp repetido en esta lista'});
@@ -379,7 +383,7 @@ function requestIntakeSummary(r){
   return Object.entries(values).map(([key,value])=>{const field=fields.find(x=>x.id===key);return `<p><strong>${esc(field?fieldLabel(field):humanizeOption(key))}:</strong> ${esc(value)}</p>`}).join('');
 }
 const isGrowthAdmin=()=>growthAdminRoles.has(S.session?.user?.systemRole);
-const labels=()=>{const opportunity=S.data?.features?.opportunityDrafts===true,requestLabel=opportunity?t('opportunities'):t('requests');return isGrowthAdmin()?{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),growth:t('navRadar'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),automation:t('automation'),page:t('page'),privacy:t('privacy')};};
+const labels=()=>{if(['field','finance'].includes(S.data?.accessProfile))return {today:t('today'),requests:t('requests')};const opportunity=S.data?.features?.opportunityDrafts===true,requestLabel=opportunity?t('opportunities'):t('requests');return isGrowthAdmin()?{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),growth:t('navRadar'),automation:t('automation'),page:t('page'),privacy:t('privacy')}:{today:t('today'),requests:requestLabel,agenda:t('agenda'),services:t('services'),customers:t('customers'),automation:t('automation'),page:t('page'),privacy:t('privacy')};};
 const pathParts=()=>location.pathname.split('/').filter(Boolean);
 const publicSlug=()=>{const p=pathParts();return p[0]==='s'?p[1]:p[0]};
 const publicReserved=new Set(['track','review','privacy','terms','raio-x','diagnostico']);
@@ -402,6 +406,8 @@ async function api(path,opt={}){
   const method=String(opt.method||'GET').toUpperCase();
   const isNestLocalBusinessRoute=/^\/api\/organizations\/[^/]+\/nestlocal(?:\/|$)/.test(String(path));
   const isPrivacyRevoke=method==='POST'&&/\/nestlocal\/privacy\/revoke(?:\?|$)/.test(String(path));
+  if(S.data?.accessProfile==='viewer'&&isNestLocalBusinessRoute&&!['GET','HEAD','OPTIONS'].includes(method)&&
+    !/\/nestlocal\/(?:calendar\/feed|push\/(?:devices|test))(?:\?|$)/.test(path))throw Error(t('roleReadOnly'));
   if(S.data?.entitlement?.readOnly===true&&isNestLocalBusinessRoute&&
      !['GET','HEAD','OPTIONS'].includes(method)&&!isPrivacyRevoke)throw Error(t('readOnlyRequest'));
   if(S.directGoogleSession){try{const {getFreshDirectToken}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');S.directGoogleToken=await getFreshDirectToken()||''}catch{S.directGoogleToken=''}
@@ -453,7 +459,7 @@ function subscriptionGate(){const org=S.session.organizations.find(x=>x.id===S.o
 
 function nav(){return Object.entries(labels()).map(([id,x])=>`<button type="button" data-nav="${id}" class="${S.page===id?'active':''}" aria-current="${S.page===id?'page':'false'}">${esc(x)}</button>`).join('')}
 function mobileNav(){
-  const entries=Object.entries(labels()),main=['today','requests','agenda','customers'],other=entries.filter(([id])=>!main.includes(id));
+  const entries=Object.entries(labels()),main=['today','requests','agenda','customers'].filter(id=>Object.hasOwn(labels(),id)),other=entries.filter(([id])=>!main.includes(id));
   return main.map(id=>`<button type="button" data-nav="${id}" class="${S.page===id?'active':''}" aria-current="${S.page===id?'page':'false'}">${esc(labels()[id])}</button>`).join('')+
     `<details class="mobile-more"><summary aria-label="${esc(t('moreNav'))}">${esc(t('moreNav'))}</summary><div class="mobile-more-list">${other.map(([id,name])=>`<button type="button" data-nav="${id}" aria-current="${S.page===id?'page':'false'}">${esc(name)}</button>`).join('')}</div></details>`;
 }
@@ -984,7 +990,7 @@ function catalogAccelerator(){
 function team(){
  const e=S.data.entitlement||{},seats=e.seats||{},members=S.data.team||[],manage=S.data.canManageTeam===true;
  return `<article class="card wide-card"><div class="section-title"><h2>${t('team')}</h2><span>${seats.used||0}/${seats.limit||1} ${t('seats')}</span></div><div class="team-list">${members.map(member=>`<div class="team-member"><div><strong>${esc(member.name||member.email||member.uid)}</strong><span>${esc(member.email||member.role||'')}</span></div><div class="team-controls">${member.owner?`<span class="tag">${t('ownerSeat')}</span>`:manage?`<button type="button" class="button small" data-team="${esc(member.uid)}" data-enabled="${member.nestlocalEnabled?'false':'true'}">${member.nestlocalEnabled?t('disableAccess'):t('enableAccess')}</button>`:''}
- ${manage&&member.nestlocalEnabled&&!['owner','admin'].includes(member.role)?`<form data-member-capabilities="${esc(member.uid)}"><label><input type="checkbox" name="financeWrite" ${member.capabilities?.financeWrite?'checked':''}> ${t('financePermission')}</label><label><input type="checkbox" name="sitesWrite" ${member.capabilities?.sitesWrite?'checked':''}> ${t('sitesPermission')}</label><button type="submit" class="button small">${t('save')}</button></form>`:''}</div></div>`).join('')}</div></article>`;
+ ${manage&&member.nestlocalEnabled&&!['owner','admin'].includes(member.role)?`<form data-member-capabilities="${esc(member.uid)}"><label>${t('accessProfile')}<select name="profile">${['legacy','operations','finance','field','viewer'].map(profile=>`<option value="${profile}" ${profile===(member.profile||'legacy')?'selected':''}>${esc(t({legacy:'roleLegacy',operations:'roleOperations',finance:'roleFinance',field:'roleField',viewer:'roleViewer'}[profile]))}</option>`).join('')}</select></label><label><input type="checkbox" name="financeWrite" ${member.capabilities?.financeWrite?'checked':''}> ${t('financePermission')}</label><label><input type="checkbox" name="sitesWrite" ${member.capabilities?.sitesWrite?'checked':''}> ${t('sitesPermission')}</label><button type="submit" class="button small">${t('save')}</button></form>`:''}</div></div>`).join('')}</div></article>`;
 }
 function readinessPanel(){
   const readiness=S.data.setupReadiness||{ready:false,issues:['SETUP_REQUIRED']};
@@ -1168,7 +1174,8 @@ function shell(){
   let C='';
   try{
     setAuthStage('render_'+S.page);
-    C=renderer();
+    C=['field','finance'].includes(S.data?.accessProfile)?renderRoleWorkspace(S.data,{t,esc,money}):renderer();
+    if(S.data?.accessProfile==='viewer')C=`<article class="card" role="status">${esc(t('roleReadOnly'))}</article>`+C;
   }catch(e){
     console.error('[NESTLOCAL_PAGE_RENDER]',S.page,e);
     setAuthStage('render_recovered');
@@ -1306,7 +1313,7 @@ function render(){
     }
     const publish=document.querySelector('#publish');if(publish){publish.disabled=true;publish.title=t('catalogReadOnly')}
   }
-  if(S.data?.entitlement?.readOnly===true){
+  if(S.data?.entitlement?.readOnly===true||S.data?.accessProfile==='viewer'){
     const captureButton=document.querySelector('.opportunity-fab');
     if(captureButton){captureButton.disabled=true;captureButton.title=t('readOnlyRequest')}
     const page=document.querySelector('.shell .page');
@@ -1358,6 +1365,11 @@ async function loadData(){
   const orgId=S.orgId,run=++S.dataLoadSequence;
   const data=await api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal`,{timeoutMs:12000});
   if(orgId!==S.orgId||run!==S.dataLoadSequence)return;
+  if(['field','finance'].includes(data.accessProfile)){
+    S.data=data;S.requestList=null;S.privacyPermissions=null;S.pulseFeedback=[];S.calendarFeedUrl='';S.operationalLoadedAt=Date.now();
+    if(!['today','requests'].includes(S.page))S.page='today';
+    return;
+  }
   const path=`/api/organizations/${encodeURIComponent(orgId)}/nestlocal`,
     filter=S.requestListFilter,
     opt={timeoutMs:6500};
@@ -1984,10 +1996,30 @@ if(form.dataset.complete==='true')payload.status='completed';button.disabled=tru
   });
   document.querySelector('#growthLead')?.addEventListener('submit',async e=>{e.preventDefault();const form=e.currentTarget,f=new FormData(form),signalNames=['quote','whatsapp','scheduling','recurrence','demand','smallTeam','ownerInvolved','noStrongSystem'],signals={};signalNames.forEach(k=>signals[k]=f.get(k)==='on'?1:0);await api('/api/admin/nestlocal/growth/leads',{method:'POST',body:JSON.stringify({businessName:f.get('businessName'),contactName:f.get('contactName'),phone:f.get('phone'),city:f.get('city'),segment:f.get('segment'),channel:f.get('channel'),angle:f.get('angle'),campaign:f.get('campaign'),nextAction:f.get('nextAction'),signals})});await loadGrowth();render();toast(t('save'))});
   document.querySelector('#dossier42Import')?.addEventListener('click',async e=>{const button=e.currentTarget;button.disabled=true;try{const result=await api('/api/admin/nestlocal/growth/leads/batch',{method:'POST',body:JSON.stringify({leads:dossier42})});await loadGrowth();render();toast(`${result.createdCount||0} ${t('dossierImported')} · ${result.skippedCount||0} ${t('skippedRows')}`)}catch(err){button.disabled=false;toast(err.message)}});
+  document.querySelectorAll('[data-field-job],[data-finance-job]').forEach(form=>form.onsubmit=async event=>{
+   event.preventDefault();const button=form.querySelector('button[type="submit"]'),f=new FormData(form),id=form.dataset.fieldJob||form.dataset.financeJob,
+    source=(S.data.requests||[]).find(row=>row.id===id);
+   if(!source)return;button.disabled=true;
+   const payload=form.dataset.fieldJob?{status:f.get('status'),executionNotes:f.get('executionNotes'),executionChecklist:(source.execution?.checklist||[]).map(row=>({id:row.id,label:row.label,done:f.get('checklist-'+row.id)==='on'}))}:
+    {finalAmountCents:Math.round(Number(f.get('finalAmount'))*100),amountPaidCents:Math.round(Number(f.get('amountPaid'))*100),paymentStatus:f.get('paymentStatus')};
+   try{await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/requests/${encodeURIComponent(id)}`,{method:'PATCH',body:JSON.stringify(payload)});await loadData();render();toast(t('save'))}
+   catch(error){button.disabled=false;toast(error.message)}
+  });
+  document.querySelector('[data-role-next]')?.addEventListener('click',async event=>{
+   const button=event.currentTarget,org=S.orgId,uid=S.user?.uid,page=S.data.assignedPage,
+    cursor=page?.nextCursor||(S.data.requests||[]).at(-1)?.id;
+   if(!cursor)return;button.disabled=true;
+   try{
+    const next=await api(`/api/organizations/${encodeURIComponent(org)}/nestlocal/lists/requests/page?limit=100&cursor=${encodeURIComponent(cursor)}`);
+    if(org!==S.orgId||uid!==S.user?.uid)return;
+    S.data.requests=mergeOperationalRows(S.data.requests,next.items||[]);S.data.requestsHasMore=next.hasMore;
+    S.data.assignedPage=next;render();
+   }catch(error){button.disabled=false;toast(error.message)}
+  });
   document.querySelectorAll('[data-member-capabilities]').forEach(form=>form.onsubmit=async event=>{
    event.preventDefault();const button=form.querySelector('button[type="submit"]');button.disabled=true;
    try{
-    await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/team/${encodeURIComponent(form.dataset.memberCapabilities)}`,{method:'PUT',body:JSON.stringify({enabled:true,capabilities:{financeWrite:form.elements.financeWrite.checked,sitesWrite:form.elements.sitesWrite.checked}})});
+    await api(`/api/organizations/${encodeURIComponent(S.orgId)}/nestlocal/team/${encodeURIComponent(form.dataset.memberCapabilities)}`,{method:'PUT',body:JSON.stringify({enabled:true,profile:form.elements.profile.value,capabilities:{financeWrite:form.elements.financeWrite.checked,sitesWrite:form.elements.sitesWrite.checked}})});
     await loadData();render();toast(t('save'));
    }catch(error){button.disabled=false;toast(error.message)}
   });

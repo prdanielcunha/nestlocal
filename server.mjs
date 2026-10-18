@@ -1,5 +1,6 @@
 import { radarServicePlaybooks } from './src/domain/radar-playbooks.mjs';
 import {hasNestLocalPermission,nestLocalCapability,prepareNestLocalMemberAccess} from './src/domain/member-permissions.mjs';
+import {canonicalOperationalProfile,operationalRouteAllowed,assignedRequest,fieldRequestView} from './src/domain/operational-profiles.mjs';
 import express from 'express';
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
@@ -271,6 +272,14 @@ async function authorize(req,res,next){
       return sendError(res,402,'TRIAL_EXPIRED_READ_ONLY');
     }
     req.access={orgId,org:{id:org.id,...org.data()},systemRole:access.systemRole,member:access.member||null,entitlement:{status:access.administrative?'administrative':access.entitlement.subscriptionStatus,plan:access.administrative?'pro':access.entitlement.plan,limits:access.administrative?planLimits.pro:access.entitlement.limits,administrative:access.administrative,readOnly:access.entitlement.readOnly===true,canWrite:access.entitlement.canWrite!==false,canUseAI:access.entitlement.canUseAI!==false,source:access.entitlement.source||'legacy_stripe',trialEndsAt:access.entitlement.endsAt||null}};
+    req.access.profile=canonicalOperationalProfile(req.access.member,{administrator:canManageNestLocal(req.access)});
+    const routePath=req.path.match(/^\/api\/organizations\/[^/]+\/nestlocal(.*)$/)?.[1]??'__invalid__';
+    if(!operationalRouteAllowed(req.access.profile,req.method,routePath,req.body))return sendError(res,403,'PROFILE_ACCESS_DENIED');
+    if(req.access.profile==='field'&&/^\/requests\//.test(routePath)){
+      const id=routePath.split('/')[2];
+      const record=await db.doc(`organizations/${orgId}/nestlocal_requests/${id}`).get();
+      if(!record.exists||!assignedRequest(record.data(),req.identity.uid))return sendError(res,404,'REQUEST_NOT_FOUND');
+    }
     next();
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 }
@@ -753,7 +762,9 @@ app.get('/api/calendar/feeds/:orgId/:uid.ics',async(req,res)=>{
     if(!access.accessible)return sendError(res,404,'NOT_FOUND');
     const root='organizations/'+orgId;
     const [requests,services]=await Promise.all([
-      db.collection(root+'/nestlocal_requests').where('status','in',['scheduled','in_progress']).limit(250).get(),
+      (canonicalOperationalProfile(access.member,{administrator:access.administrative})==='field'
+        ?db.collection(root+'/nestlocal_requests').where('schedule.assignedTo','==',uid)
+        :db.collection(root+'/nestlocal_requests').where('status','in',['scheduled','in_progress'])).limit(250).get(),
       db.collection(root+'/nestlocal_services').limit(100).get()
     ]);
     const seeAll=access.administrative===true||['owner','admin'].includes(clean(access.member?.role||access.member?.organizationRole).toLowerCase());
@@ -1318,8 +1329,32 @@ app.get('/api/session',authenticate,async(req,res)=>{
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
+async function assignedRequestPage(req){
+ const root=`organizations/${req.access.orgId}`,cursor=clean(req.query.cursor),size=Number(req.query.limit||100),
+  limit=Number.isSafeInteger(size)?Math.max(1,Math.min(100,size)):100;
+ if(cursor&&!safeId(cursor))throw new TypeError('INVALID_CURSOR');
+ let query=db.collection(`${root}/nestlocal_requests`).where('schedule.assignedTo','==',req.identity.uid).orderBy(admin.firestore.FieldPath.documentId());
+ if(cursor)query=query.startAfter(cursor);
+ const snap=await query.limit(limit+1).get(),docs=snap.docs.slice(0,limit);
+ // Filter only after advancing the scanned cursor, so a status filter cannot
+ // skip assigned jobs or accidentally reveal global counts.
+ const status=clean(req.query.status);
+ if(status&&!requestStatuses.has(status))throw new TypeError('INVALID_STATUS_FILTER');
+ return {items:docs.filter(doc=>!status||doc.data().status===status).map(doc=>fieldRequestView(doc.id,doc.data(),req.identity.uid)),
+  hasMore:snap.size>limit,nextCursor:snap.size>limit?docs.at(-1).id:null,limit,totalCount:null};
+}
 app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,res)=>{
   try{
+    if(req.access.profile==='field'){
+      const root=`organizations/${req.access.orgId}`,page=await assignedRequestPage(req),
+       [settings,services]=await Promise.all([db.doc(`${root}/nestlocal_settings/public`).get(),db.collection(`${root}/nestlocal_services`).get()]);
+      res.set('Cache-Control','private,no-store');
+      return res.json({organization:{id:req.access.orgId,name:req.access.org.name},accessProfile:'field',features:{},
+       entitlement:req.access.entitlement,settings:{timezone:settings.data()?.timezone||'UTC'},
+       canManageTeam:false,canManageCatalog:false,canManageFinance:false,canManageSites:false,
+       requests:page.items,assignedPage:page,services:services.docs.map(doc=>({id:doc.id,name:clean(doc.data()?.name)})),
+       customers:[],dueCustomers:[],team:[],messageOutbox:[],guidedExperiments:[],decisionMemory:{},experimentAccess:{canManage:false}});
+    }
     const monthId=new Date().toISOString().slice(0,7),root=`organizations/${req.access.orgId}`,settings=await db.doc(`${root}/nestlocal_settings/public`).get(),settingsData=settings.exists?settings.data():null,timeZone=validTimeZone(clean(settingsData?.timezone))?clean(settingsData.timezone):'UTC',today=localIsoDate(timeZone),dueLimit=200,actionMetricStart=addIsoDays(today,-29);
     const [services,requests,customers,dueCustomers,usage,members,outbox,revenueMetrics,reviewMetrics,actionMetrics,experiments,decisionMemory,requestCountResult,customerCountResult]=await Promise.all([
       db.collection(`${root}/nestlocal_services`).get(),
@@ -1337,14 +1372,18 @@ app.get('/api/organizations/:orgId/nestlocal',authenticate,authorize,async(req,r
       db.collection(`${root}/nestlocal_requests`).count().get(),
       db.collection(`${root}/nestlocal_customers`).count().get()
     ]);
-const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner,capabilities:{financeWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'financeWrite'),sitesWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'sitesWrite')}}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
-    res.json({features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageTeam:canManageNestLocal(req.access),canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
+const team=members.docs.filter(x=>!inactive(x.data())).map(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase(),owner=role==='owner';return{uid:x.id,name:clean(d.displayName||d.name||d.email||x.id),email:clean(d.email),role,nestlocalEnabled:owner||d.appAccess?.nestlocal?.enabled===true,owner,profile:d.appAccess?.nestlocal?.profile||'legacy',capabilities:{financeWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'financeWrite'),sitesWrite:['owner','admin'].includes(role)||nestLocalCapability(d,'sitesWrite')}}}),serviceRows=services.docs.map(x=>{const data=x.data();return{id:x.id,...data,...(data.draft||{})}}),customerRows=customers.docs.map(x=>({id:x.id,...x.data()})),dueRows=dueCustomers.docs.map(x=>({id:x.id,...x.data()})),effectiveSettings=effectiveNestLocalSettings(settingsData),setupReadiness=catalogReadiness(effectiveSettings,serviceRows);
+    res.json({accessProfile:req.access.profile,features:{pulseV2:pulseFeatureEnabled(req.access.orgId),opportunityDrafts:opportunityDraftsEnabled(req.access.orgId),opportunityAI:pilotOpportunityAiEnabled(req.access.orgId)&&req.access.entitlement?.canUseAI!==false},organization:{id:req.access.orgId,name:req.access.org.name},entitlement:{...req.access.entitlement,usage:{monthId,requests:Number(usage.data()?.requestCount||0)},seats:{used:team.filter(x=>x.nestlocalEnabled).length,limit:req.access.entitlement.limits.users}},settings:effectiveSettings,setupReadiness,canManageTeam:canManageNestLocal(req.access),canManageCatalog:canManageNestLocal(req.access),canManageFinance:canManageNestLocalFinance(req.access),canManageSites:canManageNestLocalSites(req.access),services:serviceRows,requests:requests.docs.map(x=>({id:x.id,...x.data(),trackingTokenHash:undefined,trackingTokenHashes:undefined,reviewTokenHash:undefined,reviewTokenHashes:undefined})),requestsTotal:requestCountResult.data().count,requestsHasMore:requestCountResult.data().count>requests.size,customers:customerRows,customerCount:customerCountResult.data().count,customersHasMore:customerCountResult.data().count>customers.size,dueCustomers:dueRows,dueCustomersHasMore:dueCustomers.size===dueLimit,team,messageOutbox:outbox.docs.map(x=>({id:x.id,...x.data()})),reminderReadiness:reminderReadiness(dueRows,settingsData||{},{truncated:dueCustomers.size===dueLimit}),revenueMetrics:revenueMetrics.exists?revenueMetrics.data():{assistedRevenueCents:0,assistedJobs:0},reviewMetrics:reviewMetrics.exists?reviewMetrics.data():{count:0,sumRatings:0,distribution:{}},actionOutcomeMetrics:actionOutcomeSnapshot(actionMetrics.docs.map(x=>x.data()),{periodStart:actionMetricStart,periodEnd:today}),guidedExperiments:experiments.docs.map(x=>({id:x.id,...x.data()})),decisionMemory:Object.fromEntries(decisionMemory.docs.map(x=>[x.id,{id:x.id,...x.data()}])),experimentAccess:{canManage:canManageNestLocal(req.access)}})
   }catch(e){console.error(e);sendError(res,500,'INTERNAL_ERROR')}
 });
 
 // Bounded operational pagination: uses a stable document cursor and never returns the
 // tenant's entire history in one request. Caller authorization remains enforced server-side.
 app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,authorize,async(req,res)=>{
+  if(req.access.profile==='field'){
+   try{return res.set('Cache-Control','private,no-store').json(await assignedRequestPage(req))}
+   catch(error){return sendError(res,error instanceof TypeError?400:500,error instanceof TypeError?error.message:'LIST_UNAVAILABLE')}
+  }
   const kind=clean(req.params.kind),collection=kind==='requests'?'nestlocal_requests':kind==='customers'?'nestlocal_customers':null;
   if(!collection)return sendError(res,404,'UNKNOWN_LIST');
   const cursor=clean(req.query.cursor),status=clean(req.query.status),n=Number(req.query.limit||50),limit=Number.isSafeInteger(n)?Math.min(100,Math.max(1,n)):50;
@@ -1376,6 +1415,10 @@ app.get('/api/organizations/:orgId/nestlocal/lists/:kind/page',authenticate,auth
 // Appointment query is independent of the most recent 100 requests.
 // Schedule slot records are written atomically when appointments are reserved.
 app.get('/api/organizations/:orgId/nestlocal/agenda/page',authenticate,authorize,async(req,res)=>{
+  if(req.access.profile==='field'){
+   try{const page=await assignedRequestPage(req);return res.set('Cache-Control','private,no-store').json({...page,items:page.items.filter(row=>['scheduled','in_progress'].includes(row.status)),totalSlots:null})}
+   catch(error){return sendError(res,error instanceof TypeError?400:500,error instanceof TypeError?error.message:'AGENDA_UNAVAILABLE')}
+  }
   const cursor=clean(req.query.cursor),requested=Number(req.query.limit||50),
     limit=Number.isSafeInteger(requested)?Math.min(100,Math.max(1,requested)):50;
   if(cursor&&!safeId(cursor))return sendError(res,400,'INVALID_CURSOR');
@@ -1832,9 +1875,9 @@ app.post('/api/organizations/:orgId/nestlocal/pulse/feedback',authenticate,autho
 app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,async(req,res)=>{
  if(!canManageNestLocal(req.access))return sendError(res,403,'ACCESS_DENIED');
  try{
-  const targetUid=safeId(req.params.uid),enabled=req.body?.enabled,capabilities=req.body?.capabilities;
+  const targetUid=safeId(req.params.uid),enabled=req.body?.enabled,capabilities=req.body?.capabilities,profile=req.body?.profile;
   if(!targetUid)return sendError(res,400,'INVALID_MEMBER');
-  prepareNestLocalMemberAccess({},enabled,capabilities);
+  prepareNestLocalMemberAccess({},enabled,capabilities,profile);
   const root=`organizations/${req.access.orgId}`,memberRef=db.doc(`${root}/members/${targetUid}`),
    legacyRef=db.doc(`organization_members/${req.access.orgId}_${targetUid}`),
    membersQuery=db.collection(`${root}/members`).limit(101),auditRef=db.collection(`${root}/nestlocal_audit`).doc();
@@ -1843,23 +1886,23 @@ app.put('/api/organizations/:orgId/nestlocal/team/:uid',authenticate,authorize,a
    if(!member.exists||inactive(member.data()))throw new TypeError('MEMBER_NOT_FOUND');
    const target=member.data(),targetRole=clean(target.role||target.organizationRole).toLowerCase();
    if(targetRole==='owner'&&!enabled)throw new TypeError('OWNER_SEAT_REQUIRED');
-   if(capabilities!==undefined&&['owner','admin'].includes(targetRole))throw new TypeError('ADMIN_CAPABILITIES_INHERITED');
+   if((capabilities!==undefined||profile!==undefined)&&['owner','admin'].includes(targetRole))throw new TypeError('ADMIN_CAPABILITIES_INHERITED');
    const alreadyEnabled=targetRole==='owner'||target.appAccess?.nestlocal?.enabled===true;
    if(enabled&&!alreadyEnabled){
     if(members.size>100)throw new TypeError('TEAM_LIMIT_REQUIRES_REVIEW');
     const used=members.docs.filter(x=>{const d=x.data(),role=clean(d.role||d.organizationRole).toLowerCase();return !inactive(d)&&(role==='owner'||d.appAccess?.nestlocal?.enabled===true)}).length;
     if(used>=req.access.entitlement.limits.users)throw new TypeError('PLAN_USER_LIMIT');
    }
-   const appAccess={...prepareNestLocalMemberAccess(target.appAccess?.nestlocal||{},enabled,capabilities),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+   const appAccess={...prepareNestLocalMemberAccess(target.appAccess?.nestlocal||{},enabled,capabilities,profile),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
    tx.set(memberRef,{appAccess:{nestlocal:appAccess}},{mergeFields:['appAccess.nestlocal']});
    tx.set(legacyRef,{appAccess:{nestlocal:appAccess}},{mergeFields:['appAccess.nestlocal']});
    tx.create(auditRef,{action:'team.access_updated',targetUid,enabled,actorUid:req.identity.uid,
-    ...(capabilities===undefined?{}:{capabilities}),at:admin.firestore.FieldValue.serverTimestamp()});
+    ...(capabilities===undefined?{}:{capabilities}),...(profile===undefined?{}:{profile,previousProfile:target.appAccess?.nestlocal?.profile||'legacy'}),at:admin.firestore.FieldValue.serverTimestamp()});
   });
   res.json({ok:true,uid:targetUid,enabled});
  }catch(error){
   const code=error?.message;
-  if(['INVALID_MEMBER_ACCESS','INVALID_MEMBER_CAPABILITIES'].includes(code))return sendError(res,400,code);
+  if(['INVALID_MEMBER_ACCESS','INVALID_MEMBER_CAPABILITIES','INVALID_MEMBER_PROFILE'].includes(code))return sendError(res,400,code);
   if(['MEMBER_NOT_FOUND','OWNER_SEAT_REQUIRED','PLAN_USER_LIMIT','TEAM_LIMIT_REQUIRES_REVIEW','ADMIN_CAPABILITIES_INHERITED'].includes(code))return sendError(res,409,code);
   console.error('TEAM_ACCESS_UPDATE_FAILED',error?.code||error?.name);sendError(res,500,'INTERNAL_ERROR');
  }
@@ -2667,6 +2710,7 @@ app.get('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate,a
   try{
     const snap=await db.doc(`organizations/${req.access.orgId}/nestlocal_requests/${id}`).get();
     if(!snap.exists)return sendError(res,404,'REQUEST_NOT_FOUND');
+    if(req.access.profile==='field')return res.set('Cache-Control','private,no-store').json({item:fieldRequestView(snap.id,snap.data(),req.identity.uid)});
     const row={id:snap.id,...snap.data()};
     delete row.trackingTokenHash;delete row.trackingTokenHashes;
     delete row.reviewTokenHash;delete row.reviewTokenHashes;
@@ -2699,6 +2743,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     let response={ok:true};
     await db.runTransaction(async tx=>{
       const snap=await tx.get(ref);if(!snap.exists)throw new TypeError('REQUEST_NOT_FOUND');
+      if(req.access.profile==='field'&&!assignedRequest(snap.data(),req.identity.uid))throw new TypeError('ASSIGNMENT_ACCESS_DENIED');
       const current=snap.data(),update={updatedAt:admin.firestore.FieldValue.serverTimestamp()},financialCorrection=completedAmountAdjustment(current,b),paymentCorrection=manualPaymentAdjustment(current,b);
       const previousFinal=Number(current.commercial?.finalAmountCents??current.quote?.totalCents??0),
         previousPaid=Number(current.commercial?.amountPaidCents||0),
@@ -2737,6 +2782,11 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
         const workStatus=clean(b.status||current.status);
         if(!['in_progress','completed'].includes(workStatus))throw new TypeError('EXECUTION_CHECKLIST_LOCKED');
         const rows=validateExecutionChecklist(b.executionChecklist);
+        if(req.access.profile==='field'){
+          const original=current.execution?.checklist||[];
+          if(rows.length!==original.length||rows.some((row,index)=>row.id!==original[index]?.id||row.label!==original[index]?.label))
+            throw new TypeError('FIELD_CHECKLIST_SCOPE_DENIED');
+        }
         update['execution.checklist']=rows;
         update['execution.checklistUpdatedBy']=req.identity.uid;
         update['execution.checklistUpdatedAt']=admin.firestore.FieldValue.serverTimestamp();
@@ -2870,7 +2920,7 @@ app.patch('/api/organizations/:orgId/nestlocal/requests/:requestId',authenticate
     res.json(response);
   }catch(e){
     console.error(e);const code=e?.message;
-    if(code==='FINANCE_ACCESS_DENIED')return sendError(res,403,code);
+    if(['FINANCE_ACCESS_DENIED','ASSIGNMENT_ACCESS_DENIED','FIELD_CHECKLIST_SCOPE_DENIED'].includes(code))return sendError(res,403,code);
     if(['REQUEST_NOT_FOUND','INVALID_STATUS','INVALID_SCHEDULE_DATE','INVALID_SCHEDULE_WINDOW','SCHEDULE_REQUIRED','INVALID_ASSIGNEE','SCHEDULE_CONFLICT','INVALID_AMOUNT','INVALID_PAYMENT_STATUS','INVALID_PAYMENT_STATE','INVALID_NEXT_SERVICE_DATE','INVALID_WARRANTY_DATE','INVALID_EXECUTION_CHECKLIST','EXECUTION_CHECKLIST_LOCKED','INVALID_STATUS_TRANSITION','FINANCIAL_RECONCILIATION_REQUIRED','PAYMENT_RECONCILIATION_REQUIRED','QUOTE_EXPIRED'].includes(code))return sendError(res,code==='REQUEST_NOT_FOUND'?404:400,code);
     sendError(res,500,'INTERNAL_ERROR')
   }
