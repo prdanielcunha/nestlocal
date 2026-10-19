@@ -53,6 +53,23 @@ try{
   await page.locator('[data-media-text]').fill('Transcrição revisada manualmente');await page.screenshot({path:`artifacts/experience/media-review-${width}.png`,fullPage:true});
   assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Media layout overflow '+width);
   await page.locator('[data-media-use]').click();assert.equal(await page.locator('[name=message]').inputValue(),'Transcrição revisada manualmente');assert.equal(await page.locator('audio').getAttribute('src'),null);
+  // Synthetic ASR callback: exercises operator consent and asynchronous editing,
+  // without sending this fixture to a provider or creating production records.
+  await page.evaluate(async()=>{
+   const {renderMediaImport,bindMediaImport}=await import('/media-import.js');
+   document.body.innerHTML='<main style="padding:16px;max-width:700px;margin:auto"><form><textarea name="message"></textarea>'+renderMediaImport('pt')+'</form></main>';
+   window.asrCalls=0;bindMediaImport(document.querySelector('form'),'pt',()=>true,{transcribe:async()=>{window.asrCalls++;await new Promise(resolve=>window.completeAsr=resolve);return {text:'Transcrição sintética para revisão'}}});document.querySelector('details').open=true;
+  });
+  await page.locator('[data-media-file]').setInputFiles({name:'synthetic.wav',mimeType:'audio/wav',buffer:wav});
+  await page.waitForFunction(()=>Number.isFinite(document.querySelector('audio').duration));
+  await page.locator('[data-media-asr-start]').click();assert.equal(await page.evaluate(()=>window.asrCalls),0);
+  await page.locator('[data-media-asr-consent]').check();await page.locator('[data-media-asr-start]').click();assert.equal(await page.evaluate(()=>window.asrCalls),1);
+  await page.locator('[data-media-text]').fill('Edição manual preservada');await page.evaluate(()=>window.completeAsr());await page.waitForFunction(()=>!document.querySelector('[data-media-asr-start]').disabled);
+  assert.equal(await page.locator('[data-media-text]').inputValue(),'Edição manual preservada');assert.equal(await page.locator('[name=message]').inputValue(),'');
+  await page.locator('[data-media-text]').fill('');await page.locator('[data-media-asr-start]').click();await page.evaluate(()=>window.completeAsr());await page.waitForFunction(()=>!document.querySelector('[data-media-asr-start]').disabled);
+  assert.equal(await page.locator('[data-media-text]').inputValue(),'Transcrição sintética para revisão');
+  await page.locator('[data-media-use]').click();assert.equal(await page.locator('[name=message]').inputValue(),'Transcrição sintética para revisão');assert.equal(await page.locator('[data-media-asr-consent]').isChecked(),false);
+  assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'ASR layout overflow '+width);
   assert.deepEqual(outbound,[],'Private files must not leave the origin');assert.deepEqual(errors,[]);await page.close();
  }
  console.log('PASS real browser bounded ZIP text/PDF, corrupt paths/forged expansion rejected, actual image OCR, manual audio review, no external requests, 320/390/1440px');

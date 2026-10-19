@@ -15,6 +15,8 @@ import { validateCustomerSite } from './src/domain/customer-sites.mjs';
 import {registerCustomerSiteImport} from './src/domain/customer-site-import.mjs';
 import {consolidatedCustomers,registerCustomerIdentity} from './src/domain/customer-identity.mjs';
 import {registerNativePush} from './src/domain/native-push.mjs';
+import {registerAudioTranscription} from './src/domain/audio-transcription.mjs';
+import {transcribeNestLocalAudio} from './src/nestai.mjs';
 import {customerSiteRequestSnapshot} from './src/domain/customer-site-request.mjs';
 import {normalizeActionTask,normalizeActionTaskPatch,publicActionTask} from './src/domain/action-tasks.mjs';
 import {previewOpportunity} from './src/domain/copilot-preview.mjs';
@@ -2016,6 +2018,7 @@ const name=clean(row?.name).slice(0,100),customerPhone=phone(row?.phone),city=cl
 
 // Locations and equipment are bounded subresources of one customer.
 registerCustomerIdentity(app,{db,admin,authenticate,authorize,canManage:canManageNestLocal,hash,safeId,sendError});
+registerAudioTranscription(app,{db,admin,authenticate,authorize,rateLimit,resolveToken:resolveAuthorizedNestAiToken,transcribe:transcribeNestLocalAudio});
 registerCustomerSiteImport(app,{db,admin,authenticate,authorize,canManageSites:canManageNestLocalSites,hash,safeId,sendError,rateLimit});
 app.get('/api/organizations/:orgId/nestlocal/customers/:customerId/sites',authenticate,authorize,async(req,res)=>{
  const customerId=safeId(req.params.customerId);if(!customerId)return sendError(res,404,'CUSTOMER_NOT_FOUND');
