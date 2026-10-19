@@ -89,7 +89,7 @@ test('C02: operational priorities query every actionable status independently an
  assert.match(live,/await Promise\.allSettled\(statuses\.map/);
  assert.match(live,/targetData\.priorityRequests=/);
  assert.match(live,/targetData\.priorityHasMore=/);
- assert.match(live,/mergeOperationalRows\(S\.data\.customers,S\.data\.dueCustomers\)/);
+ assert.match(live,/customerOperationalSources\(S\.data\.customers,S\.data\.dueCustomers\)/);
  assert.match(server,/dueCustomers:dueRows/);
  assert.match(server,/dueCustomersHasMore:/);
 });
@@ -177,6 +177,6 @@ test('C02: dashboard does not mislabel sampled historical amounts as full totals
  assert.match(block,/sampled\?'≥ ':''/);
  assert.match(block,/sampled\?'—':priced/);
  assert.match(block,/donePriced=a\.filter\(x=>x\.status==='completed'&&x\.quote\?\.outcome==='priced'\)/);
- assert.match(block,/mergeOperationalRows\(S\.data\.customers,S\.data\.dueCustomers\)/);
+ assert.match(block,/customerOperationalSources\(S\.data\.customers,S\.data\.dueCustomers\)/);
  assert.match(block,/dueCustomersHasMore\?'\+':''/);
 });
