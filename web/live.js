@@ -1671,7 +1671,7 @@ function bind(){
   const conversationOrg=S.orgId,conversationUid=S.user?.uid;
   bindConversationImport(document.querySelector('#opportunity-draft'),S.lang,()=>S.orgId===conversationOrg&&S.user?.uid===conversationUid);
   bindMediaImport(document.querySelector('#opportunity-draft'),S.lang,()=>S.orgId===conversationOrg&&S.user?.uid===conversationUid,{transcribe:S.data?.entitlement?.canUseAI!==false&&S.data?.entitlement?.readOnly!==true?async(file,signal)=>{
-    const body=new FormData(),extension=file.name.split('.').pop().toLowerCase(),mime={mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',m4a:'audio/mp4'}[extension];
+    const body=new FormData(),extension=file.name.split('.').pop().toLowerCase(),mime={mp3:'audio/mpeg',wav:'audio/wav',ogg:'audio/ogg',m4a:'audio/mp4',opus:'audio/ogg',webm:'audio/webm'}[extension];
     body.append('audio',new Blob([file],{type:mime||file.type}),'audio.'+extension);body.append('consent','true');body.append('locale',S.lang);
     return api(`/api/organizations/${encodeURIComponent(conversationOrg)}/nestlocal/ai/audio-transcribe`,{method:'POST',body,signal,timeoutMs:65000});
   }:undefined});

@@ -1,7 +1,7 @@
 // Local ZIP reader, deliberately bounded and read-only. No filesystem extraction,
 // network requests, recursive archives or automatic processing of every member.
 const MiB=1024*1024;
-const limitFor=name=>/\.txt$/i.test(name)?65536:/\.(mp3|wav|ogg|m4a)$/i.test(name)?20*MiB:/\.(png|jpe?g|webp|pdf)$/i.test(name)?8*MiB:0;
+const limitFor=name=>/\.txt$/i.test(name)?65536:/\.(mp3|wav|ogg|m4a|opus|webm)$/i.test(name)?20*MiB:/\.(png|jpe?g|webp|pdf)$/i.test(name)?8*MiB:0;
 const crcTable=Uint32Array.from({length:256},(_,value)=>{for(let bit=0;bit<8;bit++)value=(value>>>1)^((value&1)?0xedb88320:0);return value>>>0});
 export function archiveCrc32(bytes){
  let crc=0xffffffff;for(const byte of bytes)crc=(crc>>>8)^crcTable[(crc^byte)&255];return (crc^0xffffffff)>>>0;
