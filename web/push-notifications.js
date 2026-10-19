@@ -1,6 +1,7 @@
 // Explicit user opt-in only. Firebase public configuration is fetched from
 // Hosting; no service key, bearer or FCM token is persisted by this module.
 const FIREBASE_VERSION='12.3.0';
+import {enrollNativePush,disableNativePush,testNativePush} from './native-push.js?v=20261019-v1';
 let currentToken='';
 let contextPromise=null;
 async function context({messagingAppId,messagingSenderId}){
@@ -39,6 +40,7 @@ async function deviceToken({vapidPublicKey,messagingAppId,messagingSenderId}){
   return token;
 }
 export async function enrollNestLocalPush({orgId,locale,vapidPublicKey,messagingAppId,messagingSenderId,api}){
+  if(!messagingAppId&&!messagingSenderId)return enrollNativePush({orgId,locale,vapidPublicKey,api});
   if(typeof Notification==='undefined')throw new Error('PUSH_UNSUPPORTED');
   if(Notification.permission!=='granted'){
     const permission=await Notification.requestPermission();
@@ -52,6 +54,7 @@ export async function enrollNestLocalPush({orgId,locale,vapidPublicKey,messaging
   }catch(error){currentToken='';throw error}
 }
 export async function disableNestLocalPush({orgId,vapidPublicKey,messagingAppId,messagingSenderId,api}){
+  if(!messagingAppId&&!messagingSenderId)return disableNativePush({orgId,api});
   const token=currentToken||await deviceToken({vapidPublicKey,messagingAppId,messagingSenderId});
   await api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/devices`,
     {method:'DELETE',body:JSON.stringify({token})});
@@ -59,6 +62,7 @@ export async function disableNestLocalPush({orgId,vapidPublicKey,messagingAppId,
   return {registered:false};
 }
 export async function testNestLocalPush({orgId,vapidPublicKey,messagingAppId,messagingSenderId,api}){
+  if(!messagingAppId&&!messagingSenderId)return testNativePush({orgId,api});
   const token=currentToken||await deviceToken({vapidPublicKey,messagingAppId,messagingSenderId});
   return api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/test`,
     {method:'POST',body:JSON.stringify({token})});

@@ -64,3 +64,14 @@ export async function signOutDirectGoogle(){
   const {auth,signOut}=await contextPromise;
   await signOut(auth);
 }
+// Separate, explicit calendar consent. This does not grant NestLocal access,
+// replace the app session, store a provider token or change organization roles.
+export async function authorizeCalendarGoogle(expectedUid){
+  const {auth,GoogleAuthProvider,reauthenticateWithPopup}=await getContext();
+  if(!auth.currentUser||auth.currentUser.uid!==expectedUid)throw Error('CALENDAR_GOOGLE_SIGN_IN_REQUIRED');
+  const provider=new GoogleAuthProvider();provider.addScope('https://www.googleapis.com/auth/calendar.events');
+  const result=await reauthenticateWithPopup(auth.currentUser,provider);
+  if(result.user.uid!==expectedUid)throw Error('CALENDAR_WRONG_ACCOUNT');
+  const token=GoogleAuthProvider.credentialFromResult(result)?.accessToken;
+  if(!token)throw Error('CALENDAR_CONSENT_REQUIRED');return token;
+}
