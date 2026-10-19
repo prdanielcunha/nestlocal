@@ -2,6 +2,12 @@
 
 **Status:** ferramentas read-only preparadas; **backup de nuvem e restauração ainda não executados**. Nenhum passo deste documento autoriza restaurar dados no ambiente publicado.
 
+## Decisão de custo zero em 18 de outubro de 2026
+
+O responsável determinou que o projeto começa com custo zero. O backup gerenciado diário, a retenção de sete dias e o ensaio de restauração com cobrança ficam **adiados para avaliação após o projeto gerar lucro**, sujeitos a nova aprovação explícita dos custos. Não criar agendamentos, habilitar PITR, criar banco de recuperação ou executar serviços pagos como consequência deste plano. Não solicitar novamente essa ativação enquanto a decisão continuar vigente.
+
+O planejamento está registrado no app em **Serviços → Melhorias futuras**, visível à administração do ecossistema. É uma nota informativa, sem botão de ativação, chamada de API ou cobrança. Esse registro não é um backup e não certifica recuperação de dados. As instruções técnicas abaixo ficam preservadas para quando a etapa for autorizada.
+
 ## Restrições invioláveis
 
 - O Firestore pode ser compartilhado com o Hub e outros produtos MillionsNest. Uma exportação ou restauração da base inteira inclui dados e custos externos ao NestLocal. Nunca selecionar banco ou projeto por inferência do domínio.

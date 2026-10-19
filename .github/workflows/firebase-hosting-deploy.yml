@@ -13,6 +13,8 @@ on:
       - "firebase.json"
       - ".firebaserc"
       - ".github/workflows/firebase-hosting-deploy.yml"
+      - "scripts/configure-native-push.mjs"
+      - "scripts/prepare-media-assets.mjs"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +40,7 @@ jobs:
           set -euo pipefail
           npm ci --ignore-scripts --no-audit --no-fund
           npm run check
+          node scripts/prepare-media-assets.mjs
       - uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093
         with:
           workload_identity_provider: projects/555464791734/locations/global/workloadIdentityPools/mn-prod-github/providers/github
@@ -126,6 +129,9 @@ jobs:
             --update-env-vars FIREBASE_PROJECT_ID=millionsnest,NODE_ENV=production \
             --allow-unauthenticated \
             --quiet
+      - name: Configure free standard Web Push on the existing API
+        if: steps.changes.outputs.api_changed == 'true'
+        run: node scripts/configure-native-push.mjs
       - name: Ensure isolated Hosting sites
         run: |
           set -euo pipefail

@@ -9,11 +9,19 @@ on:
       - "web/conversation-import.js"
       - "web/site-import.js"
       - "web/customer-import.js"
+      - "web/customer-identity.js"
+      - "web/media-import.js"
+      - "scripts/prepare-media-assets.mjs"
+      - "scripts/e2e-media-import.mjs"
+      - "package*.json"
       - "web/calendar.js"
+      - "web/google-calendar-sync.js"
+      - "scripts/e2e-google-calendar-sync.mjs"
       - "web/operations.css"
       - "web/premium-system.css"
       - "web/index.html"
       - "web/push-notifications.js"
+      - "web/native-push.js"
       - "web/nestlocal-push-sw.js"
       - "firebase.json"
       - "scripts/e2e-experience.mjs"
@@ -47,6 +55,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Start static test server
         run: |
+          node scripts/prepare-media-assets.mjs
           python3 -m http.server 4173 --directory web >/tmp/nestlocal-http.log 2>&1 &
           echo $! > /tmp/nestlocal-http.pid
           sleep 2
@@ -60,7 +69,9 @@ jobs:
           node scripts/e2e-operation-ui.mjs
           node scripts/e2e-settings-save.mjs
           node scripts/e2e-opportunity-capture.mjs
+          node scripts/e2e-media-import.mjs
           node scripts/e2e-calendar.mjs
+          node scripts/e2e-google-calendar-sync.mjs
       - name: Archive real browser captures
         if: always()
         uses: actions/upload-artifact@v4

@@ -8,7 +8,8 @@
     "express": "5.1.0",
     "firebase-admin": "13.5.0",
     "google-auth-library": "9.15.1",
-    "multer": "2.0.2"
+    "multer": "2.0.2",
+    "web-push": "3.6.7"
   },
   "engines": {
     "node": ">=24"
@@ -17,5 +18,13 @@
     "start": "node server.mjs",
     "test": "node --test",
     "check": "node --check src/domain/quote.mjs && node --check src/domain/action-tasks.mjs && node --check src/domain/copilot-preview.mjs && node --check src/domain/release-safety.mjs && node --check src/domain/opportunity-ai.mjs && node --check web/task-calendar.js && node --check web/task-reminders.js && node --check scripts/nestlocal-release-snapshot.mjs && node --check scripts/nestlocal-recovery-manifest.mjs && node --check scripts/nestlocal-finance-preflight.mjs && node --check src/domain/financial-reconciliation.mjs && node --check scripts/nestlocal-push-reminders.mjs && node --check src/domain/push-reminders.mjs && node --check src/domain/field-checklist.mjs && node --check src/domain/quote-items.mjs && node --check src/domain/customer-sites.mjs && node --check src/domain/customer-site-request.mjs && node --check web/push-notifications.js && node --check web/nestlocal-push-sw.js && node --check src/domain/recovery-manifest.mjs && node --check src/nestai.mjs && node --check server.mjs && node --check web/live.js && node --check web/direct-auth.js && node --check web/calendar.js && node --check src/domain/calendar.mjs && node --check web/experience.js && node --check web/opportunity-pulse.js && node --check web/pulse.js && node --check web/action-focus.js && node --check web/action-playbooks.js && node --check web/outcome-learning.js && node --check web/guided-experiment.js && node --test"
+  },
+  "devDependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "@tesseract.js-data/por": "1.0.0",
+    "@tesseract.js-data/spa": "1.0.0",
+    "pdfjs-dist": "6.4.299",
+    "playwright": "1.56.1",
+    "tesseract.js": "7.0.0"
   }
 }

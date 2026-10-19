@@ -97,6 +97,7 @@ try {
     });
     await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
     await page.locator('#opportunity-draft textarea[name=message]').waitFor();
+    assert.equal(await page.locator('.opportunity-fab').isVisible(),false,'Floating capture action must not cover the active capture form');
     assert.ok((await page.locator('.nestlocal-today-v2').textContent()).includes('O que aconteceu hoje?'));
     await page.locator('.conversation-import summary').click();
     const expected='Cliente pediu orçamento para reparo.';
