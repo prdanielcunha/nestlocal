@@ -1,7 +1,7 @@
 // Explicit user opt-in only. Firebase public configuration is fetched from
 // Hosting; no service key, bearer or FCM token is persisted by this module.
 const FIREBASE_VERSION='12.3.0';
-import {enrollNativePush,disableNativePush,testNativePush} from './native-push.js?v=20261019-v1';
+import {enrollNativePush,disableNativePush,testNativePush,releaseNativePush} from './native-push.js?v=20261019-v2';
 let currentToken='';
 let contextPromise=null;
 async function context({messagingAppId,messagingSenderId}){
@@ -26,7 +26,7 @@ async function context({messagingAppId,messagingSenderId}){
     const app=getApps().find(candidate=>candidate.name==='nestlocal-messaging')||
       initializeApp({...config,authDomain:'millionsnest.firebaseapp.com',
         appId:messagingAppId,messagingSenderId},'nestlocal-messaging');
-    return {messaging:messaging.getMessaging(app),getToken:messaging.getToken};
+    return {messaging:messaging.getMessaging(app),getToken:messaging.getToken,deleteToken:messaging.deleteToken};
   })().catch(error=>{contextPromise=null;throw error});
   return contextPromise;
 }
@@ -66,4 +66,11 @@ export async function testNestLocalPush({orgId,vapidPublicKey,messagingAppId,mes
   const token=currentToken||await deviceToken({vapidPublicKey,messagingAppId,messagingSenderId});
   return api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/test`,
     {method:'POST',body:JSON.stringify({token})});
+}
+export async function releaseNestLocalPush({orgId,api}){
+ const token=currentToken,pending=contextPromise;currentToken='';contextPromise=null;
+ await releaseNativePush({orgId,api});
+ if(token&&orgId)try{await api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/devices`,{method:'DELETE',body:JSON.stringify({token}),timeoutMs:3000})}catch{}
+ if(pending)try{const sdk=await pending;await sdk.deleteToken?.(sdk.messaging)}catch{}
+ return {registered:false};
 }

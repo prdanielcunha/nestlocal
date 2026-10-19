@@ -24,6 +24,16 @@ export async function disableNativePush({orgId,api}){
  // this tenant binding only; unsubscribing would silently break the others.
  if(scope===orgId)scope='';return {registered:false};
 }
+// Logout ends this browser's subscription across organizations. Merely revoking
+// the current tenant binding would leave the old account's other bindings live.
+export async function releaseNativePush({orgId,api}){
+ let subscription;try{subscription=await existing()}catch(error){if(error.message==='PUSH_UNSUPPORTED')return {registered:false};throw error}
+ scope='';if(!subscription)return {registered:false};
+ // Stop local delivery even when server cleanup is unavailable/offline.
+ await subscription.unsubscribe();
+ if(orgId&&api)try{await api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/devices`,{method:'DELETE',body:JSON.stringify({transport:'web_push',endpoint:subscription.endpoint}),timeoutMs:3000})}catch{}
+ return {registered:false};
+}
 export async function testNativePush({orgId,api}){
  const subscription=await existing();if(!subscription)throw Error('PUSH_NOT_REGISTERED');
  return api(`/api/organizations/${encodeURIComponent(orgId)}/nestlocal/push/test`,{method:'POST',body:JSON.stringify({transport:'web_push',endpoint:subscription.endpoint})});
