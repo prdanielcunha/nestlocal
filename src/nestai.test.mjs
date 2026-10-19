@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup } from './nestai.mjs';
+import { extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup,transcribeNestLocalAudio } from './nestai.mjs';
 
 const validSession='nl_'+('a'.repeat(43));
 
@@ -15,7 +15,7 @@ async function withMockFetch(run){
     }
     const body=JSON.parse(String(init.body||'{}'));
     const task=body.task;
-    const result=task==='nestlocal.request.extract'
+    const result=task==='nestlocal.audio.transcribe'?{text:'Transcrição para revisão'}:task==='nestlocal.request.extract'
       ? {intent:'quote',service:'cleaning',dimensions:null,preferredDate:null,preferredPeriod:null,missingFields:[]}
       : task==='nestlocal.quote.compose'
         ? 'Orçamento pronto para sua revisão.'
@@ -43,6 +43,14 @@ test('NestLocal extracts a request through canonical NestAI without mutating dom
     assert.equal(body.input.authority.mutateRequest,false);
     assert.equal(aiCall.init.headers['x-millionsnest-app'],'nestlocal');
   });
+});
+
+test('audio uses the scoped SDK transcribe task with no original file name',async()=>{
+ await withMockFetch(async calls=>{
+  const text=await transcribeNestLocalAudio({sessionToken:validSession,organizationId:'org-1',locale:'pt',audioBase64:'UklGRg==',mimeType:'audio/wav'});
+  assert.equal(text,'Transcrição para revisão');const call=calls.find(c=>c.url==='https://ai.millionsnest.com/v1/transcribe');assert.ok(call);
+  const body=JSON.parse(call.init.body);assert.equal(body.task,'nestlocal.audio.transcribe');assert.equal(body.context.organizationId,'org-1');assert.equal(body.input.language,'pt');assert.equal(Object.hasOwn(body.input,'fileName'),false);
+ });
 });
 
 test('quote composition receives authoritative total and cannot calculate or send',async()=>{

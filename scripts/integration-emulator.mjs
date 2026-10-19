@@ -55,6 +55,18 @@ try{
   if(server.exitCode!==null)throw Error(`API failed: ${logs}`);
   await new Promise(r=>setTimeout(r,100));
  }
+ await check('audio transcription validates canonical scope, consent and durable daily quota before provider access',async()=>{
+  const post=async(consent='true',targetOrg=orgId,auth=ownerToken)=>{
+   const bytes=Buffer.alloc(44);bytes.write('RIFF');bytes.write('WAVE',8);
+   const body=new FormData();body.append('audio',new Blob([bytes],{type:'audio/wav'}),'synthetic.wav');body.append('consent',consent);body.append('locale','pt');
+   return fetch(`http://127.0.0.1:${apiPort}/api/organizations/${targetOrg}/nestlocal/ai/audio-transcribe`,{method:'POST',headers:{authorization:`Bearer ${auth}`},body});
+  };
+  assert.equal((await post('false')).status,400);
+  assert.equal((await post('true','integration-b')).status,403);
+  assert.equal((await post('true',orgId,'missing')).status,401);
+  const date=new Date().toISOString().slice(0,10),quota=db.doc(`${root}/nestlocal_ai_audio_usage/${date}`);await quota.set({count:5});
+  const response=await post();assert.equal(response.status,429);assert.equal((await response.json()).error,'AI_DAILY_BUDGET_REACHED');assert.equal((await quota.get()).data().count,5);
+ });
  await check('capacity persists nested values and preserves unrelated configuration',async()=>{
   await call('/capacity','PUT',{timezone:'America/Sao_Paulo',workingDays:[2,4],windows:['afternoon']});
   const saved=(await db.doc(`${root}/nestlocal_settings/public`).get()).data();

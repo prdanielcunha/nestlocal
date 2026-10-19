@@ -1,5 +1,7 @@
 # Clientes, mídia, agenda e push — 19/10/2026
 
+**Atualização posterior:** a transcrição automática revisável agora está implementada com tarefa própria do NestLocal e cota gratuita, conforme [contrato de áudio](./AUDIO_TRANSCRIPTION_2026-10-19.md). As referências abaixo à falta de ASR/cadastro descrevem o estágio anterior. O ensaio externo com áudio real continua separado dos testes sintéticos.
+
 ## Política vigente
 
 Custo zero para novas contratações. Não criar backup gerenciado, banco pago de restauração, Cloud Scheduler/Job, cobrança Meta ou fornecedor pago de OCR/transcrição. Infraestrutura compartilhada existente é preservada. Recursos que exigem custo continuam em Serviços → Melhorias futuras, sem ativação automática após lucro.
