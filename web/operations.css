@@ -1,4 +1,6 @@
 /* NestLocal service lifecycle */
+/* Do not place a duplicate floating CTA over the visible capture form. */
+.is-opportunity-v2:has(#opportunity-draft) .opportunity-fab{display:none}
 .lifecycle-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:16px;padding:16px;border:1px solid rgba(255,255,255,.07);border-radius:16px;background:rgba(255,255,255,.02)}
 .lifecycle-form .section-title,.lifecycle-form .wide{grid-column:1/-1}
 .lifecycle-form h3{margin:0;font-size:.92rem}
