@@ -55,8 +55,7 @@ export function registerNativePush(app,{db,admin,authenticate,authorize,hash,saf
  });
  const deliver=async(doc,kind)=>{
   const row=doc.data();if(row.enabled!==true)return false;
-  const subscription=pushSubscription(row.subscription);
-  try{await send(subscription,JSON.stringify({kind,locale:['pt','en','es'].includes(row.locale)?row.locale:'pt'}),{TTL:300,urgency:'normal',timeout:2500,vapidDetails:configuration});return true}
+  try{const subscription=pushSubscription(row.subscription);await send(subscription,JSON.stringify({kind,locale:['pt','en','es'].includes(row.locale)?row.locale:'pt'}),{TTL:300,urgency:'normal',timeout:2500,vapidDetails:configuration});return true}
   catch(error){if([404,410].includes(error?.statusCode))await doc.ref.delete().catch(()=>{});return false}
  };
  app.post(base+'/test',authenticate,authorize,async(req,res,next)=>{
@@ -74,11 +73,13 @@ export function registerNativePush(app,{db,admin,authenticate,authorize,hash,saf
   async notifyRequest(orgId,requestId){
    if(!configuration||!safeId(orgId)||!safeId(requestId))return;
    try{
+    const devices=await db.collection(`organizations/${orgId}/nestlocal_web_push_devices`).where('enabled','==',true).limit(100).get();
+    if(!devices.docs.length)return;
     const receipt=db.doc(`organizations/${orgId}/nestlocal_web_push_events/${hash('new_request:'+requestId)}`);let claimed=false;
     await db.runTransaction(async tx=>{const previous=await tx.get(receipt);if(previous.exists)return;tx.create(receipt,{kind:'new_request',createdAt:admin.firestore.FieldValue.serverTimestamp()});claimed=true});if(!claimed)return;
-    const devices=await db.collection(`organizations/${orgId}/nestlocal_web_push_devices`).where('enabled','==',true).limit(100).get(),actors=new Map();
-    const results=await Promise.all(devices.docs.map(async doc=>{const uid=doc.data().uid;if(!actors.has(uid))actors.set(uid,canNotify(orgId,uid));if(!(await actors.get(uid)))return false;return deliver(doc,'new_request')}));
-    await receipt.update({providerAcceptedCount:results.filter(Boolean).length,deliveryStatus:'unconfirmed'});
+    const actors=new Map();
+    const results=await Promise.allSettled(devices.docs.map(async doc=>{const uid=doc.data().uid;if(!actors.has(uid))actors.set(uid,canNotify(orgId,uid));if(!(await actors.get(uid)))return false;return deliver(doc,'new_request')}));
+    await receipt.update({providerAcceptedCount:results.filter(result=>result.status==='fulfilled'&&result.value===true).length,deliveryStatus:'unconfirmed'});
    }catch(error){console.error('NESTLOCAL_NATIVE_PUSH_EVENT_UNAVAILABLE',error?.code||error?.name)}
   }
  };
