@@ -13,7 +13,7 @@ Custo zero para novas contratações. Não criar backup gerenciado, banco pago d
 
 ## Evidência de teste (não confundir com certificação externa)
 
-- `npm run check`: 492 testes unitários/regressão no momento da implementação. Organizações sem aparelhos cadastrados não geram gravações de recibos push.
+- `npm run check`: 493 testes unitários/regressão no momento da implementação. Organizações sem aparelhos cadastrados não geram gravações de recibos push. Ações de retorno/Smart Fill/Pulse usam os contatos originais, nunca a data ou os fatos agregados da ficha unificada.
 - API Express + Admin SDK + Firestore emulado: mesclagem concorrente, retries, stale preview, histórico 53 registros/duas páginas sem tokens, isolamento campo, desfazer preservando alteração financeira e desfazer merges encadeados. UI real dessa API em 320/390/1440 px.
 - Navegador real: extração de texto PDF, OCR WASM efetivo em imagem sintética, revisão manual de áudio, rejeição de sobrescrita, nenhuma requisição externa de documento; 320/390/1440 px.
 - Contrato Google simulado: criação no Google, alteração externa revisada voltando ao app, metadados privados, conflito e ETag alterado após prévia; 320/390/1440 px. **Não é prova com conta Google real.**

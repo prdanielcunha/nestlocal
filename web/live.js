@@ -1,7 +1,7 @@
 
 import {parseCustomerBatch} from './customer-import.js?v=20261017-import-v1';
 import {renderSiteImport,bindSiteImports} from './site-import.js?v=20261018-batch-v1';
-import {renderCustomerMerge,renderCustomerOrigins,bindCustomerIdentity} from './customer-identity.js?v=20261019-v1';
+import {renderCustomerMerge,renderCustomerOrigins,bindCustomerIdentity,customerOperationalSources} from './customer-identity.js?v=20261019-v2';
 import {renderConversationImport,bindConversationImport} from './conversation-import.js?v=20261018-v1';
 import {renderMediaImport,bindMediaImport} from './media-import.js?v=20261019-v1';
 import {renderRoleWorkspace} from './role-workspace.js?v=20261018-profiles-v1';
@@ -576,7 +576,7 @@ function smartFillSnapshot(){
       }
     }
   }
-  const todayIso=today?.date||localDateIso(),due=(S.data.customers||[]).filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso);
+  const todayIso=today?.date||localDateIso(),due=customerOperationalSources(S.data.customers,S.data.dueCustomers).filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso);
   return {configured:true,slots,due,matchCount:Math.min(slots.length,due.length),timeZone};
 }
 function smartFillCard(){
@@ -586,14 +586,14 @@ function smartFillCard(){
 }
 
 function opportunityPulseCard(){
-  const snapshot=buildOpportunitySnapshot({requests:S.data.requests||[],customers:S.data.customers||[],now:Date.now(),today:organizationDateIso(),fill:smartFillSnapshot(),readiness:S.data.reminderReadiness||{},timestampMs,actions:nextBestActions()});
+  const snapshot=buildOpportunitySnapshot({requests:S.data.requests||[],customers:customerOperationalSources(S.data.customers,S.data.dueCustomers),now:Date.now(),today:organizationDateIso(),fill:smartFillSnapshot(),readiness:S.data.reminderReadiness||{},timestampMs,actions:nextBestActions()});
   return renderOpportunityPulse({snapshot,t,esc,money});
 }
 
 function outcomeLearningCard(){const learning=renderOutcomeLearning({snapshot:S.data.actionOutcomeMetrics||{},t,esc}),experiment=renderGuidedExperiment({experiments:S.data.guidedExperiments||[],decisionMemory:S.data.decisionMemory||{},snapshot:S.data.actionOutcomeMetrics||{},canManage:S.data.experimentAccess?.canManage===true,t,esc});return `<div class="learning-stack">${learning}<article class="card experiment-card">${experiment}</article></div>`}
 
 function nextBestActions(){
-  const requests=mergeOperationalRows(S.data.requests,S.data.priorityRequests),customers=mergeOperationalRows(S.data.customers,S.data.dueCustomers),today=organizationDateIso(),now=Date.now(),actions=[];
+  const requests=mergeOperationalRows(S.data.requests,S.data.priorityRequests),customers=customerOperationalSources(S.data.customers,S.data.dueCustomers),today=organizationDateIso(),now=Date.now(),actions=[];
   for(const r of requests){
     const customerName=r.customer?.name||'—',amount=r.commercial?.finalAmountCents??r.quote?.totalCents??0,phone=r.customer?.phone||'';
     if(r.status==='in_progress')actions.push({type:'finish',priority:100,requestId:r.id,customerName,amount});
@@ -685,7 +685,7 @@ es:{pulseTitle:'Qué merece atención hoy',pulseIntro:'Acciones basadas en regis
 };
 function pulseTodayCard(actions){
   const x=pulseCopy[S.lang]||pulseCopy.pt;
-  const snapshot=buildPulseSnapshot({actions,requests:S.data.requests||[],customers:S.data.customers||[],feedback:S.pulseFeedback||[],now:Date.now(),today:organizationDateIso()});
+  const snapshot=buildPulseSnapshot({actions,requests:S.data.requests||[],customers:customerOperationalSources(S.data.customers,S.data.dueCustomers),feedback:S.pulseFeedback||[],now:Date.now(),today:organizationDateIso()});
   return renderPulse({snapshot,t:key=>x[key]||t(key),esc,money});
 }
 
@@ -784,7 +784,7 @@ function operationalInsights(actions){
   return `<details class="card operational-insights"><summary><strong>${esc(label)}</strong><span>${t('detailsMore')}</span></summary><div class="page-stack">${pilotScoreboard()}${opportunityPulseCard()}${smartFillCard()}${focusQueueCard(actions)}${outcomeLearningCard()}</div></details>`;
 }
 function todayLegacy(showFocus=true){
-  const a=S.data.requests||[],customers=mergeOperationalRows(S.data.customers,S.data.dueCustomers),assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},sampled=S.data.requestsHasMore===true,reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+Math.max(0,Number(x.commercial?.finalAmountCents??x.quote?.totalCents??0)),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,donePriced=a.filter(x=>x.status==='completed'&&x.quote?.outcome==='priced').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
+  const a=S.data.requests||[],customers=customerOperationalSources(S.data.customers,S.data.dueCustomers),assisted=S.data.revenueMetrics||{},reviews=S.data.reviewMetrics||{},sampled=S.data.requestsHasMore===true,reviewCount=Number(reviews.count||0),reviewAverage=reviewCount?Number(reviews.sumRatings||0)/reviewCount:0,open=a.filter(x=>!['completed','declined','cancelled'].includes(x.status)),revenue=open.reduce((n,x)=>n+Math.max(0,Number(x.commercial?.finalAmountCents??x.quote?.totalCents??0)),0),priced=a.filter(x=>x.quote?.outcome==='priced').length,donePriced=a.filter(x=>x.status==='completed'&&x.quote?.outcome==='priced').length,todayIso=organizationDateIso(),returns=customers.filter(c=>c.nextServiceDate&&c.nextServiceDate<=todayIso),actions=nextBestActions();
   return `${S.data.requestsHasMore?`<p class="help" role="status">${t('dataPartial')}</p>`:''}${calendarAlertStrip()}${showFocus?nativeAiNotice()+operationalFocus(actions)+firstRunJourney():''}<div class="grid metrics"><article class="card metric highlight"><span>${t('action')}</span><strong>${actions.length}${S.data.priorityHasMore?'+':''}</strong><small>${t('actionEngineHelp')}</small></article><article class="card metric"><span>${t('open')}</span><strong>${sampled?'≥ ':''}${money(revenue)}</strong><small>${sampled?t('metricsMinimum'):t('requests')}</small></article><article class="card metric assisted-metric"><span>${t('assistedRevenue')}</span><strong>${money(assisted.assistedRevenueCents||0)}</strong><small>${esc(assisted.assistedJobs||0)} · ${t('assistedRevenueHelp')}</small></article><article class="card metric"><span>${t('conversion')}</span><strong>${sampled?'—':priced?Math.min(100,Math.round(donePriced/priced*100))+'%':'—'}</strong><small>${sampled?t('metricsUnknown'):t('completed')}</small></article><article class="card metric"><span>${t('reviews')}</span><strong>${reviewCount?reviewAverage.toFixed(1):'—'}</strong><small>${reviewCount} · ${t('reviewCountHelp')}</small></article></div>${S.data.features?.pulseV2===true?pulseTodayCard(actions):''}${operationalInsights(actions)}<article class="card"><div class="section-title"><h2>${t('inbox')}</h2><span>${a.length}</span></div>${a.length?a.slice(0,12).map(row).join(''):`<div class="empty">${t('empty')}</div>`}</article>${returns.length?`<article class="card reactivation-card"><div class="section-title"><div><h2>${t('reactivationQueue')}</h2><p class="help">${t('reactivationHelp')}</p></div><span>${returns.length}${S.data.dueCustomersHasMore?'+':''}</span></div><div class="reactivation-list">${returns.map(reactivationRow).join('')}</div></article>`:''}`;
 }
 function captureQuickCard(){

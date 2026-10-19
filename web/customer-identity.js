@@ -4,6 +4,13 @@ const copies={
  es:{title:'Unificar registros del mismo cliente',help:'Elige dos registros de la misma persona o empresa. Solicitudes, ubicaciones, cobros y permisos de contacto se conservan en su origen. La consulta será consolidada y la unificación se puede deshacer.',source:'Registro para agrupar',target:'Registro principal',choose:'Elige un cliente',reason:'Motivo de la unificación',review:'Revisar unificación',confirm:'Confirmar unificación',agree:'Revisé los contactos y confirmo que pertenecen al mismo cliente.',ready:'Estos contactos aparecerán en una sola ficha. No se transferirán datos financieros.',saved:'Registros unificados.',failed:'No se pudo finalizar. Revisa los datos e inténtalo de nuevo.',stale:'Los registros cambiaron. Revisa de nuevo.',limit:'Se pueden reunir hasta cinco registros por cliente.',same:'Elige dos clientes diferentes.',group:'Registros y ubicaciones conservados',history:'Ver historial consolidado',more:'Cargar más solicitudes',empty:'No se encontraron solicitudes.',undo:'Deshacer unificación',undoReason:'Motivo para deshacer',undone:'Unificación deshecha. Se conservaron los registros de origen.',undoConflict:'Existe una unificación posterior. Deshaz primero la más reciente.',partial:'La selección usa los clientes cargados en esta pantalla. Carga más para encontrar otros registros.'}
 };
 export const identityCopy=lang=>copies[lang]||copies.pt;
+// Unified profiles are for display. Operational actions must always use the
+// original contact's dates, cooldowns, facts and consent, never group projections.
+export function customerOperationalSources(...groups){
+ const records=new Map();
+ for(const rows of groups)for(const row of rows||[])for(const origin of row?.identitySources?.length?row.identitySources:[row])if(origin?.id)records.set(origin.id,origin);
+ return [...records.values()];
+}
 export function renderCustomerMerge({customers,lang,esc,allowed,hasMore}){
  if(!allowed||customers.length<2)return '';
  const c=identityCopy(lang),options=customers.map(row=>`<option value="${esc(row.id)}">${esc(row.name||'—')} · ${esc(row.phone||row.email||row.id)}</option>`).join('');
