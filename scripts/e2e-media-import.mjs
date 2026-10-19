@@ -2,6 +2,7 @@
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
 import {mkdirSync} from 'node:fs';
+import {zipFixture} from './fixtures/media-archive.mjs';
 function pdfFixture(){
  const stream='BT /F1 22 Tf 40 750 Td (Synthetic PDF service request) Tj ET';
  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 800] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>','<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
@@ -20,6 +21,19 @@ try{
    bindMediaImport(document.querySelector('form'));document.querySelector('details').open=true;
   });
   page.on('request',request=>{const url=request.url();if(!url.startsWith('http://127.0.0.1:4173/')&&!url.startsWith('blob:')&&!url.startsWith('data:'))outbound.push(url)});
+  const archive=zipFixture([{name:'Conversa/ação.txt',text:'Pedido sintético revisado'},{name:'anexo.pdf',text:pdfFixture()},{name:'nested.zip'}]);
+  await page.locator('[data-media-file]').setInputFiles({name:'conversa.zip',mimeType:'application/zip',buffer:archive});
+  await page.locator('[data-media-open]').waitFor({state:'visible'});assert.equal(await page.locator('[data-media-entry] option').count(),2);
+  assert.equal(await page.locator('[name=message]').inputValue(),'','ZIP must not silently save text');
+  await page.locator('[data-media-open]').click();await page.waitForFunction(()=>document.querySelector('[data-media-text]').value==='Pedido sintético revisado');
+  await page.locator('[data-media-use]').click();assert.equal(await page.locator('[name=message]').inputValue(),'Pedido sintético revisado');
+  await page.locator('[data-media-file]').setInputFiles({name:'conversa.zip',mimeType:'application/zip',buffer:archive});await page.locator('[data-media-open]').waitFor({state:'visible'});
+  await page.locator('[data-media-entry]').selectOption('1');await page.locator('[data-media-open]').click();await page.locator('[data-media-read]').waitFor({state:'visible'});
+  await page.locator('[data-media-read]').click();await page.waitForFunction(()=>document.querySelector('[data-media-text]').value.includes('Synthetic PDF'));
+  await page.locator('[data-media-use]').click();assert.equal(await page.locator('[name=message]').inputValue(),'Pedido sintético revisado','ZIP must not overwrite a prior draft');
+  await page.locator('[data-media-file]').setInputFiles({name:'unsafe.zip',mimeType:'application/zip',buffer:zipFixture([{name:'../x.txt'}])});await page.waitForFunction(()=>document.querySelector('[data-media-status]').textContent.includes('ZIP inválido'));
+  await page.locator('[data-media-file]').setInputFiles({name:'bomb.zip',mimeType:'application/zip',buffer:zipFixture([{name:'x.txt',text:'x'.repeat(200000),size:10}])});await page.locator('[data-media-open]').waitFor({state:'visible'});await page.locator('[data-media-open]').click();await page.waitForFunction(()=>document.querySelector('[data-media-status]').textContent.includes('ZIP acima'));
+  await page.locator('[name=message]').fill('');
   await page.locator('[data-media-file]').setInputFiles({name:'synthetic.pdf',mimeType:'application/pdf',buffer:pdfFixture()});
   await page.locator('[data-media-read]').click();await page.waitForFunction(()=>document.querySelector('[data-media-text]').value.includes('Synthetic PDF'),{},{timeout:30000});
   assert.match(await page.locator('[data-media-text]').inputValue(),/Synthetic PDF service request/);
@@ -41,5 +55,5 @@ try{
   await page.locator('[data-media-use]').click();assert.equal(await page.locator('[name=message]').inputValue(),'Transcrição revisada manualmente');assert.equal(await page.locator('audio').getAttribute('src'),null);
   assert.deepEqual(outbound,[],'Private files must not leave the origin');assert.deepEqual(errors,[]);await page.close();
  }
- console.log('PASS real browser local PDF text, actual image OCR, manual audio review, no external requests, 320/390/1440px');
+ console.log('PASS real browser bounded ZIP text/PDF, corrupt paths/forged expansion rejected, actual image OCR, manual audio review, no external requests, 320/390/1440px');
 }finally{await browser.close()}

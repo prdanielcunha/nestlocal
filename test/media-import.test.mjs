@@ -4,6 +4,7 @@ import {mediaKind,mediaText,renderMediaImport} from '../web/media-import.js';
 test('media rejects unsupported, empty and oversized files before reading',()=>{
  for(const name of ['x.png','x.jpeg','x.webp'])assert.equal(mediaKind({name,size:10}),'image');
  assert.equal(mediaKind({name:'x.pdf',size:10}),'pdf');assert.equal(mediaKind({name:'x.m4a',size:10}),'audio');
+ assert.equal(mediaKind({name:'x.txt',size:65536}),'text');assert.throws(()=>mediaKind({name:'x.txt',size:65537}),/large/);
  for(const file of [{name:'x.zip',size:10},{name:'x.pdf',size:0},{name:'x.pdf',size:9*1024*1024},{name:'x.mp3',size:21*1024*1024}])assert.throws(()=>mediaKind(file));
 });
 test('review text removes control characters but never silently truncates',()=>{
