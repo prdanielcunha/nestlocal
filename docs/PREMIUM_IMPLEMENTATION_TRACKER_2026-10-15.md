@@ -2,6 +2,8 @@
 
 ## Estado atualizado em 19/10/2026
 
+Complemento sem novo serviço: importação local de ZIP com seleção explícita de TXT/imagem/PDF/áudio, CRC e limites de descompactação; TXT direto. Total de 499 testes e navegador real em 320/390/1440 px. Serviços → Melhorias futuras registra também as dependências do WhatsApp oficial, ASR e provas em conta/aparelho. Não altera os gates externos nem certifica restauração.
+
 **Incremento de 19/10:** mesclagem auditada/reversível de clientes; OCR local de imagem/PDF e áudio com transcrição manual; sincronização Google nos dois sentidos **manual e revisada**; Web Push padrão para eventos de novos pedidos, sem novo fornecedor/agendador pago. Ver [contratos, provas e limites](./CUSTOMER_MEDIA_CALENDAR_PUSH_2026-10-19.md). Os estados anteriores abaixo são históricos: não usar a lista antiga de pendências como se esses incrementos não existissem. Conta Google real, entrega em aparelho, ASR automático, despacho oficial Connect e restauração real não foram certificados. Consultar CI/deploy no SHA final antes de chamar este incremento de publicado.
 
 **Decisão do responsável:** iniciar com custo zero. Backup gerenciado e restauração pagos ficam adiados até haver lucro e aprovação explícita de custos, registrados em **Serviços → Melhorias futuras** para a administração do ecossistema. Nenhuma ativação automática foi autorizada. As demais entregas devem respeitar essa restrição. C20 continua sem certificação de recuperação; está adiado por decisão de produto, não encerrado como implementado.
