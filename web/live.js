@@ -13,7 +13,7 @@ import {actionCooldownAllows,addIsoCalendarDays,buildFocusQueue} from './action-
 import {assistActionKey,buildActionPlaybook,officialMessageReadiness} from './action-playbooks.js';
 import {renderOutcomeLearning} from './outcome-learning.js';
 import {chooseOperationalFocus} from './operational-focus.js';
-import {enrollNestLocalPush,disableNestLocalPush,testNestLocalPush} from './push-notifications.js?v=20261019-v1';
+import {enrollNestLocalPush,disableNestLocalPush,testNestLocalPush,releaseNestLocalPush} from './push-notifications.js?v=20261019-v2';
 import {mergeOperationalRows} from './operational-data.js';
 import {captureTransientForm,restoreTransientForm} from './transient-form-drafts.js?v=20261018-full-drafts-v1';
 import {makeTaskReminderIcs} from './task-calendar.js';
@@ -1809,7 +1809,7 @@ function bind(){
     try{await ensureNativeNestAiSession();await loadData();S.data.nativeAiSessionIssue=false;render()}
     catch(error){button.disabled=false;toast((aiReconnectCopy[S.lang]||aiReconnectCopy.pt).title)}
   });
-  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
+  document.querySelector('#logout')?.addEventListener('click',async()=>{try{await releaseNestLocalPush({orgId:S.orgId,api})}catch{}try{await api('/api/auth/session',{method:'DELETE',body:'{}',timeoutMs:5000})}catch{}try{const {signOutDirectGoogle}=await import('./direct-auth.js?v=20261012-radar-verticals-v1');await signOutDirectGoogle()}catch{}S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.pushRegistered=false;S.user=null;S.session=null;S.data=null;S.sessionToken='';S.directGoogleToken='';S.directGoogleSession=false;S.orgId='';storageRemove(sessionStorage,'nl_session_token');storageRemove(localStorage,'nl_org');storageRemove(localStorage,'nl_direct_google');S.loading=false;render()});
   document.querySelector('#org')?.addEventListener('change',async e=>{S.actionAssist=null;S.copilotPreview=null;S.focusRequestId='';S.autopilotRequestId='';S.orgId=e.target.value;S.pendingRequestSite=null;S.pendingManualRequestKey='';S.unsavedFormDrafts.clear();S.customerSites={};S.customerBatchPreview=null;S.customerBatchInput='';S.quoteItemDrafts={};S.checklistDrafts={};S.paymentHistory={};S.pushRegistered=false;S.requestListFilter='all';S.requestList=null;storageSet(localStorage,'nl_org',S.orgId);S.loading=true;render();const org=S.session.organizations.find(x=>x.id===S.orgId);if(org?.nestlocal?.access){
     await loadData();
     if(S.directGoogleSession){
