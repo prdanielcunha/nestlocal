@@ -67,6 +67,18 @@ export async function extractNestLocalRequest(input) {
   return response.result;
 }
 
+export async function transcribeNestLocalAudio(input){
+ const client=createNestLocalAiClient(input);
+ const result=await client.transcribe('nestlocal.audio.transcribe',{
+  audioBase64:input.audioBase64,mimeType:input.mimeType,
+  language:localeOf(input.locale).slice(0,2),
+ });
+ if(result?.meta?.providerClass!=='free')throw Error('AUDIO_FREE_PROVIDER_REQUIRED');
+ const text=result?.result?.text;
+ if(typeof text!=='string'||!text.trim()||text.length>60000)throw Error('AUDIO_TRANSCRIPT_INVALID');
+ return text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,'').trim();
+}
+
 export async function composeNestLocalQuote(input) {
   const client = createNestLocalAiClient(input);
   const response = await client.run({
