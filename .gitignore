@@ -6,3 +6,4 @@ npm-debug.log*
 firestore-debug.log
 firebase-debug.log
 ui-debug.log
+web/vendor/media-v1/

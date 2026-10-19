@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {randomBytes,createHash} from 'node:crypto';
+import {createECDH} from 'node:crypto';
+import webpush from 'web-push';
 import {once} from 'node:events';
 import {mkdirSync} from 'node:fs';
 import admin from 'firebase-admin';
@@ -17,6 +19,7 @@ const orgId='integration-a',root=`organizations/${orgId}`,apiPort=18186;
 const token=randomBytes(32).toString('base64url'),ownerToken=`nl_${token}`;
 const memberToken=`nl_${randomBytes(32).toString('base64url')}`;
 const hash=value=>createHash('sha256').update(value).digest('hex');
+const syntheticPush=webpush.generateVAPIDKeys();
 let server,logs='';
 async function call(path,method='GET',body,auth=ownerToken,expected=200,extraHeaders={}){
  const response=await fetch(`http://127.0.0.1:${apiPort}/api/organizations/${orgId}/nestlocal${path}`,{
@@ -43,7 +46,8 @@ try{
  server=spawn(process.execPath,['server.mjs'],{cwd:new URL('..',import.meta.url),env:{
   PATH:process.env.PATH,HOME:process.env.HOME,PORT:String(apiPort),
   FIREBASE_PROJECT_ID:projectId,FIRESTORE_EMULATOR_HOST:process.env.FIRESTORE_EMULATOR_HOST,
-  GCLOUD_PROJECT:projectId,NESTLOCAL_PUSH_ENABLED:'false',NESTLOCAL_HUB_ENTITLEMENT_V3_ENABLED:'false'
+  GCLOUD_PROJECT:projectId,NESTLOCAL_PUSH_ENABLED:'false',NESTLOCAL_HUB_ENTITLEMENT_V3_ENABLED:'false',
+  NESTLOCAL_NATIVE_PUSH_ENABLED:'true',NESTLOCAL_NATIVE_PUSH_PUBLIC_KEY:syntheticPush.publicKey,NESTLOCAL_NATIVE_PUSH_PRIVATE_KEY:syntheticPush.privateKey
  },stdio:['ignore','pipe','pipe']});
  server.stdout.on('data',b=>{logs+=b});server.stderr.on('data',b=>{logs+=b});
  for(let i=0;i<100;i++){
@@ -331,6 +335,64 @@ try{
   assert.deepEqual(competing.map(x=>x.status).sort(),[201,409],JSON.stringify(competing));
   assert.equal((await fullRef.collection('sites').get()).size,20);assert.equal((await fullRef.get()).data().siteCount,20);
  },true);
+ await check('native push registration is user/tenant scoped, rejects SSRF and exposes no private key',async()=>{
+  const config=await call('/push/config');assert.equal(config.transport,'web_push');assert.equal(config.eventNotificationsEnabled,true);assert.equal(config.scheduledRemindersEnabled,false);assert.equal(config.privateKey,undefined);
+  const curve=createECDH('prime256v1');curve.generateKeys();const subscription={endpoint:'https://fcm.googleapis.com/fcm/send/synthetic-device',keys:{p256dh:curve.getPublicKey().toString('base64url'),auth:randomBytes(16).toString('base64url')}};
+  const body={transport:'web_push',subscription,locale:'pt'},saved=await call('/push/devices','POST',body,ownerToken,201);assert.equal(saved.subscription,undefined);
+  await call('/push/devices','POST',body,memberToken,409);
+  await call('/push/devices','DELETE',{transport:'web_push',endpoint:subscription.endpoint},memberToken,403);
+  await call('/push/devices','POST',{...body,subscription:{...subscription,endpoint:'https://localhost/private'}},ownerToken,400);
+  await call('/push/devices','DELETE',{transport:'web_push',endpoint:subscription.endpoint});
+  assert.equal((await db.collection(`${root}/nestlocal_web_push_devices`).get()).size,0);
+ },true);
+ await check('calendar imports use an optimistic schedule revision and preserve capacity/confirmation rules',async()=>{
+  const ref=db.doc(`${root}/nestlocal_requests/calendar-import`);await ref.set({status:'scheduled',serviceId:'clean',schedule:{date:'2099-05-01',window:'morning',assignedTo:'integration-owner',revision:2,customerConfirmation:{status:'confirmed',revision:2}},customer:{name:'Synthetic'}});
+  await call('/requests/calendar-import','PATCH',{scheduledDate:'2099-05-02',expectedScheduleRevision:1,expectedScheduleStatus:'scheduled'},ownerToken,409);
+  assert.equal((await ref.get()).data().schedule.date,'2099-05-01');
+  await call('/requests/calendar-import','PATCH',{scheduledDate:'2099-05-02',expectedScheduleRevision:2,expectedScheduleStatus:'scheduled'});
+  const row=(await ref.get()).data();assert.equal(row.schedule.revision,3);assert.equal(row.schedule.window,'morning');assert.equal(row.schedule.customerConfirmation,null);
+  await call('/requests/calendar-import','PATCH',{scheduledDate:'2099-05-03',expectedScheduleRevision:2,expectedScheduleStatus:'scheduled'},ownerToken,409);
+ },true);
+ await check('customer identities merge atomically, preserve consent/history and undo without losing financial updates',async()=>{
+  const a=db.doc(`${root}/nestlocal_customers/identity-a`),b=db.doc(`${root}/nestlocal_customers/identity-b`),c=db.doc(`${root}/nestlocal_customers/identity-c`);
+  await a.set({name:'Identity A',phone:'551155550001',lifetimeRevenueCents:1000,nextServiceDate:'2099-01-01',messaging:{consents:{maintenanceReminders:{accepted:true}}}});
+  await b.set({name:'Identity B',phone:'551155550002',lifetimeRevenueCents:2000,nextServiceDate:'2099-02-01',messaging:{consents:{maintenanceReminders:{accepted:false}}}});
+  await c.set({name:'Identity C',phone:'551155550003',lifetimeRevenueCents:3000});
+  const batch=db.batch();for(let i=0;i<53;i++)batch.set(db.doc(`${root}/nestlocal_requests/identity-${String(i).padStart(3,'0')}`),{customerId:i%2?'identity-a':'identity-b',customer:{name:'Identity history'},status:'completed',trackingTokenHash:'secret',reviewTokenHashes:['secret']});await batch.commit();
+  const input={sourceId:'identity-a',targetId:'identity-b',reason:'Same synthetic customer verified'};
+  await call('/customers/merge/preview','POST',input,memberToken,403);
+  const preview=await call('/customers/merge/preview','POST',input);
+  assert.equal((await a.get()).data().mergedInto,undefined);
+  const payload={...input,previewToken:preview.previewToken,operationKey:'nl-identity-synthetic-00001'};
+  const results=await Promise.all([call('/customers/merge','POST',payload),call('/customers/merge','POST',payload)]);
+  assert.equal(results.filter(x=>x.idempotent).length,1);assert.equal(results[0].mergeId,results[1].mergeId);
+  assert.equal((await a.get()).data().lifetimeRevenueCents,1000);assert.equal((await b.get()).data().lifetimeRevenueCents,2000);
+  assert.equal((await a.get()).data().messaging.consents.maintenanceReminders.accepted,true);
+  const read=await call('/lists/customers/page?limit=100'),combined=read.items.find(x=>x.id==='identity-b');
+  assert.equal(combined.lifetimeRevenueCents,3000);assert.equal(combined.identitySources.length,2);assert.equal(combined.messaging.consents.maintenanceReminders.accepted,false);
+  assert.ok(!read.items.some(x=>x.id==='identity-a'));
+  const first=await call('/customers/identity-a/history');assert.equal(first.items.length,50);assert.equal(first.hasMore,true);
+  const last=await call('/customers/identity-b/history?cursor='+first.nextCursor);assert.equal(last.items.length,3);assert.equal(last.hasMore,false);
+  assert.equal(new Set([...first.items,...last.items].map(x=>x.id)).size,53);
+  for(const item of first.items){assert.equal(item.trackingTokenHash,undefined);assert.equal(item.reviewTokenHashes,undefined)}
+  await call('/team/integration-field','PUT',{enabled:true,profile:'field'});
+  await call('/customers/identity-b/history','GET',undefined,memberToken,403);
+  await call('/team/integration-field','PUT',{enabled:true,profile:'legacy'});
+  await b.update({lifetimeRevenueCents:2500,name:'Updated after merge'});
+  const undo='/customers/merge/'+results[0].mergeId+'/undo';await call(undo,'POST',{reason:'Undo synthetic identity for test'});
+  assert.equal((await call(undo,'POST',{reason:'Retry synthetic undo request'})).idempotent,true);
+  assert.equal((await a.get()).data().mergedInto,undefined);assert.equal((await b.get()).data().lifetimeRevenueCents,2500);assert.equal((await b.get()).data().name,'Updated after merge');
+  assert.equal((await db.collection(`${root}/nestlocal_requests`).where('customerId','==','identity-a').get()).size,26);
+  await call('/customers/merge','POST',payload,ownerToken,409);
+  const stale=await call('/customers/merge/preview','POST',input);await a.update({name:'Concurrent change'});
+  await call('/customers/merge','POST',{...payload,previewToken:stale.previewToken,operationKey:'nl-identity-synthetic-stale'},ownerToken,409);
+  const p=await call('/customers/merge/preview','POST',input),m=await call('/customers/merge','POST',{...payload,previewToken:p.previewToken,operationKey:'nl-identity-synthetic-second'});
+  const input2={sourceId:'identity-c',targetId:'identity-b',reason:'Third record same synthetic person'},p2=await call('/customers/merge/preview','POST',input2);
+  const m2=await call('/customers/merge','POST',{...input2,previewToken:p2.previewToken,operationKey:'nl-identity-synthetic-third'});
+  await call('/customers/merge/'+m.mergeId+'/undo','POST',{reason:'Cannot undo superseded merge'},ownerToken,409);
+  await call('/customers/merge/'+m2.mergeId+'/undo','POST',{reason:'Reverse latest synthetic merge'});
+  await call('/customers/merge/'+m.mergeId+'/undo','POST',{reason:'Reverse original synthetic merge'});
+ },true);
  if(process.env.NESTLOCAL_BROWSER_INTEGRATION==='true'&&!coreOnly){
   await check('browser saves settings through the real API into Firestore',async()=>{
    mkdirSync('artifacts/profiles',{recursive:true});
@@ -349,6 +411,23 @@ try{
    let browser;
    try{
     browser=await chromium.launch({headless:true});
+    for(const width of [320,390,1440]){
+     const ids=['aaa-merge-a-'+width,'aaa-merge-b-'+width];
+     for(const [i,id] of ids.entries())await db.doc(`${root}/nestlocal_customers/${id}`).set({name:'Merge browser '+i+' '+width,phone:'55114444000'+i,lifetimeRevenueCents:100*(i+1)});
+     const page=await browser.newPage({viewport:{width,height:900}}),errors=[];page.on('pageerror',error=>errors.push(error.message));
+     await page.addInitScript(({token,org})=>{sessionStorage.setItem('nl_session_token',token);localStorage.setItem('nl_org',org)},{token:ownerToken,org:orgId});
+     await page.goto('http://127.0.0.1:18187/',{waitUntil:'domcontentloaded'});
+     await page.locator('[data-nav="customers"]:visible').first().click();
+     await page.locator('.customer-merge summary').click();const form=page.locator('#customer-merge');
+     await form.locator('[name=sourceId]').selectOption(ids[0]);await form.locator('[name=targetId]').selectOption(ids[1]);await form.locator('[name=reason]').fill('Same synthetic customer verified in browser');
+     const preview=page.waitForResponse(r=>r.url().endsWith('/customers/merge/preview'));await form.locator('[type=submit]').click();assert.equal((await preview).status(),200);
+     await form.locator('[name=confirmIdentity]').check();await page.screenshot({path:`artifacts/profiles/customer-merge-${width}.png`});
+     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1),'Merge overflow '+width);
+     const merged=page.waitForResponse(r=>r.url().endsWith('/customers/merge'));await form.locator('[type=submit]').click();const result=await merged;assert.equal(result.status(),200);const body=await result.json();
+     const undo=page.locator(`[data-merge-undo="${body.mergeId}"]`);await undo.waitFor({state:'attached'});await undo.locator('xpath=..').locator('summary').click();
+     await undo.locator('[name=reason]').fill('Undo synthetic browser test');const undone=page.waitForResponse(r=>r.url().endsWith('/undo'));await undo.locator('[type=submit]').click();assert.equal((await undone).status(),200);
+     assert.equal((await db.doc(`${root}/nestlocal_customers/${ids[0]}`).get()).data().mergedInto,undefined);assert.deepEqual(errors,[]);await page.close();
+    }
     for(const width of [390,1440]){
      const page=await browser.newPage({viewport:{width,height:900}}),errors=[];
      page.on('pageerror',error=>errors.push(error.message));

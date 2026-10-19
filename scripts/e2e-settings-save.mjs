@@ -11,11 +11,11 @@ try{
    entitlement:{plan:'pro',status:'active',limits:{users:10,requestsPerMonth:5000},usage:{requests:0},seats:{used:1,limit:10}},
    settings:{businessName:'Synthetic business',slug:'synthetic-business',communicationMode:'none',contactEmail:'synthetic@example.test',coverageCodes:['synthetic-city'],published:false,timezone:'America/Sao_Paulo',capacity:{workingDays:[1],windows:['morning']},messaging:{}},
    canManageTeam:true,setupReadiness:{ready:true,issues:[]},services:[{id:'service',name:'Synthetic service',mode:'review',published:false}],requests:[],customers:[],dueCustomers:[],team:[{uid:'synthetic-member',name:'Synthetic member',role:'member',nestlocalEnabled:true,capabilities:{financeWrite:false,sitesWrite:false}}],messageOutbox:[],reviewMetrics:{},actionOutcomeMetrics:{},guidedExperiments:[],decisionMemory:{},experimentAccess:{canManage:true}};
-  let failNext=true;
+  let failNext=true,projectAdmin=true;
   await page.route('**/api/**',async route=>{
    const req=route.request(),path=new URL(req.url()).pathname,method=req.method();
    const send=(status,body)=>route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
-   if(path==='/api/session')return send(200,{user:{uid:'synthetic-owner',systemRole:'owner'},organizations:[{id:'demo_org',name:'Synthetic business',nestlocal:{access:true,status:'active',plan:'pro'}}]});
+   if(path==='/api/session')return send(200,{user:{uid:'synthetic-owner',systemRole:projectAdmin?'ceo':'user'},organizations:[{id:'demo_org',name:'Synthetic business',nestlocal:{access:true,status:'active',plan:'pro'}}]});
    if(path==='/api/organizations/demo_org/nestlocal'&&method==='GET')return send(200,sample);
    if(path.endsWith('/settings')&&method==='PUT'){
     const body=req.postDataJSON();writes.push({kind:'settings',body});
@@ -44,6 +44,10 @@ try{
   await page.goto('http://127.0.0.1:4173/',{waitUntil:'domcontentloaded'});
   await page.locator('.shell').waitFor();
   await page.evaluate(()=>document.querySelector('.sidebar [data-nav="services"]').click());
+  const future=page.locator('#future-improvements');await future.locator('summary').click();
+  assert.ok((await future.textContent()).includes('Adiado até o projeto gerar lucro'));
+  assert.equal(await future.locator('button,input,select,form,a').count(),0,'Planning must never offer an activation action');
+  await future.locator('summary').click();
   const form=page.locator('#settings'),submit=form.locator('button[type="submit"]');
   await form.locator('[name="business"]').fill('Changed synthetic business');
   await submit.click();

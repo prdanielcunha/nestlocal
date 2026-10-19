@@ -29,7 +29,7 @@ test('completion revenue is recorded only once per request', () => {
 
 test('authorized app data includes customer reactivation facts', () => {
   const server = read('../server.mjs');
-  assert.ok(server.includes("customerRows=customers.docs.map"));
+  assert.ok(server.includes("customerRows=await consolidatedCustomers"));
   assert.ok(server.includes("customers:customerRows"));
   const client = read('../web/live.js');
   for (const token of [

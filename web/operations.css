@@ -731,3 +731,19 @@
 .shell .site-batch label{display:grid;gap:7px;min-width:0}
 .shell .site-batch input[type=file],.shell .site-batch textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%}
 .shell .site-batch [data-site-preview]{max-height:340px;overflow:auto;overflow-wrap:anywhere}
+.shell .customer-merge form,.shell .customer-merge label,.shell .customer-undo form,.shell .customer-undo label{display:grid;gap:10px;min-width:0}
+.shell .customer-merge input[type=checkbox]{width:auto}
+.shell .customer-merge label:has(input[type=checkbox]){display:flex;align-items:center;gap:10px}
+.shell .customer-merge,.shell .customer-origin,.shell .customer-history,.shell .customer-undo{min-width:0;overflow-wrap:anywhere;margin-block:14px}
+.shell .customer-origin section{border-top:1px solid var(--line);padding-block:12px}
+.shell .customer-merge select,.shell .customer-merge textarea,.shell .customer-undo textarea{box-sizing:border-box;min-width:0;width:100%;max-width:100%}
+.media-import{display:grid;gap:10px;min-width:0}
+.media-import>div,.media-import label{display:grid;gap:8px;min-width:0}
+.media-import [hidden]{display:none!important}
+.media-import input,.media-import select,.media-import textarea,.media-import audio{max-width:100%;min-width:0;width:100%;box-sizing:border-box}
+.google-calendar-sync{margin-top:14px}
+.google-calendar-sync label{display:block;margin:12px 0}
+.google-calendar-sync select{width:100%;min-width:0}
+.google-calendar-sync button{margin:6px 4px 6px 0;white-space:normal}
+.google-calendar-sync [data-google-sync-preview]{overflow-wrap:anywhere}
+.google-calendar-sync [data-google-sync-agree]{width:auto;display:inline-block}

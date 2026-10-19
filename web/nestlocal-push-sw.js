@@ -5,14 +5,15 @@ self.addEventListener('push',event=>{
     let payload={};
     try{payload=event.data?.json()||{}}catch{return}
     const data=payload.data||payload;
-    if(!['test','task_due'].includes(data.kind))return;
+    if(!['test','task_due','new_request'].includes(data.kind))return;
     const language=['pt','en','es'].includes(data.locale)?data.locale:'pt';
     const text={
       pt:{test:['NestLocal · Notificação de teste','Seu aparelho recebeu a notificação de teste.'],task_due:['NestLocal · Retornos','Há atividades do NestLocal para revisar.']},
       en:{test:['NestLocal · Test notification','Your device received the test notification.'],task_due:['NestLocal · Follow-ups','There are NestLocal tasks to review.']},
       es:{test:['NestLocal · Notificación de prueba','Tu dispositivo recibió la notificación de prueba.'],task_due:['NestLocal · Seguimientos','Hay actividades de NestLocal para revisar.']}
     };
-    const [title,body]=text[language][data.kind];
+    const newRequest={pt:['NestLocal · Novo pedido','Há um novo pedido para revisar no NestLocal.'],en:['NestLocal · New request','A new NestLocal request is ready to review.'],es:['NestLocal · Nueva solicitud','Hay una nueva solicitud para revisar en NestLocal.']};
+    const [title,body]=data.kind==='new_request'?newRequest[language]:text[language][data.kind];
     await self.registration.showNotification(title,{
       body,icon:'/favicon.svg',badge:'/favicon.svg',tag:'nestlocal-'+data.kind,
       data:{destination:'/?view=today'},renotify:false
