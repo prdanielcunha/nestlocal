@@ -11,6 +11,8 @@ on:
       - "web/customer-import.js"
       - "web/customer-identity.js"
       - "web/media-import.js"
+      - "web/media-archive.js"
+      - "scripts/fixtures/media-archive.mjs"
       - "scripts/prepare-media-assets.mjs"
       - "scripts/e2e-media-import.mjs"
       - "package*.json"
