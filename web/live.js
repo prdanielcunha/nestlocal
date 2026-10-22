@@ -447,7 +447,7 @@ function login(){
     '<h2>'+c.flow+'</h2><div class="entry-flow">'+[c.one,c.two,c.three,c.four].map((x,i)=>'<div class="entry-flow-row"><span>0'+(i+1)+'</span><strong>'+x+'</strong><i aria-hidden="true">↗</i></div>').join('')+'</div>'+
     '<div class="entry-visual-footer"><span>'+c.trust+'</span><strong>TRUSTSTART</strong></div></aside></section>'+
     '<section class="entry-trust"><span>'+c.noconnect+'</span><span>'+c.manual+'</span><span>'+c.later+'</span></section>'+
-    '<footer class="entry-footer"><span>MillionsNest · NestLocal</span><a href="https://www.millionsnest.com/checkout?app=nestlocal">'+c.plans+'</a></footer></main>';
+    '<footer class="entry-footer"><span><img src="/brand/millionsnest/v1/mark-192.png" alt="" aria-hidden="true" width="20" height="20" style="display:inline-block;vertical-align:middle;object-fit:contain;margin-right:8px">MillionsNest · NestLocal</span><a href="https://www.millionsnest.com/checkout?app=nestlocal">'+c.plans+'</a></footer></main>';
 }
 function loading(){return `<main class="login-shell"><section class="login-card">${brand()}<div class="auth-progress"><span class="eyebrow">NestLocal</span><h1>${t('authResolving')}</h1><p>${t('loading')}</p></div></section></main>`}
 Object.assign(D.pt,{startBusinessSignup:'Começar cadastro da minha empresa'});
