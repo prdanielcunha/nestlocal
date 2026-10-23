@@ -242,7 +242,7 @@ function render(){
   const sector=state.sector;
   let content='';
   if(!sector){
-    content=panel(t('sectorTitle'),'<p class="subcopy">'+t('sectorHelp')+'</p><div class="sectors">'+sectors.map((s,i)=>'<button class="sector" data-sector="'+s.id+'"><span class="sector-numeral">0'+(i+1)+'</span><strong>'+v(s.name)+'</strong><span class="sector-cta">'+t('start')+' ↗</span></button>').join('')+'</div>');
+    content=panel(w('choose'),'<p class="subcopy">'+w('chooseHelp')+'</p><label class="sector-search-label" for="sectorSearch">'+w('find')+'</label><input id="sectorSearch" class="sector-search" type="search" autocomplete="off" placeholder="'+w('placeholder')+'" value="'+state.query.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;')+'"><div class="sectors">'+sectors.map((s,i)=>'<button class="sector" data-sector="'+s.id+'" '+(i>=6&&!state.showAll&&!state.query?'hidden':'')+'><span class="sector-numeral">'+String(i+1).padStart(2,'0')+'</span><strong>'+v(s.name)+'</strong><span class="sector-cta">'+w('try')+' →</span></button>').join('')+'</div><div class="sector-empty" id="sectorNoResults" hidden><p>'+w('noMatch')+'</p><button class="subtle-button" data-sector="other">'+v(sectors.find(s=>s.id==='other').name)+'</button></div><button type="button" class="sector-show-more" data-action="toggle-sectors" aria-expanded="'+state.showAll+'">'+(state.showAll?w('showLess'):w('showAll'))+'</button>');
   }else if(state.step===1){
     content=panel(t('step1'),'<p class="subcopy">'+p('ownerAction'+(state.entry==='whatsapp'?'Whatsapp':state.entry==='instagram'?'Instagram':'Website'))+'</p><p class="subcopy">'+t('context')+': '+v(sector.detail)+'</p><div class="facts">'+fact(t('request'),sector.number)+fact(t('service'),v(sector.service))+fact(t('customer'),state.language==='en'?'Sample customer':state.language==='es'?'Cliente de ejemplo':'Cliente de exemplo')+fact(t('source'),p('origin'+(state.entry==='whatsapp'?'Whatsapp':state.entry==='instagram'?'Instagram':'Website')))+'</div>'+button(state.entry==='whatsapp'?p('startWhatsApp'):p('startLink'),'next'));
   }else if(state.step===2){
@@ -260,21 +260,35 @@ function render(){
   }
   EL.innerHTML=layout(content);
 }
-LANG.addEventListener('change',e=>{if(['pt','en','es'].includes(e.target.value)){state.language=e.target.value;render()}});
+function updateSectorResults(){
+ const query=simplify(state.query);let visible=0;
+ EL.querySelectorAll('.sectors [data-sector]').forEach((button,index)=>{
+   const service=sectors.find(s=>s.id===button.dataset.sector);
+   const haystack=[...Object.values(service?.name||{}),...Object.values(service?.service||{}),service?.aliases||''].join(' ');
+   const matches=!query||simplify(haystack).includes(query);
+   const show=matches&&(Boolean(query)||state.showAll||index<6);
+   button.hidden=!show;if(show)visible++;
+ });
+ const fallback=EL.querySelector('#sectorNoResults');if(fallback)fallback.hidden=visible>0;
+ const toggle=EL.querySelector('[data-action="toggle-sectors"]');if(toggle)toggle.hidden=Boolean(query);
+}
+LANG.addEventListener('change',e=>{if(['pt','en','es'].includes(e.target.value)){state.language=e.target.value;render();updateSectorResults()}});
+EL.addEventListener('input',e=>{if(e.target?.id==='sectorSearch'&&!state.sector){state.query=e.target.value.slice(0,100);updateSectorResults()}});
 EL.addEventListener('change',e=>{if(e.target?.name==='slot'&&['morning','afternoon'].includes(e.target.value)){state.slot=e.target.value;render()}});
 EL.addEventListener('click',e=>{
   const sectorButton=e.target.closest('[data-sector]');
-  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;state.view='business';track('demo_started');render();return}
+  if(sectorButton){const s=sectors.find(x=>x.id===sectorButton.dataset.sector);if(!s)return;state.sector=s;state.step=1;state.slot=null;state.view='business';track('demo_started');render();const title=EL.querySelector('.tour-overview h2');if(title){title.tabIndex=-1;title.focus()}return}
   const switchButton=e.target.closest('[data-view]');
   if(switchButton&&['customer','business'].includes(switchButton.dataset.view)){state.view=switchButton.dataset.view;render();return}
   const entryButton=e.target.closest('[data-entry]');
   if(entryButton&&!state.sector&&routes.includes(entryButton.dataset.entry)){state.entry=entryButton.dataset.entry;render();return}
   const action=e.target.closest('[data-action]')?.dataset.action;
   if(action==='reset')return reset();
+   if(action==='toggle-sectors'&&!state.sector){state.showAll=!state.showAll;render();updateSectorResults();return}
   if(action==='back'&&state.step>1){state.step--;render();return}
   if(action==='next'&&state.sector&&state.step>=1&&state.step<=6){
     if(state.step===4&&!state.slot)return;
-    track('demo_step_completed');state.step++;if(state.step===7){state.completed=true;track('demo_completed')}render();
+    track('demo_step_completed');state.step++;if(state.step===7){state.completed=true;track('demo_completed')}render();EL.querySelector('.step-panel h2')?.focus();
   }
 });
 document.addEventListener('click',e=>{if(e.target.closest('#demoSignup'))track('demo_to_signup')});
