@@ -8,7 +8,7 @@ const html=readFileSync(new URL('../web/experience.html',import.meta.url),'utf8'
 const server=readFileSync(new URL('../server.mjs',import.meta.url),'utf8');
 function fixture(){
   const events=[],calls=[];
-  const make=()=>({innerHTML:'',value:'pt',textContent:'',listeners:{},addEventListener(type,cb){this.listeners[type]=cb}});
+  const make=()=>({innerHTML:'',value:'pt',textContent:'',listeners:{},addEventListener(type,cb){this.listeners[type]=cb},querySelector(){return null},querySelectorAll(){return []}});
   const root=make(),lang=make(),badge=make();
   const doc={documentElement:{lang:'pt'},getElementById(id){return ({experienceRoot:root,language:lang,demoBadge:badge})[id]},addEventListener(name,callback){events.push({name,callback})}};
   const context=vm.createContext({document:doc,Intl,fetch:(url,options)=>{calls.push({url,options});return Promise.resolve({ok:true})},console});
@@ -84,7 +84,7 @@ test('Both Firebase Hosting targets expose /experience without authentication',(
   }
 });
 
-test('Experience opens with a concrete customer source choice in every language',()=>{
+test('Experience asks the business type before the customer source in every language',()=>{
   const f=fixture();
   for(const lang of ['pt','en','es']){
     f.lang.listeners.change({target:{value:lang}});
@@ -92,22 +92,26 @@ test('Experience opens with a concrete customer source choice in every language'
     for(const key of ['question','whatsapp','instagram','website','whatsappDesc','instagramDesc','websiteDesc','dayDesc','notIncludedText']){
       assert.ok(p[key],lang+' '+key+' missing');
     }
+    assert.ok(f.root.innerHTML.includes('data-sector="climate"'));
+    assert.ok(!f.root.innerHTML.includes(p.question),'avoid asking for a channel before the trade');
+    click(f.root,{sector:'climate'});
     assert.ok(f.root.innerHTML.includes(p.question));
-    for(const channel of ['whatsapp','instagram','website']){
+    for(const channel of ['whatsapp','instagram','website','phone']){
       assert.ok(f.root.innerHTML.includes('data-entry="'+channel+'"'));
       click(f.root,{entry:channel});
       assert.equal(vm.runInContext('state.entry',f.context),channel);
-      assert.ok(f.root.innerHTML.includes(p[channel+'Flow']));
+      assert.ok(f.root.innerHTML.includes(channel==='phone'?vm.runInContext('phoneCopy[state.language].phoneFlow',f.context):p[channel+'Flow']));
     }
-    assert.equal((f.root.innerHTML.match(/class="tour-place /g)||[]).length,3);
+    assert.equal((f.root.innerHTML.match(/class="tour-place /g)||[]).length,4);
     assert.equal((f.root.innerHTML.match(/<details>/g)||[]).length,5);
+    click(f.root,{action:'reset'});
   }
 });
 test('All entry channels display accurate customer/owner handoff and follow-up limitations',()=>{
   const f=fixture();const words=vm.runInContext('paths.pt',f.context);
   for(const channel of ['whatsapp','instagram','website']){
-    click(f.root,{entry:channel});
     click(f.root,{sector:'climate'});
+    click(f.root,{entry:channel});
     assert.equal(vm.runInContext('state.step',f.context),1);
     assert.ok(f.root.innerHTML.includes(words['origin'+(channel==='whatsapp'?'Whatsapp':channel==='instagram'?'Instagram':'Website')]));
     assert.equal((f.root.innerHTML.match(/tour-scene-card /g)||[]).length,2);

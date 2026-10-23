@@ -12,11 +12,14 @@ try{
     const errors=[];page.on('pageerror',e=>errors.push(e.message));
     await page.goto('http://127.0.0.1:4173/experience.html',{waitUntil:'domcontentloaded'});
     await page.locator('[data-sector="climate"]').waitFor();
-    assert.equal(await page.locator('.tour-place').count(),3,'show WhatsApp, Instagram and website entry routes');
+    assert.equal(await page.locator('.tour-place').count(),0,'choose the type of business first');
+    await page.locator('[data-sector="climate"]').click();
+    assert.equal(await page.locator('.tour-place').count(),4,'show WhatsApp, Instagram, website and phone/referral routes');
     for(const channel of ['whatsapp','instagram','website']){
       await page.locator('[data-entry="'+channel+'"]').click();
       assert.equal(await page.locator('[data-entry="'+channel+'"]').getAttribute('aria-pressed'),'true');
     }
+    await page.locator('[data-action="reset"]').first().click();
     assert.equal(await page.locator('.tour-faq details').count(),5,'answer the five buying objections');
     await page.locator('.tour-faq details').first().evaluate(el=>el.open=true);
     assert.ok((await page.locator('.tour-faq details').first().textContent()).includes('WhatsApp'));
@@ -26,8 +29,8 @@ try{
     if([320,390,1440].includes(width))await page.screenshot({path:OUT+'/welcome-'+width+'.png',fullPage:true});
     for(const [index,segment] of segments.entries()){
       const entry=['whatsapp','instagram','website'][index%3];
-      await page.locator('[data-entry="'+entry+'"]').click();
       await page.locator('[data-sector="'+segment+'"]').click();
+      await page.locator('[data-entry="'+entry+'"]').click();
       assert.equal(await page.locator('.tour-scene-card').count(),2,'must show customer and business perspectives');
       assert.equal(await page.locator('.tour-responsibility>div').count(),2,'automatic vs human decisions');
       if(width<=700){
@@ -49,6 +52,20 @@ try{
       await page.locator('[data-action="reset"]').first().click();
       await page.locator('[data-sector="'+segment+'"]').waitFor();
       count++;
+    }
+    if(width===390){
+      for(const segment of ['solar','pools','printing','other']){
+        const search=page.locator('#sectorSearch');
+        await search.fill(segment==='printing'?'impressora':segment==='other'?'outro':segment);
+        await page.locator('.sectors [data-sector="'+segment+'"]').click();
+        assert.equal(await page.locator('.tour-place').count(),4);
+        await page.locator('[data-entry="phone"]').click();
+        for(let step=0;step<3;step++)await page.locator('[data-action="next"]').click();
+        await page.locator('input[name="slot"][value="morning"]').check();
+        for(let step=0;step<3;step++)await page.locator('[data-action="next"]').click();
+        await page.locator('#demoSignup').waitFor();
+        await page.locator('[data-action="reset"]').first().click();
+      }
     }
     for(const lang of ['en','es','pt']){
       await page.locator('#language').selectOption(lang);
