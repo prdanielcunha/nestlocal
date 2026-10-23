@@ -57,7 +57,7 @@ try{
       for(const segment of ['solar','pools','printing','other']){
         const search=page.locator('#sectorSearch');
         await search.fill(segment==='printing'?'impressora':segment==='other'?'outro':segment);
-        await page.locator('[data-sector="'+segment+'"]').click();
+        await page.locator('.sectors [data-sector="'+segment+'"]').click();
         assert.equal(await page.locator('.tour-place').count(),4);
         await page.locator('[data-entry="phone"]').click();
         for(let step=0;step<3;step++)await page.locator('[data-action="next"]').click();
