@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, radarIdentityKeys, segmentLearningScores } from '../src/domain/growth-radar.mjs';
+import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, radarIdentityKeys, radarIsFollowUpDue, radarMatchLead, radarPhone, inferRadarChannel, segmentLearningScores } from '../src/domain/growth-radar.mjs';
 
 const header=['Empresa','Cidade','Segmento','Site / Instagram','Telefone / contato','Canal inicial','Orçamento faz parte da venda?','WhatsApp é canal forte?','Precisa agendar serviço/equipe?','Há recorrência?','Sinais públicos de demanda?','Pequena equipe?','Dono envolvido?','Sem sistema forte aparente?','Lead Score','Classe','Dor principal','Estágio','Próxima ação','Data próximo contato','Observações','','Legenda','','','','CNPJ','Google Place ID','Fonte verificada','Data verificação'];
 
@@ -67,4 +67,35 @@ test('attack trend explains movement against the stored baseline',()=>{
   assert.deepEqual(growthAttackTrend({radar:{attackBaselineScore:70}},76),{delta:6,direction:'up',baseline:70});
   assert.deepEqual(growthAttackTrend({radar:{attackBaselineScore:80}},76),{delta:-4,direction:'down',baseline:80});
   assert.equal(growthAttackTrend({radar:{}},76).direction,'stable');
+});
+
+test('keeps separate phone numbers and respects the first recommended channel',()=>{
+  const contacts='(43) 3333-4444 / WhatsApp +55 (43) 99999-9999';
+  assert.equal(radarPhone(contacts,'whatsapp'),'43999999999');
+  assert.equal(radarPhone(contacts,'phone'),'4333334444');
+  assert.equal(radarPhone('1199999999943999999999'),'');
+  assert.equal(inferRadarChannel('WhatsApp / telefone'),'whatsapp');
+  assert.equal(inferRadarChannel('Telefone / formulário; validar WhatsApp'),'phone');
+});
+
+test('reconciles branches by company and city without treating a common CNPJ as unique',()=>{
+  const first={id:'first',identityKeys:['cnpj:shared','namecity:empresa|londrina']};
+  const second={id:'second',identityKeys:['cnpj:shared','namecity:empresa|cambe']};
+  const byIdentity=new Map([
+    ['cnpj:shared',[first,second]],
+    ['namecity:empresa|londrina',[first]],
+    ['namecity:empresa|cambe',[second]]
+  ]);
+  assert.equal(radarMatchLead(second,byIdentity,new Set()),second);
+  assert.equal(radarMatchLead({identityKeys:['cnpj:shared','namecity:empresa|ibipora']},byIdentity,new Set()),null);
+  assert.equal(radarMatchLead(second,byIdentity,new Set(['second','first'])),null);
+  assert.ok(!radarIdentityKeys({website:'https://instagram.com/empresa'}).some(key=>key.startsWith('domain:')));
+  assert.ok(!radarIdentityKeys({website:'Google Business'}).some(key=>key.startsWith('domain:')));
+});
+
+test('an initial prospect date or a future return never counts as an overdue follow-up',()=>{
+  const now=Date.parse('2026-11-13T12:00:00Z'),past='2026-11-12T12:00:00Z',future='2026-11-14T12:00:00Z';
+  assert.equal(radarIsFollowUpDue({status:'new',nextContactAt:past},now),false);
+  assert.equal(radarIsFollowUpDue({status:'contacted',nextContactAt:past},now),true);
+  assert.ok(!growthAttackScore({status:'replied',nextContactAt:future},{now}).reasons.includes('follow_up_due'));
 });

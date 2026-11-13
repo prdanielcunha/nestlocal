@@ -12,7 +12,18 @@ const SIGNAL_HEADERS = {
 };
 
 export const radarKey=value=>String(value??'').trim().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
-export const radarPhone=value=>String(value??'').replace(/\D/g,'').slice(0,15);
+export function radarPhone(value,channel=''){
+  const text=String(value??'');
+  const parts=text.split(/[/;|\n]+/);
+  const candidates=parts.flatMap(part=>{
+    const match=part.match(/(?<!\d)(?:\+?55[ .-]?)?(?:\(\d{2}\)|\d{2})[ .-]?\d{4,5}[ .-]?\d{4}(?!\d)/);
+    if(!match)return [];
+    const digits=match[0].replace(/\D/g,'');
+    return [{number:digits.length>11?digits.slice(2):digits,whatsapp:/whatsapp/i.test(part)}];
+  });
+  const preferred=channel==='whatsapp'?candidates.find(candidate=>candidate.whatsapp):null;
+  return (preferred||candidates[0])?.number||'';
+}
 const bounded=value=>Math.max(0,Math.min(100,Number(value)||0));
 const signal=value=>{
   const normalized=String(value??'').trim().replace(',','.');
@@ -23,25 +34,37 @@ const parseDate=value=>{
   const raw=String(value??'').trim();
   if(!raw)return '';
   const br=/^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
-  if(br)return `${br[3]}-${br[2]}-${br[1]}`;
-  const iso=/^\d{4}-\d{2}-\d{2}$/.test(raw)?raw:'';
-  return iso;
+  const iso=br?`${br[3]}-${br[2]}-${br[1]}`:raw;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(iso))return '';
+  const date=new Date(`${iso}T00:00:00Z`);
+  return Number.isFinite(date.getTime())&&date.toISOString().slice(0,10)===iso?iso:'';
 };
 const host=value=>{
   const raw=String(value??'').trim();
   if(!raw)return '';
-  try{return new URL(/^https?:\/\//i.test(raw)?raw:`https://${raw}`).hostname.replace(/^www\./,'').toLowerCase()}catch{return ''}
+  try{
+    const url=new URL(/^https?:\/\//i.test(raw)?raw:`https://${raw}`);
+    const domain=url.hostname.replace(/^www\./,'').toLowerCase();
+    if(!domain.includes('.')||url.username||url.password)return '';
+    if(/(^|\.)(instagram\.com|facebook\.com|google\.com(?:\.br)?|g.page|maps.app.goo.gl|wa.me|linktr.ee|bit.ly)$/.test(domain))return '';
+    return domain;
+  }catch{return ''}
 };
 const hash=value=>crypto.createHash('sha256').update(String(value??'')).digest('hex');
 
 export function inferRadarChannel(value=''){
   const v=radarKey(value);
-  if(v.includes('instagram'))return 'instagram';
-  if(v.includes('liga')||v.includes('telefone')||v.includes('phone')||v.includes('call'))return 'phone';
-  if(v.includes('mail'))return 'email';
-  if(v.includes('indic'))return 'referral';
-  if(v.includes('parce'))return 'partner';
-  return 'other';
+  const channels=[
+    ['whatsapp',/\bwhatsapp\b/],
+    ['instagram',/\binstagram\b/],
+    ['phone',/\b(?:ligacao|telefone|phone|call)\b/],
+    ['email',/\b(?:e mail|email)\b/],
+    ['referral',/\b(?:indicacao|referral)\b/],
+    ['partner',/\b(?:parceiro|parceria|partner)\b/]
+  ];
+  const primary=v.split(/\bvalidar\b/)[0];
+  return channels.map(([channel,pattern])=>({channel,index:primary.search(pattern)}))
+    .filter(item=>item.index>=0).sort((a,b)=>a.index-b.index)[0]?.channel||'other';
 }
 
 export function inferRadarAngle(value=''){
@@ -77,7 +100,7 @@ export function radarFingerprint(lead={}){
 export function radarRevisionHash(lead={}){
   const stable={
     businessName:lead.businessName||'',city:lead.city||'',segment:lead.segment||'',website:lead.website||'',phone:radarPhone(lead.phone),
-    channelLabel:lead.channelLabel||'',fitSignals:lead.fitSignals||{},leadScore:Number(lead.leadScore)||0,className:lead.className||'',
+    channelLabel:lead.channelLabel||'',sourceStatus:lead.sourceStatus||'',nextContactDate:lead.nextContactDate||'',fitSignals:lead.fitSignals||{},leadScore:Number(lead.leadScore)||0,className:lead.className||'',
     painHypothesis:lead.painHypothesis||'',suggestedAction:lead.suggestedAction||'',notes:lead.notes||'',cnpj:String(lead.cnpj||'').replace(/\D/g,''),
     googlePlaceId:lead.googlePlaceId||'',verifiedSource:lead.verifiedSource||'',verificationDate:lead.verificationDate||''
   };
@@ -99,16 +122,16 @@ export function parseRadarRows(values=[]){
   const cell=(row,i)=>i>=0?String(row?.[i]??'').trim():'';
   return values.slice(1).map((row,offset)=>{
     const fitSignals=Object.fromEntries(Object.entries(signalIdx).map(([key,i])=>[key,signal(cell(row,i))]));
+    const channelLabel=cell(row,idx.channelLabel),channel=inferRadarChannel(channelLabel);
     const lead={
       sourceRow:offset+2,
       businessName:cell(row,idx.businessName),city:cell(row,idx.city),segment:cell(row,idx.segment),website:cell(row,idx.website),
-      phone:radarPhone(cell(row,idx.phone)),channelLabel:cell(row,idx.channelLabel),leadScore:Number(cell(row,idx.leadScore).replace(',','.'))||0,
+      phone:radarPhone(cell(row,idx.phone),channel),channelLabel,channel,leadScore:Number(cell(row,idx.leadScore).replace(',','.'))||0,
       className:cell(row,idx.className),painHypothesis:cell(row,idx.painHypothesis),sourceStatus:cell(row,idx.status),
       suggestedAction:cell(row,idx.suggestedAction),nextContactDate:parseDate(cell(row,idx.nextContact)),notes:cell(row,idx.notes),
       cnpj:cell(row,idx.cnpj).replace(/\D/g,''),googlePlaceId:cell(row,idx.googlePlaceId),verifiedSource:cell(row,idx.verifiedSource),
       verificationDate:parseDate(cell(row,idx.verificationDate)),fitSignals
     };
-    lead.channel=inferRadarChannel(lead.channelLabel);
     lead.angle=inferRadarAngle(`${lead.painHypothesis} ${lead.suggestedAction}`);
     lead.identityKeys=radarIdentityKeys(lead);
     lead.fingerprint=radarFingerprint(lead);
@@ -139,10 +162,32 @@ function qualityScore(lead={}){
   if(radar.website)score+=5;
   return bounded(score);
 }
+export function radarIsFollowUpDue(lead={},now=Date.now()){
+  return !['new','customer','no_fit'].includes(lead.status)&&Date.parse(lead.nextContactAt||'')<=now;
+}
+
+export function radarMatchLead(item,byIdentity,claimedIds){
+  const available=key=>(byIdentity.get(key)||[]).filter(lead=>!claimedIds.has(lead.id));
+  const nameKey=item.identityKeys.find(key=>key.startsWith('namecity:'));
+  const sameName=available(nameKey);
+  if(sameName.length===1)return sameName[0];
+  for(const key of item.identityKeys){
+    if(!/^(place|cnpj|phone):/.test(key))continue;
+    const matches=available(key);
+    if(byIdentity.get(key)?.length!==1||matches.length!==1)continue;
+    const [match]=matches;
+    const conflictingId=item.identityKeys.some(identity=>{
+      const prefix=identity.split(':')[0];
+      return ['place','cnpj'].includes(prefix)&&match.identityKeys.some(existing=>existing.startsWith(`${prefix}:`)&&existing!==identity);
+    });
+    if(!conflictingId)return match;
+  }
+  return null;
+}
+
 function momentScore(lead={},now=Date.now()){
   if(['customer','no_fit'].includes(lead.status))return 0;
-  const due=Date.parse(lead.nextContactAt||'');
-  if(Number.isFinite(due)&&due<=now)return 100;
+  if(radarIsFollowUpDue(lead,now))return 100;
   if(lead.status==='replied')return 95;
   if(lead.status==='diagnostic')return 90;
   if(lead.status==='demo'||lead.status==='trial')return 85;
@@ -162,7 +207,7 @@ export function growthAttackScore(lead={},options={}){
   const segment=bounded(options.segmentScore??50);
   const total=Math.round((fit*.35+pain*.25+moment*.15+quality*.10+recency*.05+segment*.10)*10)/10;
   const reasons=[];
-  if(moment>=95)reasons.push('follow_up_due');
+  if(radarIsFollowUpDue(lead,now))reasons.push('follow_up_due');
   if(fit>=90)reasons.push('very_high_fit'); else if(fit>=80)reasons.push('high_fit');
   if(painQualified&&pain>=70)reasons.push('confirmed_pain');
   else if(!painQualified&&lead.radar?.painHypothesis)reasons.push('pain_hypothesis');

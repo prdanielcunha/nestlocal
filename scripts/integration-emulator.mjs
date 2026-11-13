@@ -55,6 +55,51 @@ try{
   if(server.exitCode!==null)throw Error(`API failed: ${logs}`);
   await new Promise(r=>setTimeout(r,100));
  }
+ await check('Radar import preserves commercial history, separates shared domains and retains the last valid source',async()=>{
+  const base=`http://127.0.0.1:${apiPort}/api/admin/nestlocal/growth`;
+  const adminUid='integration-growth-admin',adminToken=`nl_${randomBytes(32).toString('base64url')}`;
+  await seedSession(adminUid,adminToken,'owner');
+  await db.doc(`users/${adminUid}`).set({systemRole:'global_admin'},{merge:true});
+  const health=await fetch(`http://127.0.0.1:${apiPort}/api/health/radar`);
+  await health.json();
+  const leadRef=db.doc('nestlocal_growth_leads/integration-existing-radar');
+  const nextContactAt=admin.firestore.Timestamp.fromDate(new Date('2026-12-31T13:00:00Z'));
+  await leadRef.set({businessName:'Empresa A',city:'Cambé',segment:'Limpeza',status:'contacted',highestStage:1,
+    contactCount:2,nextContactAt,createdAt:admin.firestore.Timestamp.now()});
+  const headers=['Empresa','Cidade','Segmento','Site / Instagram','Telefone / contato','Canal inicial'];
+  const values=[headers,
+    ['Empresa A','Cambé','Limpeza','https://instagram.com/exemplo-a','(43) 3333-4444 / WhatsApp (43) 99999-1111','WhatsApp / telefone'],
+    ['Empresa B','Cambé','Limpeza','https://instagram.com/exemplo-b','(43) 3333-5555','Ligação curta']];
+  const request=(path,body,auth=adminToken)=>fetch(base+path,{method:'POST',headers:{
+    ...(auth?{authorization:`Bearer ${auth}`}:{}),'content-type':'application/json'},body:JSON.stringify(body)});
+  assert.equal((await request('/radar/import',{values},'')).status,401);
+  assert.equal((await request('/radar/import',{values},memberToken)).status,403);
+  const importRadar=async()=>{
+    for(let attempt=0;attempt<15;attempt++){
+      const response=await request('/radar/import',{values});
+      if(response.status!==409){assert.equal(response.status,200,await response.clone().text());return response.json();}
+      await new Promise(resolve=>setTimeout(resolve,300));
+    }
+    assert.fail('Radar import never obtained its lease');
+  };
+  const first=await importRadar();
+  assert.equal(first.source.totalSource,2);
+  assert.equal(first.source.sourceMode,'operator_import');
+  const second=await importRadar();
+  assert.equal(second.source.createdCount,0);
+  const kept=(await leadRef.get()).data();
+  assert.equal(kept.contactCount,2);
+  assert.equal(kept.nextContactAt.toMillis(),nextContactAt.toMillis());
+  assert.equal(kept.radar.phone,'43999991111');
+  const branches=await db.collection('nestlocal_growth_leads').where('businessName','==','Empresa B').get();
+  assert.equal(branches.size,1);
+  const fallback=await request('/radar/sync',{});
+  assert.equal(fallback.status,200);
+  const result=await fallback.json();
+  assert.equal(result.source.sourceMode,'operator_import');
+  assert.equal(result.source.totalSource,2);
+  assert.equal((await branches.docs[0].ref.get()).data().radar.sourcePresent,true);
+ });
  await check('audio transcription validates canonical scope, consent and durable daily quota before provider access',async()=>{
   const post=async(consent='true',targetOrg=orgId,auth=ownerToken)=>{
    const bytes=Buffer.alloc(44);bytes.write('RIFF');bytes.write('WAVE',8);

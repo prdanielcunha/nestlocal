@@ -25,7 +25,7 @@ import {normalizeOpportunityDraft,normalizeOpportunityDraftPatch,parseOpportunit
 import { buildNestLocalIcs, safeCalendarEvents, validDate } from './src/domain/calendar.mjs';
 import { actionOutcomeSnapshot, updateActionMetric } from './src/domain/action-learning.mjs';
 import { canCountNewExperimentSample, experimentReviewSnapshot, guidedExperimentEligibility, normalizeExperiment, updateExperimentProgress } from './src/domain/guided-experiment.mjs';
-import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, segmentLearningScores } from './src/domain/growth-radar.mjs';
+import { growthAttackScore, growthAttackTrend, growthOutreachMessage, parseRadarRows, radarIdentityKeys, radarIsFollowUpDue, radarMatchLead, segmentLearningScores } from './src/domain/growth-radar.mjs';
 import { RADAR_SEED_VERSION, radarSeedValues } from './src/domain/prospect-radar-seed.mjs';
 import { readNestLocalSessionToken, extractNestLocalRequest, composeNestLocalQuote, composeNestLocalFollowup, explainNestLocalPulse, assistNestLocalSetup, suggestNestLocalReturn } from './src/nestai.mjs';
 
@@ -33,7 +33,9 @@ admin.initializeApp({projectId: process.env.FIREBASE_PROJECT_ID || 'millionsnest
 const db=admin.firestore();
 const app=express();
 app.disable('x-powered-by');
-app.use(express.json({limit:'128kb'}));
+const radarImportPath='/api/admin/nestlocal/growth/radar/import';
+const standardJson=express.json({limit:'128kb'});
+app.use((req,res,next)=>req.path===radarImportPath?next():standardJson(req,res,next));
 
 const globalRoles=new Set(['ceo','global_admin','ecosystem_owner','founder','admin']);
 const hubTrialV3Enabled=process.env.NESTLOCAL_HUB_ENTITLEMENT_V3_ENABLED==='true';
@@ -336,7 +338,7 @@ const serviceWindows=new Set(['morning','afternoon','evening','flexible']);
 const capacityWindows=new Set(['morning','afternoon','evening']);
 const scheduleSlotStatuses=new Set(['scheduled','in_progress']);
 const growthStageRank={new:0,contacted:1,replied:2,diagnostic:3,demo:4,trial:5,customer:6};
-const growthChannels=new Set(['xray','instagram','phone','email','referral','partner','organic','other']);
+const growthChannels=new Set(['xray','whatsapp','instagram','phone','email','referral','partner','organic','other']);
 const growthAngles=new Set(['revenue_visibility','quote_followup','customer_reactivation','empty_schedule','whatsapp_chaos','referral','other']);
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,Number(value)||0));
 const signal=v=>clamp(v,0,1);
@@ -421,8 +423,9 @@ function radarSourceState(data={}){
 
 // Connected Radar uses an explicit Google Sheets OAuth scope.
 const googleSheetsAuth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets']});
-async function googleRuntimeAccessToken(){
-  const client=await googleSheetsAuth.getClient();
+const googleSheetsReadAuth=new GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets.readonly']});
+async function googleRuntimeAccessToken({readOnly=false}={}){
+  const client=await (readOnly?googleSheetsReadAuth:googleSheetsAuth).getClient();
   const tokenResult=await client.getAccessToken();
   const accessToken=clean(typeof tokenResult==='string'?tokenResult:tokenResult?.token);
   if(!accessToken)throw new TypeError('RADAR_SOURCE_AUTH_FAILED');
@@ -431,13 +434,13 @@ async function googleRuntimeAccessToken(){
 
 async function fetchRadarSheetValues(){
   try{
-    const accessToken=await googleRuntimeAccessToken();
+    const accessToken=await googleRuntimeAccessToken({readOnly:true});
     const url=`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarSheetId)}/values/${encodeURIComponent(radarSheetRange)}?majorDimension=ROWS&valueRenderOption=FORMATTED_VALUE`;
     const response=await fetch(url,{headers:{Authorization:`Bearer ${accessToken}`},signal:AbortSignal.timeout(6000)});
     if(!response.ok){
       const payload=await response.json().catch(()=>({}));
-      const reason=clean(payload?.error?.status);
-      const code=response.status===403?(reason==='PERMISSION_DENIED'?'RADAR_SOURCE_FORBIDDEN':'RADAR_SOURCE_API_FORBIDDEN'):response.status===404?'RADAR_SOURCE_NOT_FOUND':'RADAR_SOURCE_UNAVAILABLE';
+      const reasons=(payload?.error?.details||[]).map(detail=>detail.reason);
+      const code=response.status===403?(reasons.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT')?'RADAR_SOURCE_SCOPE_INSUFFICIENT':reasons.includes('SERVICE_DISABLED')?'RADAR_SOURCE_API_DISABLED':'RADAR_SOURCE_FORBIDDEN'):response.status===404?'RADAR_SOURCE_NOT_FOUND':'RADAR_SOURCE_UNAVAILABLE';
       throw new TypeError(code);
     }
     const payload=await response.json();
@@ -445,15 +448,16 @@ async function fetchRadarSheetValues(){
     if(remoteValues.length<2)throw new TypeError('RADAR_SOURCE_EMPTY');
     return {values:remoteValues,sourceMode:'google_sheet',sourceVersion:'live',sourceWarning:''};
   }catch(error){
-    console.warn('Radar Google source unavailable; using managed production snapshot',clean(error?.message)||'RADAR_SOURCE_UNAVAILABLE');
-    return {values:radarSeedValues,sourceMode:'managed_snapshot',sourceVersion:RADAR_SEED_VERSION,sourceWarning:clean(error?.message)||'RADAR_SOURCE_UNAVAILABLE'};
+    const sourceWarning=/^RADAR_SOURCE_[A-Z_]+$/.test(error?.message)?error.message:'RADAR_SOURCE_UNAVAILABLE';
+    console.warn('Radar Google source unavailable',sourceWarning);
+    return {values:radarSeedValues,sourceMode:'managed_snapshot',sourceVersion:RADAR_SEED_VERSION,sourceWarning};
   }
 }
 
 function radarExistingIdentityKeys(lead={}){
-  const nested=Array.isArray(lead.radar?.identityKeys)?lead.radar.identityKeys.filter(Boolean):[];
-  const legacy=growthFingerprint({businessName:lead.businessName,city:lead.city});
-  return {identityKeys:nested,legacy};
+  const radar=lead.radar||{};
+  return radarIdentityKeys({businessName:lead.businessName,city:lead.city,phone:radar.phone||lead.phone,
+    cnpj:radar.cnpj,googlePlaceId:radar.googlePlaceId});
 }
 
 async function commitRadarOperations(operations=[]){
@@ -487,10 +491,11 @@ async function refreshGrowthAttackBaselines(){
   const snap=await db.collection('nestlocal_growth_leads').limit(1000).get();
   const raw=snap.docs.map(doc=>({id:doc.id,ref:doc.ref,...doc.data()}));
   const {scored}=growthScoredLeads(raw);
-  const operations=scored.map(lead=>{
-    const currentRadar=lead.radar||{},oldBaseline=Number(currentRadar.attackBaselineScore);
+  const operations=scored.flatMap(lead=>{
+    const oldBaseline=Number(lead.radar?.attackBaselineScore);
+    if(oldBaseline===lead.attack.score)return [];
     const previous=Number.isFinite(oldBaseline)?oldBaseline:lead.attack.score;
-    return {type:'set',ref:lead.ref,data:{radar:{...currentRadar,previousAttackScore:previous,attackBaselineScore:lead.attack.score,attackBaselineAt:admin.firestore.FieldValue.serverTimestamp()}}};
+    return [{type:'set',ref:lead.ref,data:{radar:{previousAttackScore:previous,attackBaselineScore:lead.attack.score,attackBaselineAt:admin.firestore.FieldValue.serverTimestamp()}}}];
   });
   if(operations.length)await commitRadarOperations(operations);
 }
@@ -510,7 +515,7 @@ async function publishGrowthLearningFeedback(){
   let feedbackStorage='firestore',sheetError='';
   const sourceSnap=await radarSourceRef().get(),sourceMode=clean(sourceSnap.data()?.sourceMode);
   try{
-    if(sourceMode==='managed_snapshot')throw new TypeError('RADAR_FEEDBACK_MANAGED_IN_FIRESTORE');
+    if(sourceMode!=='google_sheet')throw new TypeError('RADAR_FEEDBACK_MANAGED_IN_FIRESTORE');
     const accessToken=await googleRuntimeAccessToken(),encodedRange=encodeURIComponent(radarFeedbackSheetRange);
     const clear=await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(radarFeedbackSheetId)}/values/${encodedRange}:clear`,{method:'POST',headers:{Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},body:'{}',signal:AbortSignal.timeout(6000)});
     if(!clear.ok)throw new TypeError('RADAR_FEEDBACK_SHEET_UNAVAILABLE');
@@ -533,26 +538,59 @@ async function safelyPublishGrowthLearningFeedback(){
   }
 }
 
-async function syncProspectRadar(actorUid){
+let radarSyncInFlight;
+async function syncProspectRadar(actorUid,importValues){
+  if(radarSyncInFlight){
+    if(!importValues)return radarSyncInFlight;
+    await radarSyncInFlight.catch(()=>{});
+    return syncProspectRadar(actorUid,importValues);
+  }
+  radarSyncInFlight=applyProspectRadarSync(actorUid,importValues).finally(()=>{radarSyncInFlight=null});
+  return radarSyncInFlight;
+}
+
+async function applyProspectRadarSync(actorUid,importValues){
   const sourceRef=radarSourceRef(),attemptedAt=admin.firestore.FieldValue.serverTimestamp();
-  await sourceRef.set({sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,lastAttemptAt:attemptedAt},{merge:true});
+  const leaseId=crypto.randomUUID();
+  await db.runTransaction(async tx=>{
+    const data=(await tx.get(sourceRef)).data()||{};
+    if(timestampMillis(data.syncLeaseUntil)>Date.now())throw new TypeError('RADAR_SYNC_IN_PROGRESS');
+    tx.set(sourceRef,{sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,lastAttemptAt:attemptedAt,
+      syncLeaseId:leaseId,syncLeaseUntil:admin.firestore.Timestamp.fromMillis(Date.now()+120000)},{merge:true});
+  });
   try{
-    const sourcePayload=await fetchRadarSheetValues(),values=sourcePayload.values,incoming=parseRadarRows(values);
+    const sourcePayload=importValues?{values:importValues,sourceMode:'operator_import',sourceVersion:'',sourceWarning:''}:await fetchRadarSheetValues();
+    const incoming=parseRadarRows(sourcePayload.values);
     if(!incoming.length)throw new TypeError('RADAR_SOURCE_EMPTY');
+    if(sourcePayload.sourceMode==='managed_snapshot'){
+      const saved=(await sourceRef.get()).data()||{};
+      if(saved.lastSyncedAt&&(saved.sourceMode!=='managed_snapshot'||Number(saved.totalSource)>incoming.length||saved.sourceVersion===RADAR_SEED_VERSION)){
+        await sourceRef.set({sourceWarning:sourcePayload.sourceWarning},{merge:true});
+        return {...saved,sourceWarning:sourcePayload.sourceWarning};
+      }
+    }
     const existingSnap=await db.collection('nestlocal_growth_leads').limit(1000).get();
     const existing=existingSnap.docs.map(doc=>({id:doc.id,ref:doc.ref,...doc.data()}));
-    const byIdentity=new Map(),byLegacy=new Map();
+    const byIdentity=new Map();
     for(const lead of existing){
-      const identity=radarExistingIdentityKeys(lead);
-      for(const key of identity.identityKeys)if(!byIdentity.has(key))byIdentity.set(key,lead);
-      if(identity.legacy&&!byLegacy.has(identity.legacy))byLegacy.set(identity.legacy,lead);
+      const identityKeys=radarExistingIdentityKeys(lead);
+      for(const key of identityKeys){
+        if(!byIdentity.has(key))byIdentity.set(key,[]);
+        byIdentity.get(key).push({...lead,identityKeys});
+      }
     }
-    const seenIds=new Set(),operations=[];
+    const incomingIdentityCounts=new Map();
+    for(const item of incoming){
+      for(const key of item.identityKeys)incomingIdentityCounts.set(key,(incomingIdentityCounts.get(key)||0)+1);
+    }
+    const seenIds=new Set(),seenNameKeys=new Set(),operations=[];
     let createdCount=0,updatedCount=0,unchangedCount=0;
     for(const item of incoming){
-      let current=null;
-      for(const key of item.identityKeys){if(byIdentity.has(key)){current=byIdentity.get(key);break}}
-      if(!current)current=byLegacy.get(growthFingerprint({businessName:item.businessName,city:item.city}))||null;
+      const nameKey=item.identityKeys.find(key=>key.startsWith('namecity:'));
+      if(seenNameKeys.has(nameKey))continue;
+      seenNameKeys.add(nameKey);
+      const uniqueKeys=item.identityKeys.filter(key=>key===nameKey||incomingIdentityCounts.get(key)===1);
+      const current=radarMatchLead({...item,identityKeys:uniqueKeys},byIdentity,seenIds);
       const radar={
         ...(current?.radar||{}),
         sourceId:radarSourceId,sourceSheetId:radarSheetId,sourceRange:radarSheetRange,sourceRow:item.sourceRow,sourcePresent:true,
@@ -565,14 +603,21 @@ async function syncProspectRadar(actorUid){
         seenIds.add(current.id);
         const changed=clean(current.radar?.revisionHash)!==item.revisionHash||current.radar?.sourcePresent!==true;
         const update={radar,fitSignals:item.fitSignals,fitScore:growthFitScore(item.fitSignals),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+        const needsPhone=Boolean(item.phone&&(!clean(current.phone)||(current.source==='sheet_radar'&&current.phone===current.radar?.phone&&current.phone!==item.phone)));
+        const needsChannel=current.source==='sheet_radar'&&current.acquisition?.campaign==='prospect_radar'&&growthLeadStage(current)===0&&current.acquisition.channel!==item.channel;
         if(!clean(current.businessName))update.businessName=item.businessName;
         if(!clean(current.city))update.city=item.city;
         if(!clean(current.segment))update.segment=item.segment;
-        if(!clean(current.phone)&&item.phone)update.phone=item.phone;
-        operations.push({type:'set',ref:current.ref,data:update});
-        if(changed)updatedCount++; else unchangedCount++;
+        if(needsPhone)update.phone=item.phone;
+        if(needsChannel){
+          update.acquisition={...current.acquisition,channel:item.channel};
+        }
+        if(changed||Object.keys(update).length>4||current.radar?.sourceRow!==item.sourceRow){
+          operations.push({type:'set',ref:current.ref,data:update});
+          updatedCount++;
+        }else unchangedCount++;
       }else{
-        const ref=db.collection('nestlocal_growth_leads').doc(),legacyFingerprint=growthFingerprint({businessName:item.businessName,city:item.city});
+        const legacyFingerprint=growthFingerprint({businessName:item.businessName,city:item.city}),ref=db.collection('nestlocal_growth_leads').doc(`radar_${legacyFingerprint}`);
         const nextContactMs=item.nextContactDate?Date.parse(`${item.nextContactDate}T12:00:00-03:00`):NaN;
         const data={
           source:'sheet_radar',fingerprint:legacyFingerprint,status:'new',highestStage:0,
@@ -588,31 +633,36 @@ async function syncProspectRadar(actorUid){
     }
     let removedCount=0;
     for(const lead of existing){
-      if(lead.radar?.sourceId!==radarSourceId||seenIds.has(lead.id)||lead.radar?.sourcePresent===false)continue;
+      if(sourcePayload.sourceMode!=='google_sheet'||existingSnap.size>=1000||lead.radar?.sourceId!==radarSourceId||seenIds.has(lead.id)||lead.radar?.sourcePresent===false)continue;
       operations.push({type:'set',ref:lead.ref,data:{radar:{...lead.radar,sourcePresent:false,lastMissingAt:admin.firestore.FieldValue.serverTimestamp()},updatedAt:admin.firestore.FieldValue.serverTimestamp()}});
       removedCount++;
     }
     await commitRadarOperations(operations);
     await refreshGrowthAttackBaselines();
-    await safelyPublishGrowthLearningFeedback();
     const revision=hash(incoming.map(x=>x.revisionHash).sort().join('|')).slice(0,40);
-    const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',sourceMode:sourcePayload.sourceMode,sourceVersion:sourcePayload.sourceVersion,sourceWarning:sourcePayload.sourceWarning,lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
+    const summary={sourceId:radarSourceId,sheetId:radarSheetId,range:radarSheetRange,totalSource:incoming.length,createdCount,updatedCount,unchangedCount,removedCount,revision,lastError:'',sourceMode:sourcePayload.sourceMode,sourceVersion:sourcePayload.sourceVersion||revision,sourceWarning:sourcePayload.sourceWarning,lastSyncedBy:actorUid,lastSyncedAt:admin.firestore.FieldValue.serverTimestamp(),lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()};
     await sourceRef.set(summary,{merge:true});
     return {...summary,lastSyncedAt:new Date().toISOString(),lastAttemptAt:new Date().toISOString()};
   }catch(error){
-    const code=['RADAR_SOURCE_AUTH_FAILED','RADAR_SOURCE_FORBIDDEN','RADAR_SOURCE_API_FORBIDDEN','RADAR_SOURCE_NOT_FOUND','RADAR_SOURCE_UNAVAILABLE','RADAR_SOURCE_EMPTY'].includes(error?.message)?error.message:'RADAR_SYNC_FAILED';
+    const code=['RADAR_SOURCE_AUTH_FAILED','RADAR_SOURCE_FORBIDDEN','RADAR_SOURCE_API_FORBIDDEN','RADAR_SOURCE_SCOPE_INSUFFICIENT','RADAR_SOURCE_API_DISABLED','RADAR_SOURCE_NOT_FOUND','RADAR_SOURCE_UNAVAILABLE','RADAR_SOURCE_EMPTY'].includes(error?.message)?error.message:'RADAR_SYNC_FAILED';
     await sourceRef.set({lastError:code,lastAttemptAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(()=>{});
     const wrapped=new TypeError(code);wrapped.cause=error;throw wrapped;
+  }finally{
+    await db.runTransaction(async tx=>{
+      const data=(await tx.get(sourceRef)).data();
+      if(data?.syncLeaseId===leaseId)tx.update(sourceRef,{syncLeaseId:admin.firestore.FieldValue.delete(),syncLeaseUntil:admin.firestore.FieldValue.delete()});
+    }).catch(error=>console.warn('Radar lease release failed',error?.code));
   }
 }
 
 function growthRadarInsights(leads=[],lang='pt'){
   const {scored,segmentInsights}=growthScoredLeads(leads);
+  const now=Date.now();
   const attackQueue=scored
     .filter(lead=>!['customer','no_fit'].includes(lead.status))
     .filter(lead=>lead.radar?.sourcePresent!==false||growthLeadStage(lead)>0)
-    .sort((a,b)=>b.attack.score-a.attack.score||Math.max(Number(b.fitScore||0),Number(b.referenceFitScore||0))-Math.max(Number(a.fitScore||0),Number(a.referenceFitScore||0)))
-    .slice(0,7)
+    .sort((a,b)=>Number(radarIsFollowUpDue(b,now))-Number(radarIsFollowUpDue(a,now))||b.attack.score-a.attack.score||Math.max(Number(b.fitScore||0),Number(b.referenceFitScore||0))-Math.max(Number(a.fitScore||0),Number(a.referenceFitScore||0)))
+    .slice(0,5)
     .map(lead=>({
       id:lead.id,businessName:lead.businessName,city:lead.city,segment:lead.segment,phone:lead.phone,status:lead.status,nextAction:lead.nextAction,
       nextContactAt:lead.nextContactAt,fitScore:lead.fitScore,referenceFitScore:lead.referenceFitScore,painScore:lead.painScore,
@@ -785,17 +835,14 @@ app.get('/api/calendar/feeds/:orgId/:uid.ics',async(req,res)=>{
 app.get('/api/health/radar',async(_req,res)=>{
   try{
     const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},persistedTotal=Number(data.totalSource||0),lastError=clean(data.lastError),sourceMode=clean(data.sourceMode),lastSyncedAt=radarTimestampIso(data.lastSyncedAt);
-    const managedSnapshotReady=radarSeedValues.length>1;
-    const persistedReady=Boolean(lastSyncedAt)&&!lastError&&persistedTotal>=radarSeedValues.length-1;
-    const ready=persistedReady||managedSnapshotReady;
-    const totalSource=persistedReady?persistedTotal:Math.max(persistedTotal,radarSeedValues.length-1);
-    const effectiveSourceMode=persistedReady?sourceMode:'managed_snapshot';
-    const effectiveSourceVersion=persistedReady?clean(data.sourceVersion):RADAR_SEED_VERSION;
-    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource,expectedMinimum:radarSeedValues.length-1,sourceMode:effectiveSourceMode,lastError:persistedReady?lastError:'',lastSyncedAt,sourceVersion:effectiveSourceVersion,degraded:!persistedReady});
+    const ready=Boolean(lastSyncedAt)&&persistedTotal>0;
+    const sourceWarning=clean(data.sourceWarning);
+    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource:persistedTotal,
+      expectedMinimum:1,sourceMode:sourceMode||'unknown',lastError,lastSyncedAt,sourceVersion:clean(data.sourceVersion),
+      degraded:sourceMode!=='google_sheet'||Boolean(sourceWarning||lastError),sourceWarning});
   }catch(error){
     console.error(error);
-    const ready=radarSeedValues.length>1;
-    res.status(ready?200:503).json({ok:ready,service:'nestlocal-radar',ready,totalSource:Math.max(0,radarSeedValues.length-1),expectedMinimum:radarSeedValues.length-1,sourceMode:'managed_snapshot',lastError:'',lastSyncedAt:null,sourceVersion:RADAR_SEED_VERSION,degraded:true});
+    res.status(503).json({ok:false,service:'nestlocal-radar',ready:false,totalSource:0,expectedMinimum:1,sourceMode:'unknown',degraded:true});
   }
 });
 
@@ -1029,8 +1076,8 @@ app.use('/api/admin/nestlocal/growth',authenticate,requireGrowthAdmin);
 app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
   try{
     let sourceSnap=await radarSourceRef().get(),sourceData=sourceSnap.exists?sourceSnap.data()||{}:{};
-    const lastSyncMs=sourceData.lastSyncedAt?.toMillis?.()||0;
-    if(!lastSyncMs||(Date.now()-lastSyncMs)>radarStaleAfterMs||clean(sourceData.lastError)){
+    const lastAttemptMs=(sourceData.lastAttemptAt||sourceData.lastSyncedAt)?.toMillis?.()||0;
+    if(!lastAttemptMs||(Date.now()-lastAttemptMs)>radarStaleAfterMs){
       try{await syncProspectRadar(_req.growthAdmin.uid)}catch(error){console.error('Radar auto-heal failed',error)}
       sourceSnap=await radarSourceRef().get();sourceData=sourceSnap.exists?sourceSnap.data()||{}:{};
     }
@@ -1044,14 +1091,32 @@ app.get('/api/admin/nestlocal/growth/leads',async(_req,res)=>{
 
 app.post('/api/admin/nestlocal/growth/radar/sync',async(req,res)=>{
   try{
-    const summary=await syncProspectRadar(req.growthAdmin.uid);
-    res.json({ok:true,source:radarSourceState({...summary,lastSyncedAt:admin.firestore.Timestamp.now(),lastAttemptAt:admin.firestore.Timestamp.now()})});
+    await syncProspectRadar(req.growthAdmin.uid);
+    res.json({ok:true,source:radarSourceState((await radarSourceRef().get()).data())});
   }catch(e){
     console.error(e);
     const code=clean(e?.message)||'RADAR_SYNC_FAILED';
-    const status=code==='RADAR_SOURCE_FORBIDDEN'?403:code==='RADAR_SOURCE_NOT_FOUND'?404:code==='RADAR_SOURCE_EMPTY'?422:503;
+    const status=code==='RADAR_SYNC_IN_PROGRESS'?409:code==='RADAR_SOURCE_FORBIDDEN'?403:code==='RADAR_SOURCE_NOT_FOUND'?404:code==='RADAR_SOURCE_EMPTY'?422:503;
     sendError(res,status,code);
   }
+});
+
+app.post(radarImportPath,express.json({limit:'2mb'}),async(req,res)=>{
+  try{
+    const values=req.body?.values;
+    if(!Array.isArray(values)||values.length>1000||
+      values.some(row=>!Array.isArray(row)||row.length>30||row.some(value=>typeof value!=='string'||value.length>2000))){
+      return sendError(res,400,'INVALID_RADAR_IMPORT');
+    }
+    const leadRows=values.slice(1).filter(row=>row.slice(0,21).some(Boolean)||row.slice(26).some(Boolean));
+    const rows=parseRadarRows([values[0],...leadRows]);
+    const distinct=new Set(rows.map(row=>row.identityKeys.find(key=>key.startsWith('namecity:'))));
+    if(!rows.length||distinct.size!==rows.length||rows.length!==leadRows.length){
+      return sendError(res,400,'INVALID_RADAR_IMPORT');
+    }
+    await syncProspectRadar(req.growthAdmin.uid,[values[0],...leadRows]);
+    res.json({ok:true,source:radarSourceState((await radarSourceRef().get()).data())});
+  }catch(error){console.error(error);sendError(res,error?.message==='RADAR_SYNC_IN_PROGRESS'?409:503,clean(error?.message)||'RADAR_SYNC_FAILED')}
 });
 
 app.post('/api/admin/nestlocal/growth/radar/publish-learning',async(_req,res)=>{
@@ -2954,8 +3019,8 @@ app.use((_req,res)=>sendError(res,404,'NOT_FOUND'));
 
 async function ensureRadarReadyOnBoot(){
   try{
-    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},lastSyncMs=data.lastSyncedAt?.toMillis?.()||0;
-    if(!lastSyncMs||(Date.now()-lastSyncMs)>radarStaleAfterMs||clean(data.lastError)||Number(data.totalSource||0)<radarSeedValues.length-1){
+    const snap=await radarSourceRef().get(),data=snap.exists?snap.data()||{}:{},lastAttemptMs=(data.lastAttemptAt||data.lastSyncedAt)?.toMillis?.()||0;
+    if(!lastAttemptMs||(Date.now()-lastAttemptMs)>radarStaleAfterMs||!data.lastSyncedAt){
       const result=await syncProspectRadar('system_radar_boot');
       console.log('NestLocal Radar ready',JSON.stringify({totalSource:result.totalSource,created:result.createdCount,updated:result.updatedCount,mode:result.sourceMode}));
     }
