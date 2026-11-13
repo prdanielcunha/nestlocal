@@ -179,15 +179,11 @@ A sincronização:
 
 ### Reconciliação e identidade
 
-A reconciliação prefere, quando presentes:
+A reconciliação prioriza nome e cidade para manter o histórico existente. Place ID, CNPJ e telefone podem reconciliar registros quando a chave é única nas duas bases e os identificadores disponíveis são compatíveis. Domínios compartilhados, redes sociais e links de busca não servem como identidade.
 
-1. Google Place ID;
-2. CNPJ;
-3. telefone normalizado;
-4. domínio do site;
-5. nome normalizado + cidade.
+Se a leitura do Google falhar, o Radar preserva a última base válida e mostra o motivo da falha. Um administrador também pode copiar a aba Leads com cabeçalho e importar pelo Radar. A importação manual atualiza os registros presentes na tabela e preserva os demais. Somente uma leitura bem-sucedida da fonte conectada pode marcar um registro como ausente.
 
-A impressão digital legada de nome + cidade é preservada para reconciliar leads antigos sem duplicá-los.
+A fila mostra até cinco contatos e prioriza retornos vencidos de prospects já trabalhados. Abrir o telefone ou o WhatsApp não altera o funil. O registro explícito do contato atualiza o histórico e agenda o retorno.
 
 ### Radar Delta
 
